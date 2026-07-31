@@ -1,0 +1,82 @@
+# Dependencies & caches
+node_modules/
+.pnpm-store/
+.npm/
+.turbo/
+*.tsbuildinfo
+
+# Build outputs
+dist/
+build/
+.svelte-kit/
+apps/web/build/
+apps/mobile/dist/
+apps/mobile/www/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.mobileprovision
+Credentials.xcconfig
+**/Secrets.plist
+
+# Logs & OS
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*~
+
+# —— iOS / Xcode ——
+apps/mobile/ios/App/Pods/
+apps/mobile/ios/App/build/
+apps/mobile/ios/DerivedData/
+**/DerivedData/
+**/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.ipa
+*.dSYM/
+*.dSYM.zip
+
+# Local Cap sync copies are generated — canonical Swift lives in ios/App/
+# Keep the Cap project shell; ignore accidental local overrides if needed.
+
+# —— libtorrent vendor (rebuild with scripts/build-libtorrent-ios.sh) ——
+# Full Boost/libtorrent source + static libs are multi‑GB; never commit.
+/ios/vendor/**
+!/ios/vendor/README.md
+/vendor/
+**/build-libtorrent.log
+
+# Spike build products
+ios/spike/**/build/
+ios/spike/**/DerivedData/
+
+# Capacitor / Cordova leftovers
+apps/mobile/ios/App/App/public/
+!.gitkeep
+
+# Test / local torrent scratch
+*.torrent
+!**/fixtures/**/*.torrent
+Saizen/pieces/
+Saizen/torrents/
+*.part
+
+# Coverage / misc
+coverage/
+.nyc_output/
+*.orig
+*.rej

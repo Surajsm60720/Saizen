@@ -1,0 +1,21 @@
+{
+  "name": "@saizen/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "npx cap sync ios && node ../../scripts/register-local-ios-plugins.mjs && bash ../../scripts/sync-swift-into-cap.sh",
+    "open:ios": "npx cap open ios",
+    "add:ios": "npx cap add ios"
+  },
+  "dependencies": {
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/ios": "^7.2.0",
+    "@saizen/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.2.0",
+    "typescript": "^5.8.3"
+  }
+}
