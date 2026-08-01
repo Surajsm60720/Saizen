@@ -3,14 +3,16 @@
 ```
 Saizen/
 ├── apps/
-│   ├── web/                          # SvelteKit UI (Capacitor webDir)
+│   ├── web/                          # Next.js static UI (Capacitor webDir)
 │   │   └── src/
 │   │       ├── lib/
 │   │       │   ├── anilist/          # GraphQL client
-│   │       │   ├── providers/        # Erai / SubsPlease / Nyaa / Test Sample
+│   │       │   ├── extensions/       # Hayase-compatible remote extension loader
+│   │       │   ├── mappings/         # AniList → AniDB/TVDB/TMDB
+│   │       │   ├── providers/        # Built-in test-sample (+ legacy off by default)
 │   │       │   ├── native/           # window.saizen bridge
 │   │       │   └── …
-│   │       └── routes/app/           # home, anime/[id], player, …
+│   │       └── app/                  # App Router: home, anime, player, extensions, …
 │   └── mobile/                       # Capacitor shell
 │       └── ios/App/                  # Xcode workspace (Pods gitignored)
 ├── packages/
@@ -43,14 +45,14 @@ Saizen/
 ## Data flow (playback)
 
 ```
-UI (provider → magnet | torrentUrl | httpUrl)
+UI (extension / provider → magnet | torrentUrl | httpUrl)
   → window.saizen.playTorrent(source)
   → SaizenTorrent / HybridTorrentEngine
-  → LibtorrentEngine (magnet or .torrent file)
+  → LibtorrentEngine (magnet / .torrent) or ProgressiveHTTPEngine
   → PieceStore (disk) ← piece_finished / read_piece
   → HTTPRangeServer streams Range on 127.0.0.1
-  → warm head (+ MKV tail)
-  → SaizenPlayer → MobileVLCKit (default) | AVPlayer (MP4)
+  → head-first piece priorities; open player ASAP (HUD + buffering)
+  → SaizenPlayer → MobileVLCKit (MKV / incomplete Range) | AVPlayer (MP4)
 ```
 
 ## What is generated vs committed

@@ -2,25 +2,24 @@
   "name": "@saizen/web",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "vite dev --host --port 5173",
-    "build": "vite build && node ../../scripts/fix-capacitor-html.mjs",
-    "preview": "vite preview --port 5173",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "dev": "next dev --hostname 0.0.0.0 --port 5173",
+    "build": "next build && node ../../scripts/fix-capacitor-html.mjs",
+    "preview": "npx serve out -l 5173",
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@capacitor/core": "^7.2.0",
     "@saizen/shared": "workspace:*",
-    "@urql/core": "^5.1.1"
+    "@urql/core": "^5.1.1",
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@sveltejs/adapter-static": "^3.0.8",
-    "@sveltejs/kit": "^2.20.2",
-    "@sveltejs/vite-plugin-svelte": "^5.0.3",
-    "svelte": "^5.23.2",
-    "svelte-check": "^4.1.5",
-    "typescript": "^5.8.3",
-    "vite": "^6.2.2"
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.8.3"
   }
 }

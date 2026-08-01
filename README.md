@@ -1,6 +1,6 @@
 # Saizen (最善)
 
-Personal iOS anime client: **SvelteKit + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
+Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
@@ -9,9 +9,13 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 Proven on a physical iPhone:
 
 - AniList browse (CapacitorHttp)
-- Erai-raws / SubsPlease magnets → libtorrent metadata + download
+- Hayase-compatible **remote extensions** (catalogs from https://exten.pages.dev) + legacy SubsPlease / Erai / Nyaa (off by default)
+- Magnets / `.torrent` URLs → libtorrent metadata + **piece-priority head focus**
 - Disk-backed `PieceStore` + loopback `HTTPRangeServer`
-- Warm head + MKV tail, then **VLC** playback (incl. 1080p HEVC + ASS)
+- **Early open**: player launches as soon as metadata + local HTTP URL exist (no long warm wait)
+- In-player HUD on loopback streams (peers / speed / buffered)
+- Progressive **HTTP** sources also stream via PieceStore + Range (open ASAP), not download-then-play
+- **VLC** for incomplete Range / MKV (incl. 1080p HEVC + ASS); AVPlayer for complete MP4 when appropriate
 
 Not productized yet: auth, library, polish UI, App Store packaging.
 
@@ -19,7 +23,7 @@ Not productized yet: auth, library, polish UI, App Store packaging.
 
 | Path | Role |
 |------|------|
-| `apps/web` | SvelteKit UI (Capacitor `webDir`) |
+| `apps/web` | Next.js static UI (Capacitor `webDir`) |
 | `apps/mobile` | Capacitor iOS shell + sync scripts |
 | `packages/shared` | Shared TS types / `window.saizen` contract |
 | `ios/App/SaizenCore` | Canonical Swift: torrent, HTTP, player |
@@ -45,7 +49,7 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:5173 → pick anime → **Find sources** → **Test Sample** (bundled / progressive MP4 on native; HTML5 `<video>` on web).
+Open the local Next.js URL → pick anime → **Find sources** → **Test Sample** (bundled / progressive MP4 on native; HTML5 `<video>` on web).
 
 ## Native iOS (device)
 
@@ -91,22 +95,25 @@ bash scripts/sync-swift-into-cap.sh
 ## Playback path
 
 ```
-Provider (magnet | .torrent URL | http test)
+Provider (magnet | .torrent URL | http URL)
   → SaizenTorrent.playTorrent
-  → libtorrent → PieceStore (Documents/Saizen/pieces)
-  → HTTPRangeServer  http://127.0.0.1:PORT/0/stream
-  → warm head (+ MKV tail)
-  → SaizenPlayer.spawnPlayer → MobileVLCKit (MKV) / AVPlayer (MP4)
+  → libtorrent (or ProgressiveHTTP) → PieceStore
+  → HTTPRangeServer  http://127.0.0.1:PORT/…/stream
+  → focus ~4MB head (+ lookahead); MKV cues/tail deferred
+  → open player ASAP (buffering overlay + live stats)
+  → SaizenPlayer → MobileVLCKit (MKV / incomplete Range) / AVPlayer (MP4)
 ```
+
+Download continues in the background while VLC plays from the contiguous head. File-wide “high priority” alone is avoided so mid/tail pieces do not starve the start of the file.
 
 ## Providers
 
-| Provider | Notes |
+Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev — sub / dub / multi / hentai catalogs). Manage them in-app under **Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL (often faster time-to-first-frame than magnets).
+
+| Built-in | Notes |
 |----------|--------|
 | **Test Sample** | Offline / progressive pipeline check |
-| **Erai-raws** | AnimeTosho RSS; prefers `.torrent` URL when available |
-| **SubsPlease** | JSON API magnets |
-| **Nyaa** | Off by default (many ISPs block TLS to nyaa.si) |
+| SubsPlease / Erai / Nyaa | Legacy — off by default |
 
 ## Scripts
 

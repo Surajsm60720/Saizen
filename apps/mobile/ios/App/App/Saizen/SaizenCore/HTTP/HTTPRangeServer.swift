@@ -230,8 +230,8 @@ public final class HTTPRangeServer: @unchecked Sendable {
         let end = min(rangeEnd, offset + chunkSize - 1)
         let slice = offset ..< (end + 1)
         if !store.isAvailable(range: slice) {
-          // Prioritize a wider window so sequential playback stays ahead.
-          let aheadEnd = min(rangeEnd, offset + chunkSize * 8 - 1)
+          // Prioritize ~32 chunks (~8 MB) ahead so sequential playback stays fed.
+          let aheadEnd = min(rangeEnd, offset + chunkSize * 32 - 1)
           onNeedRange?(offset ..< (aheadEnd + 1))
         }
         let bytes = try await store.read(range: slice, timeout: 180)

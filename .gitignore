@@ -8,7 +8,8 @@ node_modules/
 # Build outputs
 dist/
 build/
-.svelte-kit/
+.next/
+apps/web/out/
 apps/web/build/
 apps/mobile/dist/
 apps/mobile/www/

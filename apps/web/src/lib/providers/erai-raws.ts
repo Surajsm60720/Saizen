@@ -7,7 +7,7 @@ export const eraiRawsProvider: TorrentProvider = {
   id: 'erai-raws',
   name: 'Erai-raws',
   description: 'Erai-raws multi-sub releases via AnimeTosho RSS mirror.',
-  enabled: true,
+  enabled: false,
   async search(query: ProviderQuery): Promise<ProviderResult[]> {
     const candidates = uniqueTitles(query)
     if (!candidates.length) return []

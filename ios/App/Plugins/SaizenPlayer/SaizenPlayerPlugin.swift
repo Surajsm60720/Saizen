@@ -19,6 +19,9 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     let hint = PlayerHint(rawValue: hintRaw) ?? .vlc
     let title = call.getString("title")
 
+    // Capture session now so a later play can't be killed by this player's dismiss.
+    let session = SaizenPlayback.currentSessionID
+
     DispatchQueue.main.async {
       guard let root = self.bridge?.viewController else {
         call.reject("No view controller")
@@ -28,14 +31,20 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
       while let presented = presenter.presentedViewController {
         presenter = presented
       }
-      PlayerRouter.present(from: presenter, url: url, hint: hint, title: title)
+      PlayerRouter.present(from: presenter, url: url, hint: hint, title: title) {
+        // Only purge if this is still the same playback session.
+        SaizenPlayback.stopAndPurge(expecting: session)
+      }
       call.resolve()
     }
   }
 
   @objc func stopPlayer(_ call: CAPPluginCall) {
+    let session = SaizenPlayback.currentSessionID
     DispatchQueue.main.async {
-      self.bridge?.viewController?.dismiss(animated: true)
+      self.bridge?.viewController?.dismiss(animated: true) {
+        SaizenPlayback.stopAndPurge(expecting: session)
+      }
       call.resolve()
     }
   }

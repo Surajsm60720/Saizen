@@ -16,7 +16,7 @@ export const subspleaseProvider: TorrentProvider = {
   id: 'subsplease',
   name: 'SubsPlease',
   description: 'Fansub releases via SubsPlease JSON API (1080p / 720p / 480p magnets).',
-  enabled: true,
+  enabled: false,
   async search(query: ProviderQuery): Promise<ProviderResult[]> {
     const candidates = uniqueTitles(query)
     if (!candidates.length) return []

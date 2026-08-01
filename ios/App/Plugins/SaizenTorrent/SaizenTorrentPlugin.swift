@@ -14,7 +14,10 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "checkAvailableSpace", returnType: CAPPluginReturnPromise)
   ]
 
-  private let engine = HybridTorrentEngine()
+  public override func load() {
+    // Clear leftovers from previous force-quit / crash sessions only when idle.
+    SaizenPlayback.purgeIfIdle()
+  }
 
   @objc func playTorrent(_ call: CAPPluginCall) {
     guard let source = call.getString("source") else {
@@ -26,7 +29,12 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
 
     Task {
       do {
-        let files = try await engine.play(source: source, mediaId: mediaId, episode: episode)
+        SaizenPlayback.beginSession()
+        let files = try await SaizenPlayback.engine.play(
+          source: source,
+          mediaId: mediaId,
+          episode: episode
+        )
         let mapped = files.map {
           [
             "id": $0.id,
@@ -39,6 +47,8 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         call.resolve(["files": mapped])
       } catch {
+        // Failed before/during warm — drop session so launch purge can run later.
+        SaizenPlayback.stopAndPurge(expecting: nil)
         call.reject(error.localizedDescription)
       }
     }
@@ -47,13 +57,13 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
   @objc func torrentInfo(_ call: CAPPluginCall) {
     let hash = call.getString("hash") ?? ""
     Task {
-      let info = await engine.torrentInfo(hash: hash)
+      let info = await SaizenPlayback.engine.torrentInfo(hash: hash)
       call.resolve(info)
     }
   }
 
   @objc func stop(_ call: CAPPluginCall) {
-    engine.stopAll()
+    SaizenPlayback.stopAndPurge(expecting: nil)
     call.resolve()
   }
 

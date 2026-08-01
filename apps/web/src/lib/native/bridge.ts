@@ -8,12 +8,12 @@ export async function installSaizenBridge(): Promise<void> {
   if (typeof window === 'undefined') return
 
   let Capacitor: { isNativePlatform(): boolean; getPlatform(): string } | null = null
-  let registerPlugin: (<T>(name: string) => T) | null = null
+  let registerPlugin: (<T>(name: string) => T) | undefined
 
   try {
     const core = await import('@capacitor/core')
     Capacitor = core.Capacitor
-    registerPlugin = core.registerPlugin as typeof registerPlugin
+    registerPlugin = core.registerPlugin as unknown as <T>(name: string) => T
   } catch {
     return
   }
@@ -55,7 +55,7 @@ export async function installSaizenBridge(): Promise<void> {
       const { bytes } = await SaizenTorrent.checkAvailableSpace()
       return bytes
     },
-    async deleteTorrents() {
+    async deleteTorrents(_hashes?: string[]) {
       await SaizenTorrent.stop()
     },
     async cachedTorrents() {

@@ -4,6 +4,7 @@ import { subspleaseProvider } from './subsplease'
 import { testSampleProvider } from './test-sample'
 import type { ProviderQuery, ProviderResult, TorrentProvider } from './types'
 
+/** Built-in providers. Legacy indexes are off by default — use Hayase extensions. */
 export const providers: TorrentProvider[] = [
   testSampleProvider,
   subspleaseProvider,

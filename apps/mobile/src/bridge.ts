@@ -1,5 +1,5 @@
 /**
- * Injected before the Svelte app on Capacitor.
+ * Injected before the Next.js app on Capacitor.
  * Wires Capacitor plugins → window.saizen (SaizenNative contract).
  *
  * Until plugins are registered in the Xcode project, methods fall through
@@ -54,7 +54,7 @@ export function installSaizenBridge(): void {
       const { bytes } = await SaizenTorrent.checkAvailableSpace()
       return bytes
     },
-    async deleteTorrents() {
+    async deleteTorrents(_hashes?: string[]) {
       await SaizenTorrent.stop()
     },
     async cachedTorrents() {

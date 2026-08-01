@@ -69,7 +69,7 @@ const webFallback: SaizenNative = {
   async library(): Promise<LibraryEntry[]> {
     return []
   },
-  async deleteTorrents() {},
+  async deleteTorrents(_hashes?: string[]) {},
   async cachedTorrents() {
     return []
   },

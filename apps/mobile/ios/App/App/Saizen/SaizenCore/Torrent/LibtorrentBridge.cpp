@@ -110,14 +110,17 @@ extern "C" SaizenLTSession *saizen_lt_create(const char *save_path, SaizenLTCall
   pack.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_enabled);
   pack.set_int(lt::settings_pack::allowed_enc_level, lt::settings_pack::pe_both);
   pack.set_bool(lt::settings_pack::prefer_rc4, false);
-  pack.set_int(lt::settings_pack::handshake_timeout, 30);
-  pack.set_int(lt::settings_pack::peer_timeout, 120);
-  pack.set_int(lt::settings_pack::peer_connect_timeout, 20);
-  pack.set_int(lt::settings_pack::connections_limit, 150);
-  pack.set_int(lt::settings_pack::active_downloads, 4);
-  pack.set_int(lt::settings_pack::active_limit, 8);
-  pack.set_int(lt::settings_pack::max_peerlist_size, 4000);
-  pack.set_int(lt::settings_pack::max_paused_peerlist_size, 2000);
+  pack.set_int(lt::settings_pack::handshake_timeout, 20);
+  pack.set_int(lt::settings_pack::peer_timeout, 90);
+  pack.set_int(lt::settings_pack::peer_connect_timeout, 12);
+  pack.set_int(lt::settings_pack::connections_limit, 300);
+  pack.set_int(lt::settings_pack::connection_speed, 80);
+  pack.set_int(lt::settings_pack::active_downloads, 6);
+  pack.set_int(lt::settings_pack::active_limit, 12);
+  pack.set_int(lt::settings_pack::max_peerlist_size, 8000);
+  pack.set_int(lt::settings_pack::max_paused_peerlist_size, 4000);
+  pack.set_int(lt::settings_pack::request_timeout, 12);
+  pack.set_int(lt::settings_pack::whole_pieces_threshold, 4);
   pack.set_str(lt::settings_pack::user_agent, "Saizen/0.1 libtorrent/2.0");
   pack.set_str(lt::settings_pack::peer_fingerprint, "-SZ0001-");
 
@@ -141,6 +144,30 @@ extern "C" void saizen_lt_destroy(SaizenLTSession *session) {
   delete session;
 }
 
+// Keep in sync with apps/web/src/lib/extensions/trackers.ts PUBLIC_TRACKERS
+static void append_extra_trackers(lt::add_torrent_params &params) {
+  static char const *extra_trackers[] = {
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.stealth.si:80/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://tracker.moeking.me:6969/announce",
+    "udp://tracker1.bt.moack.co.kr:80/announce",
+    "udp://tracker.tiny-vps.com:6969/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://explodie.org:6969/announce",
+    "udp://tracker.theoks.net:6969/announce",
+    "http://tracker.opentrackr.org:1337/announce",
+    "http://open.stealth.si:80/announce",
+    "http://tracker.openbittorrent.com:80/announce",
+    "http://tracker.bt4g.com:2095/announce",
+    "https://tracker.tamersunion.org:443/announce",
+  };
+  for (auto *tr : extra_trackers) {
+    params.trackers.emplace_back(tr);
+  }
+}
+
 extern "C" int saizen_lt_add_magnet(SaizenLTSession *session, const char *magnet_uri) {
   if (!session || !magnet_uri) return -1;
   std::lock_guard<std::mutex> lock(session->mu);
@@ -157,18 +184,7 @@ extern "C" int saizen_lt_add_magnet(SaizenLTSession *session, const char *magnet
   params.flags |= lt::torrent_flags::auto_managed;
 
   // Extra public trackers — many magnet URIs ship dead UDP trackers / wss-only.
-  static char const *extra_trackers[] = {
-    "udp://tracker.opentrackr.org:1337/announce",
-    "udp://open.stealth.si:80/announce",
-    "udp://exodus.desync.com:6969/announce",
-    "udp://tracker.torrent.eu.org:451/announce",
-    "http://tracker.opentrackr.org:1337/announce",
-    "http://open.stealth.si:80/announce",
-    "http://tracker.openbittorrent.com:80/announce",
-  };
-  for (auto *tr : extra_trackers) {
-    params.trackers.emplace_back(tr);
-  }
+  append_extra_trackers(params);
 
   session->handle = session->ses.add_torrent(std::move(params), ec);
   if (ec) {
@@ -196,18 +212,7 @@ extern "C" int saizen_lt_add_torrent_file(SaizenLTSession *session, const char *
   params.flags |= lt::torrent_flags::sequential_download;
   params.flags |= lt::torrent_flags::auto_managed;
 
-  static char const *extra_trackers[] = {
-    "udp://tracker.opentrackr.org:1337/announce",
-    "udp://open.stealth.si:80/announce",
-    "udp://exodus.desync.com:6969/announce",
-    "udp://tracker.torrent.eu.org:451/announce",
-    "http://tracker.opentrackr.org:1337/announce",
-    "http://open.stealth.si:80/announce",
-    "http://tracker.openbittorrent.com:80/announce",
-  };
-  for (auto *tr : extra_trackers) {
-    params.trackers.emplace_back(tr);
-  }
+  append_extra_trackers(params);
 
   session->handle = session->ses.add_torrent(std::move(params), ec);
   if (ec) {
@@ -235,14 +240,57 @@ static void prioritize_bytes_locked(SaizenLTSession *session, int64_t start, int
 
   for (int p = first; p <= last; ++p) {
     session->handle.piece_priority(lt::piece_index_t(p), lt::download_priority_t(7));
-    session->handle.set_piece_deadline(lt::piece_index_t(p), (p - first) * 50);
+    // Tighter deadlines = sooner piece requests for the warm / playhead window.
+    session->handle.set_piece_deadline(lt::piece_index_t(p), (p - first) * 25);
   }
+}
+
+/// Streaming mode: zero every piece, then only raise [0, head_bytes) of the active file.
+/// Without this, prioritize_files(7) marks the whole episode high-priority and we
+/// download tens/hundreds of MB before the first contiguous head bytes arrive.
+static void focus_head_locked(SaizenLTSession *session, int64_t head_bytes) {
+  if (!session->handle.is_valid() || !session->has_meta || session->piece_length <= 0) return;
+  auto ti = session->handle.torrent_file();
+  if (!ti) return;
+  int n = ti->num_pieces();
+  if (n <= 0) return;
+
+  std::vector<lt::download_priority_t> prios(std::size_t(n), lt::download_priority_t(0));
+  int64_t want = std::min(head_bytes, session->file_size);
+  if (want <= 0) {
+    session->handle.prioritize_pieces(prios);
+    return;
+  }
+  int64_t abs_start = session->file_offset;
+  int64_t abs_end = session->file_offset + want;
+  int first = int(abs_start / session->piece_length);
+  int last = int((abs_end - 1) / session->piece_length);
+  first = std::max(0, std::min(first, n - 1));
+  last = std::max(0, std::min(last, n - 1));
+
+  // Small lookahead so playback does not stall right after open.
+  int extend = std::min(n - 1, last + 24);
+  for (int p = first; p <= extend; ++p) {
+    prios[std::size_t(p)] = lt::download_priority_t(p <= last ? 7 : 4);
+  }
+  session->handle.prioritize_pieces(prios);
+  for (int p = first; p <= last; ++p) {
+    session->handle.set_piece_deadline(lt::piece_index_t(p), (p - first) * 20);
+  }
+  log(session, std::string("focus_head pieces=") + std::to_string(first) + ".." + std::to_string(last)
+    + " extend=" + std::to_string(extend) + " bytes=" + std::to_string(want));
 }
 
 extern "C" void saizen_lt_prioritize_bytes(SaizenLTSession *session, int64_t start, int64_t end) {
   if (!session) return;
   std::lock_guard<std::mutex> lock(session->mu);
   prioritize_bytes_locked(session, start, end);
+}
+
+extern "C" void saizen_lt_focus_head(SaizenLTSession *session, int64_t head_bytes) {
+  if (!session) return;
+  std::lock_guard<std::mutex> lock(session->mu);
+  focus_head_locked(session, head_bytes);
 }
 
 static void handle_metadata(SaizenLTSession *s) {
@@ -256,11 +304,11 @@ static void handle_metadata(SaizenLTSession *s) {
   s->piece_length = ti->piece_length();
   s->has_meta = true;
 
-  // Focus download on selected file
+  // Select video file at low default priority — piece-level focus_head raises the window.
   int nfiles = ti->files().num_files();
   std::vector<lt::download_priority_t> prios(nfiles, lt::download_priority_t(0));
   if (s->file_index >= 0 && s->file_index < nfiles) {
-    prios[std::size_t(s->file_index)] = lt::download_priority_t(7);
+    prios[std::size_t(s->file_index)] = lt::download_priority_t(1);
   }
   s->handle.prioritize_files(prios);
   s->handle.set_flags(lt::torrent_flags::sequential_download);
@@ -271,12 +319,8 @@ static void handle_metadata(SaizenLTSession *s) {
     s->cb.on_metadata(name.c_str(), s->file_size, s->piece_length, ti->num_pieces(), s->cb.ctx);
   }
 
-  // Kick first + last pieces for streaming (MKV cues live near EOF).
-  prioritize_bytes_locked(s, 0, std::min<int64_t>(s->file_size, 8 * 1024 * 1024));
-  if (s->file_size > 4 * 1024 * 1024) {
-    int64_t tail = std::min<int64_t>(s->file_size, 2 * 1024 * 1024);
-    prioritize_bytes_locked(s, s->file_size - tail, s->file_size);
-  }
+  // Head only at metadata time — do NOT prioritize tail yet (it stole bandwidth from head).
+  focus_head_locked(s, std::min<int64_t>(s->file_size, 4 * 1024 * 1024));
 }
 
 extern "C" void saizen_lt_tick(SaizenLTSession *session) {
@@ -408,6 +452,13 @@ extern "C" int saizen_lt_num_peers(SaizenLTSession *session) {
   return session->handle.status().num_peers;
 }
 
+extern "C" int64_t saizen_lt_download_rate(SaizenLTSession *session) {
+  if (!session) return 0;
+  std::lock_guard<std::mutex> lock(session->mu);
+  if (!session->handle.is_valid()) return 0;
+  return session->handle.status().download_payload_rate;
+}
+
 #else
 
 // Stubs when libtorrent is not linked — keep linker happy if file is compiled without flag.
@@ -419,9 +470,11 @@ extern "C" void saizen_lt_destroy(SaizenLTSession *) {}
 extern "C" int saizen_lt_add_magnet(SaizenLTSession *, const char *) { return -100; }
 extern "C" int saizen_lt_add_torrent_file(SaizenLTSession *, const char *) { return -100; }
 extern "C" void saizen_lt_prioritize_bytes(SaizenLTSession *, int64_t, int64_t) {}
+extern "C" void saizen_lt_focus_head(SaizenLTSession *, int64_t) {}
 extern "C" void saizen_lt_tick(SaizenLTSession *) {}
 extern "C" double saizen_lt_progress(SaizenLTSession *) { return 0; }
 extern "C" int64_t saizen_lt_downloaded(SaizenLTSession *) { return 0; }
 extern "C" int saizen_lt_num_peers(SaizenLTSession *) { return 0; }
+extern "C" int64_t saizen_lt_download_rate(SaizenLTSession *) { return 0; }
 
 #endif

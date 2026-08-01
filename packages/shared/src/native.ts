@@ -37,7 +37,7 @@ export interface SaizenNative {
 
   torrentInfo(hash: string): Promise<TorrentInfo>
   library(): Promise<LibraryEntry[]>
-  deleteTorrents(hashes: string[]): Promise<void>
+  deleteTorrents(hashes?: string[]): Promise<void>
   cachedTorrents(): Promise<string[]>
   updateSettings(settings: ClientSettings): Promise<void>
   checkAvailableSpace(): Promise<number>

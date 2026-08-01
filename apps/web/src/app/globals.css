@@ -88,3 +88,38 @@ img {
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 0.85rem;
 }
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 20, 25, 0.92);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  font-size: 1.15rem;
+}
+
+.top nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.top nav a {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.top nav a.active,
+.top nav a:hover {
+  color: var(--text);
+}

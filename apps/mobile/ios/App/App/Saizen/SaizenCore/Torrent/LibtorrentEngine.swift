@@ -59,8 +59,7 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
       return try await ProgressiveHTTPEngine().play(source: source, mediaId: mediaId, episode: episode)
     }
 
-    let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-    let saveDir = docs.appendingPathComponent("Saizen/torrents", isDirectory: true)
+    let saveDir = SaizenStorage.torrentsDir
     try FileManager.default.createDirectory(at: saveDir, withIntermediateDirectories: true)
 
     let callbacks = SaizenLTCallbacks(
@@ -163,8 +162,9 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
       throw NSError(domain: "SaizenTorrent", code: 2, userInfo: [NSLocalizedDescriptionKey: "No stream URL"])
     }
 
-    // MKV needs EBML/header at start + cues near EOF before VLC can play.
-    try await warmForPlayback(session: created, store: store, fileName: fileName)
+    // Hayase-style: open the player as soon as the loopback URL exists.
+    // Head-first piece priorities keep bandwidth on the start; VLC HUD shows peers/speed.
+    kickstartStreaming(session: created, store: store, fileName: fileName)
 
     let hint = ProgressiveHTTPEngine.probeHint(name: fileName, contentType: contentType)
     currentHash = String(source.hashValue)
@@ -181,44 +181,31 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
     ]
   }
 
-  /// Download enough head (+ MKV tail) bytes into PieceStore before handing URL to the player.
-  private func warmForPlayback(session: OpaquePointer, store: PieceStore, fileName: String) async throws {
+  /// Do not block on head/tail bytes — that waited while the rest of the file downloaded.
+  /// Focus libtorrent on the head, open immediately; defer MKV cue/tail priority.
+  private func kickstartStreaming(session: OpaquePointer, store: PieceStore, fileName: String) {
     let isMkv = fileName.lowercased().hasSuffix(".mkv")
-    let head = min(Int64(isMkv ? 8 * 1024 * 1024 : 2 * 1024 * 1024), store.fileSize)
-    let tail: Int64 = isMkv ? min(Int64(2 * 1024 * 1024), store.fileSize) : 0
+    let headWindow = min(Int64(4 * 1024 * 1024), store.fileSize)
+    let tail: Int64 = isMkv ? min(Int64(768 * 1024), store.fileSize) : 0
 
+    saizen_lt_focus_head(session, headWindow)
     NSLog(
-      "[Saizen][lt] warming playback buffer head=%lld tail=%lld size=%lld",
-      head,
+      "[Saizen][lt] kickstart open-now headFocus=%lld tailDefer=%lld size=%lld",
+      headWindow,
       tail,
       store.fileSize
     )
 
-    if head > 0 {
-      saizen_lt_prioritize_bytes(session, 0, head)
-    }
-    if tail > 0, store.fileSize > head {
-      saizen_lt_prioritize_bytes(session, store.fileSize - tail, store.fileSize)
-    }
-
-    try await withThrowingTaskGroup(of: Void.self) { group in
-      if head > 0 {
-        group.addTask {
-          _ = try await store.read(range: 0 ..< head, timeout: 240)
-          NSLog("[Saizen][lt] warm head ready (%lld bytes)", head)
-        }
+    if tail > 0, store.fileSize > headWindow {
+      let start = store.fileSize - tail
+      Task { [weak self] in
+        // Let head win for a few seconds, then pull cues for seeking.
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        guard let self, let live = self.session, live == session else { return }
+        saizen_lt_prioritize_bytes(live, start, store.fileSize)
+        NSLog("[Saizen][lt] deferred tail prioritize @%lld", start)
       }
-      if tail > 0, store.fileSize > head {
-        group.addTask {
-          let start = store.fileSize - tail
-          _ = try await store.read(range: start ..< store.fileSize, timeout: 240)
-          NSLog("[Saizen][lt] warm tail ready (%lld bytes @ %lld)", tail, start)
-        }
-      }
-      try await group.waitForAll()
     }
-
-    NSLog("[Saizen][lt] warm complete store=%.1f%% — opening player", store.progress * 100)
   }
 
   fileprivate func handleMetadata(name: String, fileSize: Int64, pieceLength: Int) {
@@ -272,12 +259,14 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
     let peers = session.map { Int(saizen_lt_num_peers($0)) } ?? 0
     let progress = session.map { saizen_lt_progress($0) } ?? 0
     let downloaded = session.map { saizen_lt_downloaded($0) } ?? 0
+    let downRate = session.map { saizen_lt_download_rate($0) } ?? 0
+    let storeProgress = store?.progress ?? 0
     return [
       "name": fileName,
       "hash": currentHash,
-      "progress": progress,
+      "progress": max(progress, storeProgress),
       "size": ["total": store?.fileSize ?? 0, "downloaded": downloaded, "uploaded": 0],
-      "speed": ["down": 0, "up": 0],
+      "speed": ["down": downRate, "up": 0],
       "time": ["remaining": 0, "elapsed": 0],
       "peers": ["seeders": peers, "leechers": 0, "wires": peers],
       "pieces": ["total": 0, "size": store?.pieceLength ?? 0]
@@ -303,12 +292,52 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
     } else {
       stateLock.unlock()
     }
+    // Clear downloaded .torrent metas / libtorrent session leftovers for this save dir.
+    let fm = FileManager.default
+    let dir = SaizenStorage.torrentsDir
+    if fm.fileExists(atPath: dir.path),
+       let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+    {
+      for item in items {
+        try? fm.removeItem(at: item)
+      }
+    }
+    // Any orphaned piece files from prior crashed sessions
+    let pieces = SaizenStorage.piecesDir
+    if fm.fileExists(atPath: pieces.path),
+       let items = try? fm.contentsOfDirectory(at: pieces, includingPropertiesForKeys: nil)
+    {
+      for item in items {
+        try? fm.removeItem(at: item)
+      }
+    }
   }
 
+  /// True for HTTP(S) URLs that fetch a `.torrent` metafile (not the video itself).
+  /// AnimeTosho uses `.../download/<id>/torrent` (no `.torrent` suffix / trailing slash).
+  /// NekoBT uses `.../torrents/<id>/download`.
   static func isTorrentFileURL(_ source: String) -> Bool {
     let lower = source.lowercased()
     guard lower.hasPrefix("http://") || lower.hasPrefix("https://") else { return false }
-    return lower.contains(".torrent") || lower.contains("/torrent/")
+
+    let path = URL(string: source)?.path.lowercased() ?? lower
+
+    if path.hasSuffix(".torrent") || lower.contains(".torrent?") || lower.contains(".torrent#") {
+      return true
+    }
+    // AnimeTosho / Tosho: /download/<id>/torrent
+    if path.hasSuffix("/torrent") || path.contains("/torrent/") {
+      return true
+    }
+    // NekoBT-style: /torrents/<id>/download
+    if path.contains("/torrents/") && path.contains("/download") {
+      return true
+    }
+    // Generic download endpoints that advertise torrent in the URL
+    if path.contains("/download") && lower.contains("torrent") {
+      return true
+    }
+    return false
   }
 
   private static func downloadTorrentFile(from source: String, into dir: URL) async throws -> URL {

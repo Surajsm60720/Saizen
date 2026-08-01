@@ -49,6 +49,9 @@ int saizen_lt_add_torrent_file(SaizenLTSession *session, const char *torrent_pat
 /// Prefer sequential download + raise priority for [start, end) byte range of the active file.
 void saizen_lt_prioritize_bytes(SaizenLTSession *session, int64_t start, int64_t end);
 
+/// Streaming kickoff: clear piece priorities, then only download the file head.
+void saizen_lt_focus_head(SaizenLTSession *session, int64_t head_bytes);
+
 /// Pump alerts (call often from a timer / background loop).
 void saizen_lt_tick(SaizenLTSession *session);
 
@@ -56,6 +59,8 @@ void saizen_lt_tick(SaizenLTSession *session);
 double saizen_lt_progress(SaizenLTSession *session);
 int64_t saizen_lt_downloaded(SaizenLTSession *session);
 int saizen_lt_num_peers(SaizenLTSession *session);
+/// Download payload rate in bytes/sec.
+int64_t saizen_lt_download_rate(SaizenLTSession *session);
 
 #ifdef __cplusplus
 }

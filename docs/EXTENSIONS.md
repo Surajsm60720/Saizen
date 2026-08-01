@@ -1,8 +1,35 @@
-# Extension / Provider format (draft)
+# Extension / Provider format
 
-Saizen providers live in `apps/web/src/lib/providers/`.
+Saizen loads **Hayase-compatible** remote torrent extensions from public catalogs (reimplemented host — does **not** vendor Hayase source).
 
-## TorrentProvider
+## Catalogs
+
+| Catalog | URL |
+|---------|-----|
+| Subtitles | https://exten.pages.dev/index.json |
+| Dubs | https://exten.pages.dev/dub/index.json |
+| MultiSub | https://exten.pages.dev/multi/index.json |
+| Hentai | https://exten.pages.dev/hentai/index.json |
+
+NZB catalogs are ignored (`type !== "torrent"`).
+
+Runtime lives in `apps/web/src/lib/extensions/`:
+
+- Fetch manifests → enable/disable in `localStorage` (`saizen:extensions`)
+- Fetch extension JS → blob URL → dynamic `import()`
+- Call `single` / `batch` / `movie` / `test` with a rich query + Capacitor-aware `fetch`
+- Normalize `{ hash, link, seeders, … }` → `ProviderResult` (magnet / torrentUrl)
+
+Default on: Seadex, AnimeTosho (New), NekoBT, Seadex Dubs, AnimeTosho MultiSub (New). Hentai extensions stay off until enabled in **Extensions**.
+
+## Built-in providers (`apps/web/src/lib/providers/`)
+
+| id | Purpose |
+|----|---------|
+| `test-sample` | Public-domain MP4 + sample magnet for pipeline tests (always on) |
+| `subsplease` / `erai-raws` / `nyaa` | Legacy fallbacks — **off by default** |
+
+## TorrentProvider (legacy interface)
 
 ```ts
 interface TorrentProvider {
@@ -16,16 +43,12 @@ interface TorrentProvider {
 
 ## ProviderResult
 
-- `magnet` — BitTorrent magnet (requires libtorrent)
-- `httpUrl` — progressive HTTP media (works today via ProgressiveHTTPEngine)
+- `magnet` — BitTorrent magnet (libtorrent; trackers appended natively + in JS magnet builder)
+- `torrentUrl` — direct `.torrent` / download URL (preferred — skips magnet metadata wait)
+- `httpUrl` — progressive HTTP media (test path)
 
-## Built-in
+## Mirrors / speed
 
-| id | Purpose |
-|----|---------|
-| `test-sample` | Public-domain MP4 + sample magnet for pipeline tests |
-| `subsplease` | SubsPlease JSON API → magnets (good when Nyaa is ISP-blocked) |
-| `erai-raws` | Erai-raws via AnimeTosho RSS mirror → magnets |
-| `nyaa` | Nyaa scrape (disabled by default; often ISP-blocked) |
-
-Future: sandboxed JS extensions (Hayase-compatible shape documented from wiki — reimplemented, not copied).
+- JS magnets embed the shared `PUBLIC_TRACKERS` list (`extensions/trackers.ts`)
+- Native `LibtorrentBridge.cpp` appends the same tracker set and uses higher connection limits
+- AnimeTosho `useTorrent` defaults to **true** when the option exists

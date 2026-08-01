@@ -204,4 +204,10 @@ public final class PieceStore: @unchecked Sendable {
     guard fileSize > 0 else { return 0 }
     return Double(downloaded.count) / Double(fileSize)
   }
+
+  public var downloadedBytes: Int64 {
+    lock.lock()
+    defer { lock.unlock() }
+    return Int64(downloaded.count)
+  }
 }
