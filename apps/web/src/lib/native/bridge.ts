@@ -1,4 +1,13 @@
-import type { SaizenNative, SpawnPlayerOptions, TorrentFile } from '@saizen/shared'
+import type {
+  AuthResponse,
+  MalAuthCodeResponse,
+  NativePlaybackProgress,
+  SaizenNative,
+  SpawnPlayerOptions,
+  TorrentFile
+} from '@saizen/shared'
+import { updateWatchProgress } from '@/lib/watch/progress'
+import { getActivePlayback } from '@/lib/watch/activePlayback'
 
 /**
  * Install window.saizen when running inside Capacitor.
@@ -27,10 +36,36 @@ export async function installSaizenBridge(): Promise<void> {
     checkAvailableSpace(): Promise<{ bytes: number }>
   }>('SaizenTorrent')
 
-  const SaizenPlayer = registerPlugin<{
+  type PlayerPlugin = {
     spawnPlayer(o: SpawnPlayerOptions): Promise<void>
     stopPlayer(): Promise<void>
-  }>('SaizenPlayer')
+    addListener(
+      event: 'playbackProgress',
+      cb: (p: NativePlaybackProgress) => void
+    ): Promise<{ remove: () => Promise<void> }>
+  }
+
+  const SaizenPlayer = registerPlugin<PlayerPlugin>('SaizenPlayer')
+
+  const SaizenAuth = registerPlugin<{
+    authAnilist(o: { url: string; callbackScheme?: string }): Promise<AuthResponse | MalAuthCodeResponse>
+    authMAL(o: { url: string; callbackScheme?: string }): Promise<MalAuthCodeResponse>
+    getSecureItem(o: { key: string }): Promise<{ value: string | null }>
+    setSecureItem(o: { key: string; value: string }): Promise<void>
+    deleteSecureItem(o: { key: string }): Promise<void>
+  }>('SaizenAuth')
+
+  void SaizenPlayer.addListener('playbackProgress', (p) => {
+    const active = getActivePlayback()
+    updateWatchProgress({
+      anilistId: Number(p.anilistId),
+      episode: Number(p.episode),
+      idMal: p.idMal ?? active?.idMal ?? null,
+      positionSec: Number(p.positionSec),
+      durationSec: Number(p.durationSec),
+      totalEpisodes: active?.totalEpisodes
+    })
+  }).catch(() => {})
 
   const bridge: Partial<SaizenNative> = {
     isApp: true,
@@ -47,6 +82,28 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async stopPlayer() {
       await SaizenPlayer.stopPlayer()
+    },
+    async onPlaybackProgress(cb) {
+      const handle = await SaizenPlayer.addListener('playbackProgress', cb)
+      return () => {
+        void handle.remove()
+      }
+    },
+    async authAnilist(url) {
+      return SaizenAuth.authAnilist({ url, callbackScheme: 'saizen' })
+    },
+    async authMAL(url) {
+      return SaizenAuth.authMAL({ url, callbackScheme: 'saizen' })
+    },
+    async getSecureItem(key) {
+      const { value } = await SaizenAuth.getSecureItem({ key })
+      return value ?? null
+    },
+    async setSecureItem(key, value) {
+      await SaizenAuth.setSecureItem({ key, value })
+    },
+    async deleteSecureItem(key) {
+      await SaizenAuth.deleteSecureItem({ key })
     },
     async torrentInfo(hash) {
       return (await SaizenTorrent.torrentInfo({ hash })) as never
@@ -66,17 +123,19 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async updateSettings() {},
     async openURL(url) {
-      window.open(url, '_blank')
+      try {
+        const u = new URL(url)
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+          throw new Error('Only http(s) URLs can be opened')
+        }
+        window.open(u.toString(), '_blank')
+      } catch (e) {
+        console.warn('[saizen] openURL rejected', url, e)
+      }
     },
     async share() {},
     async getDeviceInfo() {
       return { platform: Capacitor!.getPlatform() }
-    },
-    async authAnilist() {
-      throw new Error('Auth Phase 2')
-    },
-    async authMAL() {
-      throw new Error('Auth Phase 2')
     }
   }
 

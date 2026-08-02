@@ -36,7 +36,11 @@ function readState(): ExtensionEnableState {
 
 function writeState(): void {
   if (typeof localStorage === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 function isEnabled(id: string, catalogId?: CatalogId): boolean {

@@ -280,10 +280,12 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
     store?.cancelAll()
     store?.removeBackingFile()
     store = nil
-    if let session {
-      saizen_lt_destroy(session)
-    }
+    // Destroy after timer cancel so tick cannot race without the mutex guard.
+    let doomed = session
     session = nil
+    if let doomed {
+      saizen_lt_destroy(doomed)
+    }
     stateLock.lock()
     if let c = metaContinuation {
       metaContinuation = nil

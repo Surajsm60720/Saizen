@@ -10,7 +10,8 @@ export const testSampleProvider: TorrentProvider = {
   name: 'Test Sample (Public Domain)',
   description:
     'Bundled offline MP4 first (recommended). Remote CDN samples may 403 on device.',
-  enabled: true,
+  // Off in product UI — re-enable locally for pipeline checks
+  enabled: false,
   async search(query: ProviderQuery): Promise<ProviderResult[]> {
     return [
       {

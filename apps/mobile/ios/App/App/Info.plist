@@ -57,6 +57,17 @@
 		<string>_bittorrent._tcp</string>
 		<string>_bittorrent._udp</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.saizen.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>saizen</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

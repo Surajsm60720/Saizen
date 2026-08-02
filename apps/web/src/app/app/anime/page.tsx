@@ -1,25 +1,54 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   fetchAnime,
   displayTitle,
   stripHtml,
+  formatSource,
+  mainStudioName,
+  trailerWatchUrl,
+  deriveSourceMaterials,
+  peekViewerListCache,
   type AnimeMedia
 } from '@/lib/anilist'
-import {
-  ensureExtensions,
-  listEnabledExtensions,
-  searchExtensions,
-  rankScore,
-  isLikelyFaster
-} from '@/lib/extensions'
-import { listProviders, searchAllProviders, type ProviderResult } from '@/lib/providers'
+import { fetchThemesByAniListId, type AnimeThemeTrack } from '@/lib/animethemes'
+import { fetchAniZipEpisodes, type AniZipEpisode } from '@/lib/anizip/episodes'
+import { fetchJikanEpisodeList, type JikanEpisodeDetail } from '@/lib/jikan/episodes'
+import { ensureExtensions, searchExtensions, rankScore } from '@/lib/extensions'
+import { searchAllProviders, type ProviderResult } from '@/lib/providers'
 import getNative from '@/lib/native'
 import type { TorrentInfo } from '@saizen/shared'
-import styles from './page.module.css'
+import { recordContinueWatching } from '@/lib/watch/continue'
+import { getProbedDurationSec } from '@/lib/watch/episodeMeta'
+import { isEpisodeWatched } from '@/lib/watch/progress'
+import { setActivePlayback } from '@/lib/watch/activePlayback'
+import {
+  AnimeHeader,
+  EpisodeList,
+  EpisodeRow,
+  EpisodeSourcesSheet,
+  PersonRail,
+  PosterCard,
+  PosterRail,
+  ThemeTracks,
+  buildEpisodeItems,
+  type EpisodeItem,
+  type PersonRailItem
+} from '@/components/saizen'
+import { Skeleton } from '@/components/ui/skeleton'
+
+const RELATED_TYPES = new Set([
+  'PREQUEL',
+  'SEQUEL',
+  'PARENT',
+  'SIDE_STORY',
+  'SPIN_OFF',
+  'ALTERNATIVE',
+  'SUMMARY'
+])
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '0 KB'
@@ -49,19 +78,26 @@ function AnimeDetail() {
   const [media, setMedia] = useState<AnimeMedia | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [episode, setEpisode] = useState(1)
+  const [selected, setSelected] = useState<EpisodeItem | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState<ProviderResult[]>([])
-  const [searchErrors, setSearchErrors] = useState<Array<{ providerId: string; message: string }>>(
-    []
-  )
   const [playing, setPlaying] = useState(false)
   const [status, setStatus] = useState('')
-  const [extNames, setExtNames] = useState<string[]>([])
-
-  const builtins = listProviders()
+  const [themes, setThemes] = useState<AnimeThemeTrack[]>([])
+  const [themesLoading, setThemesLoading] = useState(false)
+  const [probedTick, setProbedTick] = useState(0)
+  const [jikanByEp, setJikanByEp] = useState<Map<number, JikanEpisodeDetail>>(
+    () => new Map()
+  )
+  const [aniZipByEp, setAniZipByEp] = useState<Map<number, AniZipEpisode>>(
+    () => new Map()
+  )
+  const [aniZipCount, setAniZipCount] = useState<number | null>(null)
+  const [listProgress, setListProgress] = useState<number | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     void (async () => {
       if (!id) {
         setError('Invalid anime id')
@@ -70,72 +106,312 @@ function AnimeDetail() {
       }
       setLoading(true)
       setError('')
+      setSelected(null)
+      setSheetOpen(false)
+      setResults([])
+      setStatus('')
+      setThemes([])
+      setJikanByEp(new Map())
+      setAniZipByEp(new Map())
+      setAniZipCount(null)
+      setListProgress(null)
       try {
-        const [, m] = await Promise.all([ensureExtensions(), fetchAnime(id)])
-        setExtNames(listEnabledExtensions().map((e) => e.manifest.name))
+        // Don't block detail on extension catalog warm-up
+        void ensureExtensions()
+        const m = await fetchAnime(id)
+        if (cancelled) return
         if (!m) setError('Anime not found')
         else {
           setMedia(m)
-          setEpisode(1)
+          const cached = peekViewerListCache()?.find((e) => e.media.id === id)
+          if (cached) setListProgress(cached.progress)
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
-  const searchSources = useCallback(async () => {
-    if (!media) return
-    setSearching(true)
-    setStatus('')
-    setResults([])
-    setSearchErrors([])
-    try {
-      const titles = [
-        media.title.romaji,
-        media.title.english,
-        media.title.native,
-        media.title.userPreferred
-      ].filter(Boolean) as string[]
-
-      const [extOut, builtInOut] = await Promise.all([
-        searchExtensions({ media, episode }),
-        searchAllProviders({
-          anilistId: media.id,
-          title: displayTitle(media),
-          titles,
-          episode,
-          episodeCount: media.episodes
+  useEffect(() => {
+    if (!media?.id) return
+    let cancelled = false
+    // Defer Themes so the header paints first (reduces freeze on open)
+    const t = window.setTimeout(() => {
+      if (cancelled) return
+      setThemesLoading(true)
+      void fetchThemesByAniListId(media.id)
+        .then((tracks) => {
+          if (!cancelled) setThemes(tracks)
         })
-      ])
-
-      const merged = [...extOut.results, ...builtInOut.results]
-      const sorted = [...merged].sort((a, b) => rankScore(b) - rankScore(a))
-      setResults(sorted)
-      setSearchErrors([...extOut.errors, ...builtInOut.errors])
-      const magnets = sorted.filter((r) => r.magnet).length
-      const torrents = sorted.filter((r) => r.torrentUrl).length
-      const http = sorted.filter((r) => r.httpUrl).length
-      if (!sorted.length) {
-        setStatus(
-          'No sources found. Enable extensions under Extensions, or check errors below.'
-        )
-      } else {
-        setStatus(
-          `Found ${sorted.length} source(s) (${http} HTTP test, ${torrents} .torrent, ${magnets} magnet). Prefer “Likely faster” / high-seeder .torrent entries.`
-        )
-      }
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSearching(false)
+        .catch(() => {
+          if (!cancelled) setThemes([])
+        })
+        .finally(() => {
+          if (!cancelled) setThemesLoading(false)
+        })
+    }, 120)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
     }
-  }, [media, episode])
+  }, [media?.id])
+
+  useEffect(() => {
+    if (!media?.id) return
+    let cancelled = false
+    const t = window.setTimeout(() => {
+      if (cancelled) return
+      void fetchAniZipEpisodes(media.id)
+        .then((bundle) => {
+          if (cancelled) return
+          setAniZipByEp(bundle.episodes)
+          setAniZipCount(bundle.episodeCount)
+        })
+        .catch(() => {})
+    }, 40)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [media?.id])
+
+  useEffect(() => {
+    if (!media?.idMal) return
+    let cancelled = false
+    const t = window.setTimeout(() => {
+      if (cancelled) return
+      void fetchJikanEpisodeList(media.idMal!)
+        .then((map) => {
+          if (!cancelled) setJikanByEp(map)
+        })
+        .catch(() => {})
+    }, 200)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [media?.idMal])
+
+  // Re-read probed durations / watched flags when returning to this page
+  useEffect(() => {
+    const onVis = () => setProbedTick((n) => n + 1)
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onVis)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('focus', onVis)
+    }
+  }, [])
+
+  const probedByEpisode = useMemo(() => {
+    void probedTick
+    if (!media?.id) return {} as Record<number, number>
+    const map: Record<number, number> = {}
+    const total = Math.max(
+      media.episodes ?? 0,
+      media.nextAiringEpisode?.episode ?? 0,
+      aniZipCount ?? 0,
+      aniZipByEp.size,
+      24
+    )
+    for (let n = 1; n <= total; n++) {
+      const sec = getProbedDurationSec(media.id, n)
+      if (sec != null) map[n] = sec
+    }
+    return map
+  }, [media, probedTick, aniZipCount, aniZipByEp.size])
+
+  const episodes = useMemo(() => {
+    const jikanMax = jikanByEp.size ? Math.max(...jikanByEp.keys()) : 0
+    const zipMax = aniZipByEp.size ? Math.max(...aniZipByEp.keys()) : 0
+    const externalCount = Math.max(aniZipCount ?? 0, jikanMax, zipMax)
+    // Count aired eps from AniZip (have airDate in the past or any entry ≤ next-1)
+    const nextNum = media?.nextAiringEpisode?.episode
+    const zipReleased =
+      nextNum != null
+        ? Math.min(zipMax, Math.max(0, nextNum - 1))
+        : zipMax
+
+    const base = buildEpisodeItems({
+      episodeCount: media?.episodes,
+      duration: media?.duration,
+      probedDurationSecByEpisode: probedByEpisode,
+      status: media?.status,
+      nextAiringEpisode: media?.nextAiringEpisode,
+      streamingEpisodes: media?.streamingEpisodes,
+      externalEpisodeCount: externalCount || null,
+      externalReleasedCount: Math.max(zipReleased, jikanMax) || null
+    })
+
+    return base.map((ep) => {
+      const zip = aniZipByEp.get(ep.number)
+      const j = jikanByEp.get(ep.number)
+      const generic =
+        !ep.title ||
+        /^Episode\s*\d+$/i.test(ep.title) ||
+        ep.title === 'Upcoming' ||
+        ep.title === `Episode ${ep.number}`
+      const title =
+        (generic && (zip?.title || j?.title)) || ep.title
+      const synopsis = zip?.synopsis || j?.synopsis || ep.synopsis
+      const thumbnail = zip?.thumbnail || ep.thumbnail
+      const watched =
+        !ep.unreleased &&
+        media?.id != null &&
+        isEpisodeWatched(media.id, ep.number, listProgress)
+      void probedTick
+      return {
+        ...ep,
+        title,
+        synopsis,
+        thumbnail,
+        watched,
+        meta:
+          ep.meta ||
+          (zip?.runtime ? `~${zip.runtime} min` : undefined)
+      }
+    })
+  }, [
+    media,
+    probedByEpisode,
+    jikanByEp,
+    aniZipByEp,
+    aniZipCount,
+    listProgress,
+    probedTick
+  ])
+
+  const related = useMemo(() => {
+    const edges = media?.relations?.edges ?? []
+    const seen = new Set<number>()
+    return edges
+      .filter((e) => e?.node?.id && RELATED_TYPES.has(e.relationType ?? ''))
+      .map((e) => ({
+        id: e.node!.id,
+        relationType: e.relationType ?? 'RELATED',
+        media: e.node!
+      }))
+      .filter((r) => {
+        if (seen.has(r.id)) return false
+        seen.add(r.id)
+        return true
+      })
+      .slice(0, 12)
+  }, [media])
+
+  const sourceMaterials = useMemo(
+    () => (media ? deriveSourceMaterials(media) : []),
+    [media]
+  )
+
+  const recommendations = useMemo(() => {
+    const nodes = media?.recommendations?.nodes ?? []
+    const seen = new Set<number>()
+    return nodes
+      .map((n) => n.mediaRecommendation)
+      .filter((m): m is NonNullable<typeof m> => Boolean(m?.id))
+      .filter((m) => {
+        if (seen.has(m.id)) return false
+        seen.add(m.id)
+        return true
+      })
+      .slice(0, 12)
+  }, [media])
+
+  const cast: PersonRailItem[] = useMemo(() => {
+    return (media?.characters?.edges ?? [])
+      .filter((e) => e?.node?.id)
+      .map((e) => {
+        const va = (e.voiceActors ?? []).find((v) => v?.id && v?.name?.full)
+        return {
+          id: e.node!.id,
+          name: e.node!.name?.full || 'Unknown',
+          role: e.role,
+          detail: va?.name?.full ? `CV: ${va.name.full}` : null,
+          image: e.node!.image?.large,
+          overlayImage: va?.image?.large ?? null
+        }
+      })
+  }, [media])
+
+  const staff: PersonRailItem[] = useMemo(() => {
+    return (media?.staff?.edges ?? [])
+      .filter((e) => e?.node?.id)
+      .map((e) => ({
+        id: e.node!.id,
+        name: e.node!.name?.full || 'Unknown',
+        role: e.role,
+        image: e.node!.image?.large
+      }))
+  }, [media])
+
+  const searchSources = useCallback(
+    async (ep: EpisodeItem) => {
+      if (!media || ep.unreleased) return
+      setSelected(ep)
+      setSheetOpen(true)
+      setSearching(true)
+      setStatus(`Searching sources for episode ${ep.number}…`)
+      setResults([])
+      try {
+        const titles = [
+          media.title.romaji,
+          media.title.english,
+          media.title.native,
+          media.title.userPreferred
+        ].filter(Boolean) as string[]
+
+        const [extOut, builtInOut] = await Promise.all([
+          searchExtensions({ media, episode: ep.number }),
+          searchAllProviders({
+            anilistId: media.id,
+            title: displayTitle(media),
+            titles,
+            episode: ep.number,
+            episodeCount: media.episodes
+          })
+        ])
+
+        const merged = [...extOut.results, ...builtInOut.results]
+        const sorted = [...merged].sort((a, b) => rankScore(b) - rankScore(a))
+        setResults(sorted)
+        const magnets = sorted.filter((r) => r.magnet).length
+        const torrents = sorted.filter((r) => r.torrentUrl).length
+        const http = sorted.filter((r) => r.httpUrl).length
+        if (!sorted.length) {
+          setStatus('No sources found for this episode.')
+        } else {
+          setStatus(
+            `${sorted.length} source(s) · ${http} HTTP · ${torrents} torrent · ${magnets} magnet`
+          )
+        }
+      } catch (e) {
+        setStatus(e instanceof Error ? e.message : String(e))
+      } finally {
+        setSearching(false)
+      }
+    },
+    [media]
+  )
+
+  async function openTrailer() {
+    if (!media) return
+    const url = trailerWatchUrl(media.trailer)
+    if (!url) return
+    try {
+      await getNative().openURL(url)
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
 
   async function playResult(result: ProviderResult) {
-    if (!media) return
+    if (!media || !selected) return
     setPlaying(true)
     setStatus(`Starting: ${result.title}`)
     let poll: ReturnType<typeof setInterval> | undefined
@@ -153,16 +429,25 @@ function AnimeDetail() {
         }, 500)
       }
 
-      const files = await native.playTorrent(source, media.id, episode)
+      const files = await native.playTorrent(source, media.id, selected.number)
       const file = files[0]
       if (!file?.url) throw new Error('playTorrent returned no stream URL')
 
+      recordContinueWatching(media, selected.number)
+      setActivePlayback({
+        anilistId: media.id,
+        episode: selected.number,
+        idMal: media.idMal ?? null,
+        totalEpisodes: media.episodes ?? null
+      })
       setStatus(`Stream ready (${file.playerHint}) — opening player`)
       await native.spawnPlayer({
         url: file.url,
         playerHint: file.playerHint,
         title: displayTitle(media),
-        episode
+        episode: selected.number,
+        anilistId: media.id,
+        idMal: media.idMal ?? null
       })
 
       if (!native.isApp) {
@@ -171,10 +456,14 @@ function AnimeDetail() {
           JSON.stringify({
             url: file.url,
             title: displayTitle(media),
-            episode,
+            episode: selected.number,
+            anilistId: media.id,
+            idMal: media.idMal ?? null,
+            totalEpisodes: media.episodes ?? null,
             playerHint: file.playerHint
           })
         )
+        setSheetOpen(false)
         router.push('/app/player/')
       }
     } catch (e) {
@@ -185,123 +474,176 @@ function AnimeDetail() {
     }
   }
 
-  if (loading) return <p className="muted">Loading…</p>
+  if (loading) {
+    return (
+      <div className="-mx-4 space-y-5 sm:-mx-5">
+        <Skeleton className="h-[240px] w-full rounded-none bg-white/5 sm:h-[280px]" />
+        <div className="flex gap-4 px-4 sm:px-5">
+          <Skeleton className="h-44 w-[7.25rem] shrink-0 rounded-xl bg-white/8" />
+          <div className="flex-1 space-y-2.5 pt-8">
+            <Skeleton className="h-3 w-24 bg-white/8" />
+            <Skeleton className="h-8 w-3/4 bg-white/10" />
+            <Skeleton className="h-5 w-1/2 bg-white/8" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (error) {
     return (
-      <>
-        <p style={{ color: 'var(--danger)' }}>{error}</p>
-        <Link href="/">← Home</Link>
-      </>
+      <div className="space-y-3 pt-[calc(3.5rem+var(--safe-top))]">
+        <p className="text-sm text-destructive">{error}</p>
+        <Link href="/" className="text-sm">
+          ← Home
+        </Link>
+      </div>
     )
   }
   if (!media) return null
 
+  const trailerUrl = trailerWatchUrl(media.trailer)
+
   return (
-    <>
-      <Link className="muted" href="/">
-        ← Home
-      </Link>
-      <div className={styles.detail}>
-        {media.coverImage?.large ? (
-          <img className={styles.cover} src={media.coverImage.large} alt="" />
-        ) : null}
-        <div>
-          <h1 className={styles.h1}>{displayTitle(media)}</h1>
-          <p className="muted">
-            {media.format ?? 'ANIME'}
-            {media.episodes ? ` · ${media.episodes} eps` : ''}
-            {media.averageScore ? ` · ${media.averageScore}%` : ''}
-            {media.isAdult ? ' · Adult' : ''}
-          </p>
-          <p className={styles.desc}>{stripHtml(media.description)}</p>
+    <div className="space-y-7">
+      <AnimeHeader
+        title={displayTitle(media)}
+        cover={media.coverImage?.large}
+        banner={media.bannerImage}
+        description={stripHtml(media.description)}
+        score={media.averageScore ?? media.meanScore}
+        format={media.format}
+        episodes={media.episodes}
+        duration={media.duration}
+        genres={media.genres}
+        status={media.status}
+        season={typeof media.season === 'string' ? media.season : null}
+        seasonYear={media.seasonYear}
+        source={formatSource(media.source)}
+        studio={mainStudioName(media)}
+        onTrailer={trailerUrl ? () => void openTrailer() : null}
+      />
 
-          <div className={styles.row}>
-            <label className={styles.label}>
-              Episode
-              <input
-                className={styles.input}
-                type="number"
-                min={1}
-                max={media.episodes || 999}
-                value={episode}
-                onChange={(e) => setEpisode(Number(e.target.value) || 1)}
-              />
-            </label>
-            <button className="btn btn-primary" onClick={() => void searchSources()} disabled={searching}>
-              {searching ? 'Searching…' : 'Find sources'}
-            </button>
-          </div>
-
-          <h3>Sources</h3>
-          <ul className={styles.providers}>
-            {extNames.map((name) => (
-              <li key={name}>
-                <strong>{name}</strong>
-                <span className="muted"> — extension</span>
-              </li>
-            ))}
-            {builtins.map((p) => (
-              <li key={p.id}>
-                <strong>{p.name}</strong>
-                <span className="muted"> — {p.description}</span>
-              </li>
-            ))}
-            {!extNames.length && !builtins.length ? (
-              <li className="muted">No sources enabled — open Extensions to turn some on.</li>
-            ) : null}
-          </ul>
-          <p className="muted">
-            <Link href="/app/extensions/">Manage extensions</Link>
-          </p>
-
-          {searchErrors.length > 0 ? (
-            <p className="muted">
-              Provider errors:{' '}
-              {searchErrors.map((e) => `${e.providerId}: ${e.message}`).join('; ')}
+      <section className="space-y-3.5">
+        <div className="flex items-end justify-between gap-2">
+          <div>
+            <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
+            <h2 className="font-heading text-2xl tracking-tight sm:text-[1.7rem]">
+              Episodes
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Tap an episode to hunt sources
             </p>
-          ) : null}
-
-          {status ? <p className={styles.status}>{status}</p> : null}
-
-          {results.length > 0 ? (
-            <>
-              <h3>Results</h3>
-              <ul className={styles.sources}>
-                {results.map((r, i) => (
-                  <li key={i} className={`card ${styles.source}`}>
-                    <div>
-                      <div className={styles.srcTitle}>{r.title}</div>
-                      <div className={`muted ${styles.tiny}`}>
-                        {r.providerName}
-                        {r.resolution ? ` · ${r.resolution}` : ''}
-                        {r.seeders != null ? ` · ${r.seeders} seeders` : ''}
-                        {r.httpUrl ? ' · HTTP test stream' : ''}
-                        {r.torrentUrl ? ' · torrent' : ''}
-                        {r.magnet ? ' · magnet' : ''}
-                        {isLikelyFaster(r, i) ? ' · Likely faster' : ''}
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn-primary"
-                      disabled={playing}
-                      onClick={() => void playResult(r)}
-                    >
-                      Play
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
+          </div>
+          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.7rem] font-medium text-primary ring-1 ring-primary/25">
+            {episodes.length} listed
+          </span>
         </div>
-      </div>
-    </>
+        <EpisodeList>
+          {episodes.map((ep) => (
+            <li key={ep.number}>
+              <EpisodeRow episode={ep} onSelect={() => void searchSources(ep)} />
+            </li>
+          ))}
+        </EpisodeList>
+      </section>
+
+      <ThemeTracks tracks={themes} loading={themesLoading} />
+
+      {sourceMaterials.length > 0 ? (
+        <PosterRail title="Source material" dense>
+          {sourceMaterials.map(({ media: m, relationType }) => {
+            const kind = (m as { type?: string | null }).type
+            const href =
+              kind === 'MANGA'
+                ? `https://anilist.co/manga/${m.id}`
+                : `/app/anime/?id=${m.id}`
+            return (
+              <PosterCard
+                key={m.id}
+                size="md"
+                href={href}
+                image={m.coverImage?.large ?? m.coverImage?.medium}
+                title={displayTitle(m)}
+                score={m.averageScore}
+                format={
+                  [kind, relationType.replaceAll('_', ' ')].filter(Boolean).join(' · ') ||
+                  m.format
+                }
+                year={m.seasonYear}
+              />
+            )
+          })}
+        </PosterRail>
+      ) : null}
+
+      <PersonRail
+        title="Cast & voice actors"
+        subtitle="Japanese CV shown when AniList has data"
+        people={cast}
+      />
+      <PersonRail title="Staff" subtitle="Key creatives" people={staff} />
+
+      {recommendations.length > 0 ? (
+        <PosterRail title="More like this" dense>
+          {recommendations.map((m) => (
+            <PosterCard
+              key={m.id}
+              size="md"
+              href={`/app/anime/?id=${m.id}`}
+              image={m.coverImage?.large ?? m.coverImage?.medium}
+              title={displayTitle(m)}
+              score={m.averageScore}
+              format={m.format}
+              year={m.seasonYear}
+            />
+          ))}
+        </PosterRail>
+      ) : null}
+
+      {related.length > 0 ? (
+        <PosterRail title="In the same story" dense>
+          {related.map(({ id: rid, relationType, media: m }) => (
+            <PosterCard
+              key={rid}
+              size="md"
+              href={`/app/anime/?id=${rid}`}
+              image={m.coverImage?.large ?? m.coverImage?.medium}
+              title={displayTitle(m)}
+              score={m.averageScore}
+              format={relationType.replaceAll('_', ' ')}
+              year={m.seasonYear}
+            />
+          ))}
+        </PosterRail>
+      ) : null}
+
+      <EpisodeSourcesSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        episode={selected}
+        malId={media.idMal}
+        durationMin={media.duration}
+        searching={searching}
+        status={status}
+        results={results}
+        playing={playing}
+        onPlay={(r) => void playResult(r)}
+      />
+    </div>
   )
 }
 
 export default function AnimePage() {
   return (
-    <Suspense fallback={<p className="muted">Loading…</p>}>
+    <Suspense
+      fallback={
+        <div className="space-y-4">
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-36 w-full rounded-xl" />
+        </div>
+      }
+    >
       <AnimeDetail />
     </Suspense>
   )

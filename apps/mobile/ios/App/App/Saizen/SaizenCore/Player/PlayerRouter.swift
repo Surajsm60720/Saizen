@@ -16,6 +16,7 @@ public final class PlayerRouter {
     url: URL,
     hint: PlayerHint,
     title: String?,
+    context: PlaybackContext = PlaybackContext(anilistId: 0, episode: 0, idMal: nil),
     onDismiss: (() -> Void)? = nil
   ) {
     NSLog("[Saizen] PlayerRouter present hint=%@ url=%@", hint.rawValue, url.absoluteString)
@@ -28,15 +29,15 @@ public final class PlayerRouter {
 
     switch hint {
     case .avplayer:
-      presentAVPlayer(from: presenter, url: url, title: title, onDismiss: onDismiss)
+      presentAVPlayer(from: presenter, url: url, title: title, context: context, onDismiss: onDismiss)
     case .vlc:
       if vlcAvailable {
         #if canImport(MobileVLCKit)
-        presentVLC(from: presenter, url: url, title: title, onDismiss: onDismiss)
+        presentVLC(from: presenter, url: url, title: title, context: context, onDismiss: onDismiss)
         #endif
       } else {
         NSLog("[Saizen] MobileVLCKit not linked — cannot play MKV/ASS via AVPlayer")
-        presentMissingVLCAlert(from: presenter, url: url, title: title, onDismiss: onDismiss)
+        presentMissingVLCAlert(from: presenter, url: url, title: title, context: context, onDismiss: onDismiss)
       }
     }
   }
@@ -45,6 +46,7 @@ public final class PlayerRouter {
     from presenter: UIViewController,
     url: URL,
     title: String?,
+    context: PlaybackContext,
     onDismiss: (() -> Void)?
   ) {
     let alert = UIAlertController(
@@ -58,7 +60,7 @@ public final class PlayerRouter {
       onDismiss?()
     })
     alert.addAction(UIAlertAction(title: "Try AVPlayer anyway", style: .default) { _ in
-      presentAVPlayer(from: presenter, url: url, title: title, onDismiss: onDismiss)
+      presentAVPlayer(from: presenter, url: url, title: title, context: context, onDismiss: onDismiss)
     })
     presenter.present(alert, animated: true)
   }
@@ -67,6 +69,7 @@ public final class PlayerRouter {
     from presenter: UIViewController,
     url: URL,
     title: String?,
+    context: PlaybackContext,
     onDismiss: (() -> Void)?
   ) {
     let asset = AVURLAsset(url: url)
@@ -76,6 +79,7 @@ public final class PlayerRouter {
     vc.player = player
     vc.title = title
     vc.onDismiss = onDismiss
+    vc.playbackContext = context
 
     var observer: NSKeyValueObservation?
     observer = item.observe(\.status, options: [.new]) { item, _ in
@@ -99,6 +103,24 @@ public final class PlayerRouter {
       }
     }
 
+    if context.isValid {
+      let interval = CMTime(seconds: 2, preferredTimescale: 600)
+      vc.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
+        [weak player] _ in
+        guard let player else { return }
+        let pos = player.currentTime().seconds
+        let dur = player.currentItem?.duration.seconds ?? .nan
+        guard pos.isFinite, dur.isFinite, dur >= 30 else { return }
+        PlaybackProgressReporter.shared.emit(
+          anilistId: context.anilistId,
+          episode: context.episode,
+          idMal: context.idMal,
+          positionSec: pos,
+          durationSec: dur
+        )
+      }
+    }
+
     presenter.present(vc, animated: true)
   }
 
@@ -107,9 +129,10 @@ public final class PlayerRouter {
     from presenter: UIViewController,
     url: URL,
     title: String?,
+    context: PlaybackContext,
     onDismiss: (() -> Void)?
   ) {
-    let vc = VLCPlayerViewController(url: url, titleText: title)
+    let vc = VLCPlayerViewController(url: url, titleText: title, context: context)
     vc.onDismiss = onDismiss
     vc.modalPresentationStyle = .fullScreen
     presenter.present(vc, animated: true)
@@ -120,6 +143,8 @@ public final class PlayerRouter {
 /// AVPlayer sheet that notifies when the user dismisses it.
 final class DismissAwareAVPlayerViewController: AVPlayerViewController {
   var onDismiss: (() -> Void)?
+  var playbackContext: PlaybackContext?
+  var timeObserver: Any?
   private var didNotify = false
   private var hasAppeared = false
 
@@ -135,9 +160,19 @@ final class DismissAwareAVPlayerViewController: AVPlayerViewController {
     notifyDismiss()
   }
 
+  deinit {
+    if let timeObserver, let player {
+      player.removeTimeObserver(timeObserver)
+    }
+  }
+
   private func notifyDismiss() {
     guard !didNotify else { return }
     didNotify = true
+    if let timeObserver, let player {
+      player.removeTimeObserver(timeObserver)
+      self.timeObserver = nil
+    }
     onDismiss?()
   }
 }
@@ -147,6 +182,7 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
   private let mediaPlayer = VLCMediaPlayer()
   private let url: URL
   private let titleText: String?
+  private let playbackContext: PlaybackContext
   var onDismiss: (() -> Void)?
   private var didNotifyDismiss = false
 
@@ -178,9 +214,10 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
   private let rates: [Float] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
   private var rateIndex = 1
 
-  init(url: URL, titleText: String?) {
+  init(url: URL, titleText: String?, context: PlaybackContext) {
     self.url = url
     self.titleText = titleText
+    self.playbackContext = context
     self.isTorrentStream = url.host == "127.0.0.1" || url.host == "localhost"
     super.init(nibName: nil, bundle: nil)
   }
@@ -743,6 +780,15 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
     durationLabel.text = Self.formatMs(length)
     if !isSeeking, length > 0 {
       scrubber.value = Float(current) / Float(length)
+    }
+    if playbackContext.isValid, length > 0 {
+      PlaybackProgressReporter.shared.emit(
+        anilistId: playbackContext.anilistId,
+        episode: playbackContext.episode,
+        idMal: playbackContext.idMal,
+        positionSec: Double(current) / 1000.0,
+        durationSec: Double(length) / 1000.0
+      )
     }
   }
 

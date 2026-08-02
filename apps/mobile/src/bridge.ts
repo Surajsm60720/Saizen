@@ -1,12 +1,16 @@
 /**
  * Injected before the Next.js app on Capacitor.
  * Wires Capacitor plugins → window.saizen (SaizenNative contract).
- *
- * Until plugins are registered in the Xcode project, methods fall through
- * to web stubs in apps/web/src/lib/native.
  */
 import { Capacitor, registerPlugin } from '@capacitor/core'
-import type { SaizenNative, SpawnPlayerOptions, TorrentFile } from '@saizen/shared'
+import type {
+  AuthResponse,
+  MalAuthCodeResponse,
+  NativePlaybackProgress,
+  SaizenNative,
+  SpawnPlayerOptions,
+  TorrentFile
+} from '@saizen/shared'
 
 interface SaizenTorrentPlugin {
   playTorrent(options: {
@@ -22,10 +26,23 @@ interface SaizenTorrentPlugin {
 interface SaizenPlayerPlugin {
   spawnPlayer(options: SpawnPlayerOptions): Promise<void>
   stopPlayer(): Promise<void>
+  addListener(
+    event: 'playbackProgress',
+    cb: (p: NativePlaybackProgress) => void
+  ): Promise<{ remove: () => Promise<void> }>
+}
+
+interface SaizenAuthPlugin {
+  authAnilist(o: { url: string; callbackScheme?: string }): Promise<AuthResponse | MalAuthCodeResponse>
+  authMAL(o: { url: string; callbackScheme?: string }): Promise<MalAuthCodeResponse>
+  getSecureItem(o: { key: string }): Promise<{ value: string | null }>
+  setSecureItem(o: { key: string; value: string }): Promise<void>
+  deleteSecureItem(o: { key: string }): Promise<void>
 }
 
 const SaizenTorrent = registerPlugin<SaizenTorrentPlugin>('SaizenTorrent')
 const SaizenPlayer = registerPlugin<SaizenPlayerPlugin>('SaizenPlayer')
+const SaizenAuth = registerPlugin<SaizenAuthPlugin>('SaizenAuth')
 
 export function installSaizenBridge(): void {
   if (!Capacitor.isNativePlatform()) return
@@ -45,6 +62,28 @@ export function installSaizenBridge(): void {
     },
     async stopPlayer() {
       await SaizenPlayer.stopPlayer()
+    },
+    async onPlaybackProgress(cb) {
+      const handle = await SaizenPlayer.addListener('playbackProgress', cb)
+      return () => {
+        void handle.remove()
+      }
+    },
+    async authAnilist(url) {
+      return SaizenAuth.authAnilist({ url, callbackScheme: 'saizen' })
+    },
+    async authMAL(url) {
+      return SaizenAuth.authMAL({ url, callbackScheme: 'saizen' })
+    },
+    async getSecureItem(key) {
+      const { value } = await SaizenAuth.getSecureItem({ key })
+      return value ?? null
+    },
+    async setSecureItem(key, value) {
+      await SaizenAuth.setSecureItem({ key, value })
+    },
+    async deleteSecureItem(key) {
+      await SaizenAuth.deleteSecureItem({ key })
     },
     async torrentInfo(hash) {
       const info = await SaizenTorrent.torrentInfo({ hash })
@@ -70,12 +109,6 @@ export function installSaizenBridge(): void {
     async share() {},
     async getDeviceInfo() {
       return { platform: Capacitor.getPlatform() }
-    },
-    async authAnilist() {
-      throw new Error('Auth Phase 2')
-    },
-    async authMAL() {
-      throw new Error('Auth Phase 2')
     }
   }
 

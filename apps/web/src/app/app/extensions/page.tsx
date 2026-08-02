@@ -10,7 +10,8 @@ import {
   testExtension,
   type LoadedExtension
 } from '@/lib/extensions'
-import styles from './page.module.css'
+import { ExtensionCard, PageHeader } from '@/components/saizen'
+import { Button } from '@/components/ui/button'
 
 export default function ExtensionsPage() {
   const [items, setItems] = useState<LoadedExtension[]>([])
@@ -20,7 +21,6 @@ export default function ExtensionsPage() {
   const [error, setError] = useState('')
 
   const refresh = useCallback(async () => {
-    // Always full reload so a prior failed eval doesn't stick forever
     const list = await reloadAllExtensions()
     setItems([...list])
     const failed = list.filter((e) => e.enabled && e.loadError)
@@ -78,7 +78,6 @@ export default function ExtensionsPage() {
     setBusyId(ext.manifest.id)
     setStatus(`Testing ${ext.manifest.name}…`)
     try {
-      // Load code even if currently disabled so Test works from the list.
       if (typeof ext.instance.test !== 'function') {
         const instance = await loadExtensionInstance(ext.manifest)
         if (typeof instance.test !== 'function') {
@@ -114,85 +113,55 @@ export default function ExtensionsPage() {
 
   return (
     <>
-      <div className={styles.header}>
-        <div>
-          <h1 className={styles.h1}>Extensions</h1>
-          <p className="muted">
+      <PageHeader
+        title="Extensions"
+        dense
+        description={
+          <>
             Hayase-compatible torrent catalogs from{' '}
             <a href="https://exten.pages.dev" target="_blank" rel="noreferrer">
               exten.pages.dev
             </a>
             . NZB catalogs are skipped.
-          </p>
-        </div>
-        <button className="btn" type="button" onClick={() => void reload()} disabled={loading}>
-          Refresh
-        </button>
-      </div>
+          </>
+        }
+        action={
+          <Button variant="outline" className="min-h-10" onClick={() => void reload()} disabled={loading}>
+            Refresh
+          </Button>
+        }
+      />
 
-      {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
-      {status ? <p className={styles.status}>{status}</p> : null}
-      {loading ? <p className="muted">Loading catalogs…</p> : null}
+      {error ? (
+        <p className="mb-3 whitespace-pre-wrap text-sm text-destructive">{error}</p>
+      ) : null}
+      {status ? (
+        <p className="mb-3 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-sm">
+          {status}
+        </p>
+      ) : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading catalogs…</p> : null}
 
       {EXTENSION_CATALOGS.map((cat) => {
         const list = byCatalog.get(cat.id) ?? []
         return (
-          <section key={cat.id} className={styles.section}>
-            <h2 className={styles.h2}>
+          <section key={cat.id} className="mt-6 space-y-2.5">
+            <h2 className="text-base font-semibold">
               {cat.name}{' '}
-              <span className="muted">({list.length})</span>
+              <span className="font-normal text-muted-foreground">({list.length})</span>
             </h2>
             {list.length === 0 ? (
-              <p className="muted">No torrent extensions in this catalog.</p>
+              <p className="text-sm text-muted-foreground">No torrent extensions in this catalog.</p>
             ) : (
-              <ul className={styles.list}>
+              <ul className="flex flex-col gap-2">
                 {list.map((ext) => (
-                  <li key={ext.manifest.id} className={`card ${styles.row}`}>
-                    <div className={styles.meta}>
-                      {ext.manifest.icon ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img className={styles.icon} src={ext.manifest.icon} alt="" />
-                      ) : (
-                        <div className={styles.iconPlaceholder} />
-                      )}
-                      <div>
-                        <div className={styles.name}>
-                          {ext.manifest.name}{' '}
-                          <span className="muted">v{ext.manifest.version}</span>
-                        </div>
-                        <div className={`muted ${styles.tiny}`}>
-                          {ext.manifest.id}
-                          {ext.manifest.accuracy ? ` · ${ext.manifest.accuracy}` : ''}
-                          {ext.manifest.media ? ` · ${ext.manifest.media}` : ''}
-                          {ext.manifest.languages?.length
-                            ? ` · ${ext.manifest.languages.join(',')}`
-                            : ''}
-                        </div>
-                        {ext.loadError ? (
-                          <div className={styles.err}>{ext.loadError}</div>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className={styles.actions}>
-                      <label className={styles.toggle}>
-                        <input
-                          type="checkbox"
-                          checked={ext.enabled}
-                          disabled={busyId === ext.manifest.id}
-                          onChange={(e) => void toggle(ext.manifest.id, e.target.checked)}
-                        />
-                        On
-                      </label>
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={busyId === ext.manifest.id}
-                        onClick={() => void runTest(ext)}
-                      >
-                        Test
-                      </button>
-                    </div>
-                  </li>
+                  <ExtensionCard
+                    key={ext.manifest.id}
+                    ext={ext}
+                    busy={busyId === ext.manifest.id}
+                    onToggle={(enabled) => void toggle(ext.manifest.id, enabled)}
+                    onTest={() => void runTest(ext)}
+                  />
                 ))}
               </ul>
             )}

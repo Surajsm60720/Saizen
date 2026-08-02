@@ -25,7 +25,15 @@ const webFallback: SaizenNative = {
     return '0.1.0-web'
   },
   async openURL(url) {
-    window.open(url, '_blank')
+    try {
+      const u = new URL(url)
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+        throw new Error('Only http(s) URLs can be opened')
+      }
+      window.open(u.toString(), '_blank')
+    } catch (e) {
+      console.warn('[saizen] openURL rejected', url, e)
+    }
   },
   async share(data) {
     if (navigator.share) await navigator.share(data)
@@ -40,7 +48,6 @@ const webFallback: SaizenNative = {
     throw new Error('MAL OAuth requires the native app')
   },
   async playTorrent(id, _mediaId, _episode): Promise<TorrentFile[]> {
-    // Web stub: if id looks like http(s), expose it directly for <video> / spawnPlayer no-op
     if (typeof id === 'string' && /^https?:\/\//i.test(id)) {
       const hint = /\.mp4(\?|$)/i.test(id) ? 'avplayer' : 'vlc'
       return [
@@ -59,7 +66,6 @@ const webFallback: SaizenNative = {
     )
   },
   async spawnPlayer(options: SpawnPlayerOptions) {
-    // Web: open in new tab / use HTML5 video on player page
     console.info('[saizen] spawnPlayer (web fallback)', options)
   },
   async stopPlayer() {},

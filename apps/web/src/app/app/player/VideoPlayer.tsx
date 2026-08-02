@@ -1,7 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import styles from './VideoPlayer.module.css'
+import { Pause, Play, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import { cn } from '@/lib/utils'
+import { recordProbedDuration } from '@/lib/watch/episodeMeta'
+import { updateWatchProgress } from '@/lib/watch/progress'
 
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2]
 
@@ -17,10 +22,18 @@ function formatTime(seconds: number): string {
 
 export function VideoPlayer({
   src,
-  title
+  title,
+  anilistId,
+  episode,
+  idMal,
+  totalEpisodes
 }: {
   src: string
   title?: string
+  anilistId?: number
+  episode?: number
+  idMal?: number | null
+  totalEpisodes?: number | null
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -37,6 +50,7 @@ export function VideoPlayer({
   const [chrome, setChrome] = useState(true)
   const [fs, setFs] = useState(false)
   const [error, setError] = useState('')
+  const lastPersist = useRef(0)
 
   const clearHide = () => {
     if (hideTimer.current) clearTimeout(hideTimer.current)
@@ -72,8 +86,28 @@ export function VideoPlayer({
     }
     const onTime = () => {
       if (!seeking) setCurrent(v.currentTime)
+      if (!anilistId || !episode) return
+      const now = Date.now()
+      if (now - lastPersist.current < 2000) return
+      const d = v.duration || 0
+      if (d < 30) return
+      lastPersist.current = now
+      updateWatchProgress({
+        anilistId,
+        idMal,
+        episode,
+        positionSec: v.currentTime,
+        durationSec: d,
+        totalEpisodes
+      })
     }
-    const onMeta = () => setDuration(v.duration || 0)
+    const onMeta = () => {
+      const d = v.duration || 0
+      setDuration(d)
+      if (anilistId && episode && d >= 30) {
+        recordProbedDuration(anilistId, episode, d)
+      }
+    }
     const onProgress = () => {
       if (v.buffered.length > 0) {
         setBuffered(v.buffered.end(v.buffered.length - 1))
@@ -110,7 +144,7 @@ export function VideoPlayer({
       v.removeEventListener('error', onErr)
       document.removeEventListener('fullscreenchange', onFs)
     }
-  }, [scheduleHide, seeking, showChrome])
+  }, [scheduleHide, seeking, showChrome, anilistId, episode, idMal, totalEpisodes])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -186,19 +220,6 @@ export function VideoPlayer({
     showChrome()
   }
 
-  function onScrubInput(value: number) {
-    setSeeking(true)
-    setCurrent(value)
-    showChrome(true)
-  }
-
-  function onScrubCommit(value: number) {
-    const v = videoRef.current
-    if (v) v.currentTime = value
-    setSeeking(false)
-    scheduleHide()
-  }
-
   function cycleRate() {
     const v = videoRef.current
     if (!v) return
@@ -215,10 +236,13 @@ export function VideoPlayer({
   return (
     <div
       ref={rootRef}
-      className={`${styles.root} ${chrome ? styles.chromeOn : styles.chromeOff} ${fs ? styles.fs : ''}`}
+      className={cn(
+        'relative aspect-video w-full overflow-hidden rounded-xl bg-black select-none',
+        fs && 'rounded-none'
+      )}
       onMouseMove={() => showChrome()}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest(`.${styles.bar}`)) return
+        if ((e.target as HTMLElement).closest('[data-player-bar]')) return
         if (chrome) {
           if (playing) setChrome(false)
         } else {
@@ -228,7 +252,7 @@ export function VideoPlayer({
     >
       <video
         ref={videoRef}
-        className={styles.video}
+        className="size-full object-contain"
         src={src}
         autoPlay
         playsInline
@@ -239,85 +263,148 @@ export function VideoPlayer({
         }}
       />
 
-      {title ? <div className={styles.title}>{title}</div> : null}
+      {title ? (
+        <div
+          className={cn(
+            'pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-4 py-3 text-sm font-medium text-white transition-opacity duration-200',
+            chrome ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          {title}
+        </div>
+      ) : null}
 
-      {error ? <div className={styles.error}>{error}</div> : null}
+      {error ? (
+        <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 rounded-lg bg-destructive/90 px-3 py-2 text-center text-sm text-white">
+          {error}
+        </div>
+      ) : null}
 
-      <div className={styles.bar} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.seekWrap}>
-          <div className={styles.buffer} style={{ width: `${bufferPct}%` }} />
-          <div className={styles.played} style={{ width: `${playPct}%` }} />
-          <input
-            className={styles.seek}
-            type="range"
+      <div
+        data-player-bar
+        className={cn(
+          'absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-3 pt-10 pb-3 transition-opacity duration-200',
+          chrome ? 'opacity-100' : 'pointer-events-none opacity-0'
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="relative mb-3">
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
+            <div className="absolute inset-y-0 left-0 bg-ok/45" style={{ width: `${bufferPct}%` }} />
+            <div
+              className="absolute inset-y-0 left-0 bg-player-accent"
+              style={{ width: `${playPct}%` }}
+            />
+          </div>
+          <Slider
+            className="relative z-10 w-full **:data-[slot=slider-track]:bg-transparent **:data-[slot=slider-range]:bg-transparent"
             min={0}
             max={duration || 0}
             step={0.1}
-            value={current}
+            value={[current]}
             aria-label="Seek"
-            onChange={(e) => onScrubInput(Number(e.target.value))}
-            onMouseUp={(e) => onScrubCommit(Number((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => onScrubCommit(Number((e.target as HTMLInputElement).value))}
-            onKeyUp={(e) => onScrubCommit(Number((e.target as HTMLInputElement).value))}
+            onValueChange={(v) => {
+              const next = v[0] ?? 0
+              setSeeking(true)
+              setCurrent(next)
+              showChrome(true)
+            }}
+            onValueCommit={(v) => {
+              const next = v[0] ?? 0
+              const el = videoRef.current
+              if (el) el.currentTime = next
+              setSeeking(false)
+              scheduleHide()
+            }}
           />
         </div>
 
-        <div className={styles.row}>
-          <div className={styles.left}>
-            <button type="button" className={styles.icon} onClick={() => seekBy(-10)} aria-label="Back 10s">
-              −10
-            </button>
-            <button
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <Button
               type="button"
-              className={styles.iconPrimary}
+              variant="ghost"
+              size="sm"
+              className="min-h-10 text-white hover:bg-white/10 hover:text-white"
+              onClick={() => seekBy(-10)}
+              aria-label="Back 10s"
+            >
+              −10
+            </Button>
+            <Button
+              type="button"
+              size="icon-lg"
+              className="min-h-11 min-w-11 rounded-full"
               onClick={togglePlay}
               aria-label={playing ? 'Pause' : 'Play'}
             >
-              {playing ? '❚❚' : '▶'}
-            </button>
-            <button type="button" className={styles.icon} onClick={() => seekBy(10)} aria-label="Forward 10s">
+              {playing ? <Pause className="size-5" /> : <Play className="size-5 fill-current" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="min-h-10 text-white hover:bg-white/10 hover:text-white"
+              onClick={() => seekBy(10)}
+              aria-label="Forward 10s"
+            >
               +10
-            </button>
-            <span className={styles.time}>
+            </Button>
+            <span className="ml-1 text-xs text-white/85 tabular-nums">
               {formatTime(current)} / {formatTime(duration)}
             </span>
           </div>
 
-          <div className={styles.right}>
-            <button type="button" className={styles.chip} onClick={cycleRate} aria-label="Playback speed">
-              {rate === 1 ? '1×' : `${rate}×`}
-            </button>
-            <button
+          <div className="flex items-center gap-1">
+            <Button
               type="button"
-              className={styles.chip}
+              variant="ghost"
+              size="sm"
+              className="min-h-9 text-white hover:bg-white/10 hover:text-white"
+              onClick={cycleRate}
+              aria-label="Playback speed"
+            >
+              {rate === 1 ? '1×' : `${rate}×`}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/10 hover:text-white"
               onClick={() => {
                 const v = videoRef.current
                 if (v) v.muted = !v.muted
               }}
               aria-label={muted ? 'Unmute' : 'Mute'}
             >
-              {muted || volume === 0 ? 'Muted' : 'Vol'}
-            </button>
-            <input
-              className={styles.vol}
-              type="range"
+              {muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+            </Button>
+            <Slider
+              className="hidden w-24 sm:flex"
               min={0}
               max={1}
               step={0.01}
-              value={muted ? 0 : volume}
+              value={[muted ? 0 : volume]}
               aria-label="Volume"
-              onChange={(e) => {
-                const v = videoRef.current
-                if (!v) return
-                const next = Number(e.target.value)
-                v.muted = next === 0
-                v.volume = next
+              onValueChange={(v) => {
+                const el = videoRef.current
+                if (!el) return
+                const next = v[0] ?? 0
+                el.muted = next === 0
+                el.volume = next
                 showChrome()
               }}
             />
-            <button type="button" className={styles.chip} onClick={() => void toggleFullscreen()}>
-              {fs ? 'Exit' : 'Full'}
-            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/10 hover:text-white"
+              onClick={() => void toggleFullscreen()}
+              aria-label={fs ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {fs ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+            </Button>
           </div>
         </div>
       </div>

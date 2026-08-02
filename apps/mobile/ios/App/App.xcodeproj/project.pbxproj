@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		0F604D067AFA496E8D7FDC5B /* SaizenCore/Player/PlayerRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D23D4B63BA842A68D89E788 /* SaizenCore/Player/PlayerRouter.swift */; };
+		A1PP0001PROGSWIFT01 /* SaizenCore/Player/PlaybackProgressReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */; };
+		A1AU0001AUTHSESS01 /* SaizenCore/Auth/AuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */; };
+		A1AU0003KEYCHAIN01 /* SaizenCore/Auth/SaizenKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -42,6 +45,9 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		5D02D61996A24B21A848A951 /* Plugins/SaizenTorrent/SaizenTorrentPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Plugins/SaizenTorrent/SaizenTorrentPlugin.swift; sourceTree = "<group>"; };
 		5D23D4B63BA842A68D89E788 /* SaizenCore/Player/PlayerRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/PlayerRouter.swift; sourceTree = "<group>"; };
+		A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/PlaybackProgressReporter.swift; sourceTree = "<group>"; };
+		A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/AuthSession.swift; sourceTree = "<group>"; };
+		A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/SaizenKeychain.swift; sourceTree = "<group>"; };
 		61AADF12714A49A785221F68 /* Plugins/SaizenPlayer/SaizenPlayerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Plugins/SaizenPlayer/SaizenPlayerPlugin.swift; sourceTree = "<group>"; };
 		A06D3A4C8C434A2C87BC878F /* SaizenCore/HTTP/HTTPRangeServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/HTTP/HTTPRangeServer.swift; sourceTree = "<group>"; };
 		A873FC6416834EE49673EAC5 /* SaizenCore/Torrent/TorrentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Torrent/TorrentEngine.swift; sourceTree = "<group>"; };
@@ -127,6 +133,9 @@
 				BB167D2F58AA4D17BA2241D7 /* SaizenCore/Torrent/PieceStore.swift */,
 				A873FC6416834EE49673EAC5 /* SaizenCore/Torrent/TorrentEngine.swift */,
 				5D23D4B63BA842A68D89E788 /* SaizenCore/Player/PlayerRouter.swift */,
+				A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */,
+				A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */,
+				A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */,
 				5D02D61996A24B21A848A951 /* Plugins/SaizenTorrent/SaizenTorrentPlugin.swift */,
 				61AADF12714A49A785221F68 /* Plugins/SaizenPlayer/SaizenPlayerPlugin.swift */,
 				EF4B6488169F4812815DE1C4 /* Plugins/SaizenAuth/SaizenAuthPlugin.swift */,
@@ -267,6 +276,9 @@
 				82871A21EBC842E3BB2D5101 /* SaizenCore/Torrent/PieceStore.swift in Sources */,
 				6BC1B7873C2141C9955BEEFE /* SaizenCore/Torrent/TorrentEngine.swift in Sources */,
 				0F604D067AFA496E8D7FDC5B /* SaizenCore/Player/PlayerRouter.swift in Sources */,
+				A1PP0001PROGSWIFT01 /* SaizenCore/Player/PlaybackProgressReporter.swift in Sources */,
+				A1AU0001AUTHSESS01 /* SaizenCore/Auth/AuthSession.swift in Sources */,
+				A1AU0003KEYCHAIN01 /* SaizenCore/Auth/SaizenKeychain.swift in Sources */,
 				CEB26AFB3C7E46CA98F53771 /* Plugins/SaizenTorrent/SaizenTorrentPlugin.swift in Sources */,
 				81624850B61649BC99DE4BE0 /* Plugins/SaizenPlayer/SaizenPlayerPlugin.swift in Sources */,
 				7ECEA436F8C5433FBC5233CB /* Plugins/SaizenAuth/SaizenAuthPlugin.swift in Sources */,

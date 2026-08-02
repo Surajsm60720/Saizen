@@ -8,10 +8,12 @@ See `packages/shared/src/native.ts` for the TypeScript source of truth.
 |--------|--------|-------|
 | `isApp` | done | `true` on device |
 | `playTorrent(source, mediaId, episode)` | done (HTTP progressive) | magnets need libtorrent Day-0 |
-| `spawnPlayer({ url, playerHint, title })` | done | VLCKit default when linked; else AVPlayer |
+| `spawnPlayer({ url, playerHint, title, episode, anilistId, idMal })` | done | VLCKit default when linked; else AVPlayer |
+| `playbackProgress` event | done | Native → JS every ~2s; drives local watch store |
 | `torrentInfo(hash)` | stub/partial | |
 | `checkAvailableSpace()` | done | Documents volume |
-| `authAnilist` / `authMAL` | stub | Phase 2 |
+| `authAnilist` / `authMAL` | done | ASWebAuthenticationSession → `saizen://` callbacks |
+| `getSecureItem` / `setSecureItem` / `deleteSecureItem` | done | Keychain-backed token storage |
 | `library` / `cachedTorrents` | stub | Phase 5 |
 
 ## Player hint

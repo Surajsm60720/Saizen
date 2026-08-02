@@ -27,6 +27,16 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
     let mediaId = call.getInt("mediaId") ?? 0
     let episode = call.getInt("episode") ?? 1
 
+    // Abort early if the device is nearly full (S-11).
+    let minFree: Int64 = 256 * 1024 * 1024
+    if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+       let values = try? docs.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+       let free = values.volumeAvailableCapacityForImportantUsage,
+       free < minFree {
+      call.reject("Not enough free storage to start playback (\(free / (1024 * 1024)) MB left)")
+      return
+    }
+
     Task {
       do {
         SaizenPlayback.beginSession()

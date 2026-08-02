@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Security
 
 /**
  Loopback HTTP server that serves a PieceStore with Range / 206 support.
@@ -7,10 +8,15 @@ import Network
  Streams the full requested byte range on a single connection (chunked TCP
  writes as torrent pieces arrive). Previously we closed after 512KB, which
  made VLC/avformat re-open from offset 0 and see the MKV header repeating.
+
+ Each session gets a random path token so other local apps cannot scrape
+ `http://127.0.0.1:<port>/0/stream` without knowing the URL (S-05).
  */
 public final class HTTPRangeServer: @unchecked Sendable {
   public private(set) var port: UInt16 = 0
   public private(set) var baseURL: URL?
+  /// Opaque path segment required on every request.
+  public private(set) var accessToken: String = ""
 
   private var listener: NWListener?
   private var store: PieceStore?
@@ -20,6 +26,7 @@ public final class HTTPRangeServer: @unchecked Sendable {
   public var onNeedRange: ((Range<Int64>) -> Void)?
 
   private let chunkSize: Int64 = 256 * 1024
+  private let idleHeaderTimeout: TimeInterval = 15
 
   public enum ServerError: Error {
     case alreadyRunning
@@ -33,6 +40,7 @@ public final class HTTPRangeServer: @unchecked Sendable {
     if listener != nil { throw ServerError.alreadyRunning }
     self.store = store
     self.contentType = contentType
+    self.accessToken = Self.makeAccessToken()
 
     let params = NWParameters.tcp
     params.allowLocalEndpointReuse = true
@@ -81,18 +89,40 @@ public final class HTTPRangeServer: @unchecked Sendable {
     onNeedRange = nil
     port = 0
     baseURL = nil
+    accessToken = ""
   }
 
   public func streamURL(fileIndex: Int = 0) -> URL? {
-    baseURL?.appendingPathComponent("\(fileIndex)/stream")
+    guard !accessToken.isEmpty else { return nil }
+    return baseURL?
+      .appendingPathComponent(accessToken)
+      .appendingPathComponent("\(fileIndex)")
+      .appendingPathComponent("stream")
+  }
+
+  /// True if `url` is this server's authenticated loopback stream.
+  public func isAuthorizedStreamURL(_ url: URL) -> Bool {
+    guard !accessToken.isEmpty, url.scheme == "http", url.host == "127.0.0.1" else { return false }
+    let path = url.path
+    return path.contains("/\(accessToken)/") && path.hasSuffix("/stream")
+  }
+
+  private static func makeAccessToken() -> String {
+    var bytes = [UInt8](repeating: 0, count: 16)
+    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+    return bytes.map { String(format: "%02x", $0) }.joined()
   }
 
   private func handle(connection: NWConnection) {
     connection.start(queue: queue)
-    receiveHeader(connection: connection, buffer: Data())
+    receiveHeader(connection: connection, buffer: Data(), startedAt: Date())
   }
 
-  private func receiveHeader(connection: NWConnection, buffer: Data) {
+  private func receiveHeader(connection: NWConnection, buffer: Data, startedAt: Date) {
+    if Date().timeIntervalSince(startedAt) > idleHeaderTimeout {
+      sendHeadersOnly(connection: connection, status: 408, headers: ["Connection": "close"], close: true)
+      return
+    }
     connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
       guard let self else { return }
       if error != nil || (isComplete && (data == nil || data?.isEmpty == true)) {
@@ -114,9 +144,17 @@ public final class HTTPRangeServer: @unchecked Sendable {
       } else if buf.count > 64 * 1024 {
         self.sendHeadersOnly(connection: connection, status: 400, headers: ["Connection": "close"], close: true)
       } else {
-        self.receiveHeader(connection: connection, buffer: buf)
+        self.receiveHeader(connection: connection, buffer: buf, startedAt: startedAt)
       }
     }
+  }
+
+  private func pathHasValidToken(_ path: String) -> Bool {
+    guard !accessToken.isEmpty else { return false }
+    // Expect /{token}/{fileIndex}/stream
+    let parts = path.split(separator: "/").map(String.init)
+    guard parts.count >= 3 else { return false }
+    return parts[0] == accessToken && parts.last == "stream"
   }
 
   private func serve(connection: NWConnection, header: String) async {
@@ -141,17 +179,20 @@ public final class HTTPRangeServer: @unchecked Sendable {
       return
     }
     let method = String(parts[0]).uppercased()
-    let path = String(parts[1])
-    guard path.contains("/stream") else {
-      sendHeadersOnly(connection: connection, status: 404, headers: ["Connection": "close"], close: true)
+    // Strip query string if present
+    let rawPath = String(parts[1])
+    let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rawPath
+
+    guard pathHasValidToken(path) else {
+      sendHeadersOnly(connection: connection, status: 401, headers: ["Connection": "close"], close: true)
       return
     }
 
     let fileSize = store.fileSize
+    // No Access-Control-Allow-Origin — this is for native players, not browsers.
     let baseHeaders: [String: String] = [
       "Content-Type": contentType,
-      "Accept-Ranges": "bytes",
-      "Access-Control-Allow-Origin": "*"
+      "Accept-Ranges": "bytes"
     ]
 
     if method == "HEAD" {
@@ -174,16 +215,33 @@ public final class HTTPRangeServer: @unchecked Sendable {
     if let rangeLine = lines.first(where: { $0.lowercased().hasPrefix("range:") }) {
       let value = rangeLine.dropFirst(6).trimmingCharacters(in: .whitespaces)
       if value.hasPrefix("bytes=") {
-        let spec = value.dropFirst(6)
-        let bounds = spec.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
-        if let s = bounds.first, let start = Int64(s), start >= 0 {
-          rangeStart = start
-          isPartial = true
+        let spec = String(value.dropFirst(6))
+        // Reject multi-range
+        if spec.contains(",") {
+          var headers = baseHeaders
+          headers["Content-Range"] = "bytes */\(max(fileSize, 0))"
+          headers["Connection"] = "close"
+          sendHeadersOnly(connection: connection, status: 416, headers: headers, close: true)
+          return
         }
-        if bounds.count > 1, let e = bounds.last, !e.isEmpty, let end = Int64(e) {
-          rangeEnd = min(end, fileSize - 1)
-        } else {
-          rangeEnd = fileSize - 1
+        let bounds = spec.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+        if bounds.count == 2 {
+          let left = String(bounds[0])
+          let right = String(bounds[1])
+          if left.isEmpty, let suffix = Int64(right), suffix > 0 {
+            // bytes=-N → last N bytes
+            rangeStart = max(0, fileSize - suffix)
+            rangeEnd = fileSize - 1
+            isPartial = true
+          } else if let start = Int64(left), start >= 0 {
+            rangeStart = start
+            isPartial = true
+            if !right.isEmpty, let end = Int64(right) {
+              rangeEnd = min(end, fileSize - 1)
+            } else {
+              rangeEnd = fileSize - 1
+            }
+          }
         }
       }
     }
@@ -217,7 +275,6 @@ public final class HTTPRangeServer: @unchecked Sendable {
       isPartial ? "yes" : "no"
     )
 
-    // Send response headers first, then stream body in order.
     let headerSent = await sendHeadersAsync(connection: connection, status: status, headers: headers)
     guard headerSent else {
       connection.cancel()
@@ -230,7 +287,6 @@ public final class HTTPRangeServer: @unchecked Sendable {
         let end = min(rangeEnd, offset + chunkSize - 1)
         let slice = offset ..< (end + 1)
         if !store.isAvailable(range: slice) {
-          // Prioritize ~32 chunks (~8 MB) ahead so sequential playback stays fed.
           let aheadEnd = min(rangeEnd, offset + chunkSize * 32 - 1)
           onNeedRange?(offset ..< (aheadEnd + 1))
         }
@@ -271,8 +327,10 @@ public final class HTTPRangeServer: @unchecked Sendable {
     case 200: reason = "OK"
     case 206: reason = "Partial Content"
     case 400: reason = "Bad Request"
+    case 401: reason = "Unauthorized"
     case 404: reason = "Not Found"
     case 405: reason = "Method Not Allowed"
+    case 408: reason = "Request Timeout"
     case 416: reason = "Range Not Satisfiable"
     case 503: reason = "Service Unavailable"
     default: reason = "Error"

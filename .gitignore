@@ -38,6 +38,7 @@ Thumbs.db
 !.vscode/settings.json.example
 *.swp
 *~
+.cursor/
 
 # —— iOS / Xcode ——
 apps/mobile/ios/App/Pods/

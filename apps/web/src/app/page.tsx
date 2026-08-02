@@ -1,91 +1,333 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { fetchTrending, fetchPopular, displayTitle, type AnimeMedia } from '@/lib/anilist'
-import styles from './page.module.css'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  fetchTrending,
+  fetchSeasonPopular,
+  fetchAllTimePopular,
+  currentAniSeason,
+  displayTitle,
+  fetchViewerAnimeList,
+  fetchGenrePopular,
+  derivePrequelsSequels,
+  deriveTopGenres,
+  continueEntriesFromList,
+  type AnimeMedia
+} from '@/lib/anilist'
+import { isAnilistConnected } from '@/lib/auth'
+import { whenBridgeReady } from '@/lib/native/ready'
+import {
+  listContinueWatching,
+  mergeContinueWatching,
+  type ContinueEntry
+} from '@/lib/watch/continue'
+import { readHomeSnapshot, writeHomeSnapshot, isHomeFresh } from '@/lib/home/store'
+import {
+  PosterCard,
+  PosterRail,
+  HeroCarousel,
+  ContinueCard,
+  HomePlaceholderRail
+} from '@/components/saizen'
+import { Skeleton } from '@/components/ui/skeleton'
+
+function RailSkeleton() {
+  return (
+    <div className="mt-8 flex gap-3.5 overflow-hidden">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="min-w-[9.5rem] space-y-2">
+          <Skeleton className="aspect-[2/3] w-full rounded-xl" />
+          <Skeleton className="h-4 w-[80%]" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function HomePage() {
-  const [trending, setTrending] = useState<AnimeMedia[]>([])
-  const [popular, setPopular] = useState<AnimeMedia[]>([])
+  const initial = readHomeSnapshot()
+  const [trending, setTrending] = useState<AnimeMedia[]>(() => initial.trending)
+  const [seasonal, setSeasonal] = useState<AnimeMedia[]>(() => initial.seasonal)
+  const [allTime, setAllTime] = useState<AnimeMedia[]>(() => initial.allTime)
+  const [continueWatching, setContinueWatching] = useState<ContinueEntry[]>(
+    () => initial.continueWatching
+  )
+  const [related, setRelated] = useState<
+    Array<{ media: AnimeMedia; relationType: string }>
+  >(() => initial.related)
+  const [genrePicks, setGenrePicks] = useState<AnimeMedia[]>(() => initial.genrePicks)
+  const [topGenres, setTopGenres] = useState<string[]>(() => initial.topGenres)
+  const [anilistOn, setAnilistOn] = useState(() => initial.anilistOn)
+  const [listLoading, setListLoading] = useState(false)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  // Only show full-page skeleton when we have nothing to paint
+  const [loading, setLoading] = useState(() => !initial.ready)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [t, p] = await Promise.all([fetchTrending(), fetchPopular()])
-        setTrending(t)
-        setPopular(p)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setLoading(false)
-      }
-    })()
+  const seasonLabel = useMemo(() => {
+    const { season, year } = currentAniSeason()
+    return `${season.charAt(0)}${season.slice(1).toLowerCase()} ${year}`
   }, [])
 
+  useEffect(() => {
+    // Refresh continue rail from local storage without clearing the page
+    setContinueWatching(listContinueWatching())
+
+    // Keep-alive / back-nav: don't refetch if we just loaded Home
+    if (isHomeFresh()) {
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const hadData = readHomeSnapshot().ready
+
+    void (async () => {
+      try {
+        const publicP = Promise.all([
+          fetchTrending(),
+          fetchSeasonPopular(),
+          fetchAllTimePopular()
+        ])
+        const bridgeP = whenBridgeReady().then(() => isAnilistConnected())
+
+        const [[t, s, a], connected] = await Promise.all([publicP, bridgeP])
+        if (cancelled) return
+
+        setTrending(t)
+        setSeasonal(s)
+        setAllTime(a)
+        setAnilistOn(connected)
+        setLoading(false)
+        writeHomeSnapshot({
+          trending: t,
+          seasonal: s,
+          allTime: a,
+          anilistOn: connected,
+          ready: true
+        })
+
+        if (connected) {
+          if (!hadData || !readHomeSnapshot().related.length) {
+            setListLoading(true)
+          }
+          try {
+            const entries = await fetchViewerAnimeList([
+              'CURRENT',
+              'REPEATING',
+              'COMPLETED',
+              'PAUSED'
+            ])
+            if (cancelled) return
+            const fromList = continueEntriesFromList(entries)
+            const cont = mergeContinueWatching(fromList)
+            const rel = derivePrequelsSequels(entries)
+            const genres = deriveTopGenres(entries, 3)
+            setContinueWatching(cont)
+            setRelated(rel)
+            setTopGenres(genres)
+
+            let picks: AnimeMedia[] = []
+            if (genres.length) {
+              const onList = new Set(entries.map((e) => e.media.id))
+              picks = (await fetchGenrePopular(genres, 24))
+                .filter((m) => !onList.has(m.id))
+                .slice(0, 18)
+            }
+            if (!cancelled) {
+              setGenrePicks(picks)
+              writeHomeSnapshot({
+                continueWatching: cont,
+                related: rel,
+                topGenres: genres,
+                genrePicks: picks,
+                anilistOn: true
+              })
+            }
+          } catch (e) {
+            console.warn('[saizen] AniList list personalization failed', e)
+          } finally {
+            if (!cancelled) setListLoading(false)
+          }
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const heroItems = useMemo(() => {
+    const contIds = new Set(continueWatching.map((c) => c.anilistId))
+    const fromContinue = trending.filter((m) => contIds.has(m.id))
+    const merged = [...fromContinue, ...trending, ...seasonal]
+    const seen = new Set<number>()
+    return merged.filter((m) => {
+      if (seen.has(m.id)) return false
+      seen.add(m.id)
+      return true
+    })
+  }, [trending, seasonal, continueWatching])
+
+  const genreRailTitle =
+    topGenres.length > 0 ? `For you · ${topGenres.slice(0, 2).join(' · ')}` : 'For your genres'
+
   return (
-    <>
-      <h1 className={styles.h1}>Home</h1>
-      <p className="muted">
-        Minimal test UI — pick an anime, choose an episode, pick a torrent provider, stream via native
-        loopback HTTP.
-      </p>
-
+    <div>
       {loading ? (
-        <p className="muted">Loading AniList…</p>
-      ) : error ? (
-        <p style={{ color: 'var(--danger)' }}>{error}</p>
+        <div className="relative h-[min(48vh,420px)] min-h-[300px] overflow-hidden bg-[#141416]">
+          <div
+            className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-4 pb-5 sm:px-5"
+            style={{ paddingTop: 'calc(var(--safe-top) + 4.75rem)' }}
+          >
+            <Skeleton className="h-8 w-2/3 max-w-xs bg-white/10" />
+            <Skeleton className="mt-2 h-3 w-1/2 max-w-sm bg-white/10" />
+          </div>
+        </div>
       ) : (
-        <>
-          <section>
-            <h2 className={styles.h2}>Trending</h2>
-            <div className="grid">
-              {trending.map((media) => (
-                <Link
-                  key={media.id}
-                  className={`card ${styles.poster}`}
-                  href={`/app/anime/?id=${media.id}`}
-                >
-                  {media.coverImage?.large ? (
-                    <img src={media.coverImage.large} alt={displayTitle(media)} loading="lazy" />
-                  ) : null}
-                  <div className={styles.meta}>
-                    <strong>{displayTitle(media)}</strong>
-                    <span className="muted">
-                      {media.averageScore ? `${media.averageScore}%` : '—'} · {media.format ?? ''}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <h2 className={styles.h2}>Popular</h2>
-            <div className="grid">
-              {popular.map((media) => (
-                <Link
-                  key={media.id}
-                  className={`card ${styles.poster}`}
-                  href={`/app/anime/?id=${media.id}`}
-                >
-                  {media.coverImage?.large ? (
-                    <img src={media.coverImage.large} alt={displayTitle(media)} loading="lazy" />
-                  ) : null}
-                  <div className={styles.meta}>
-                    <strong>{displayTitle(media)}</strong>
-                    <span className="muted">
-                      {media.seasonYear ?? ''} · {media.format ?? ''}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        </>
+        <HeroCarousel items={heroItems} />
       )}
-    </>
+
+      <div className="px-4 pt-2 sm:px-5">
+        {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
+
+        {loading ? (
+          <>
+            <RailSkeleton />
+            <RailSkeleton />
+          </>
+        ) : (
+          <>
+            {continueWatching.length > 0 ? (
+              <PosterRail title="Continue watching">
+                {continueWatching.map((entry) => (
+                  <ContinueCard key={entry.anilistId} entry={entry} />
+                ))}
+              </PosterRail>
+            ) : (
+              <HomePlaceholderRail
+                title="Continue watching"
+                description={
+                  anilistOn
+                    ? 'No CURRENT shows on your AniList yet — start watching or mark something as watching.'
+                    : 'Titles you start will show up here so you can jump back into the next episode.'
+                }
+                ctaHref={anilistOn ? '/app/search/' : '/app/settings/'}
+                ctaLabel={anilistOn ? 'Find something to watch' : 'Connect AniList'}
+              />
+            )}
+
+            <PosterRail title={`Popular · ${seasonLabel}`}>
+              {seasonal.map((media) => (
+                <PosterCard
+                  key={media.id}
+                  size="lg"
+                  href={`/app/anime/?id=${media.id}`}
+                  image={media.coverImage?.large}
+                  title={displayTitle(media)}
+                  score={media.averageScore}
+                  format={media.format}
+                  year={media.seasonYear}
+                />
+              ))}
+            </PosterRail>
+
+            <PosterRail title="Trending now">
+              {trending.map((media) => (
+                <PosterCard
+                  key={media.id}
+                  size="lg"
+                  href={`/app/anime/?id=${media.id}`}
+                  image={media.coverImage?.large}
+                  title={displayTitle(media)}
+                  score={media.averageScore}
+                  format={media.format}
+                  year={media.seasonYear}
+                />
+              ))}
+            </PosterRail>
+
+            {listLoading && related.length === 0 ? (
+              <RailSkeleton />
+            ) : related.length > 0 ? (
+              <PosterRail title="Prequels & sequels" dense>
+                {related.map(({ media, relationType }) => (
+                  <PosterCard
+                    key={media.id}
+                    size="md"
+                    href={`/app/anime/?id=${media.id}`}
+                    image={media.coverImage?.large ?? media.coverImage?.medium}
+                    title={displayTitle(media)}
+                    score={media.averageScore}
+                    format={relationType.replaceAll('_', ' ')}
+                    year={media.seasonYear}
+                  />
+                ))}
+              </PosterRail>
+            ) : (
+              <HomePlaceholderRail
+                title="Prequels & sequels"
+                description={
+                  anilistOn
+                    ? 'No related titles found from your list yet. Add more CURRENT/COMPLETED shows on AniList.'
+                    : 'When AniList is connected, we’ll surface prequels and sequels for shows on your list.'
+                }
+                ctaHref="/app/settings/"
+                ctaLabel={anilistOn ? 'Refresh after updating list' : 'Connect AniList'}
+              />
+            )}
+
+            {listLoading && genrePicks.length === 0 ? (
+              <RailSkeleton />
+            ) : genrePicks.length > 0 ? (
+              <PosterRail title={genreRailTitle} dense>
+                {genrePicks.map((media) => (
+                  <PosterCard
+                    key={media.id}
+                    size="md"
+                    href={`/app/anime/?id=${media.id}`}
+                    image={media.coverImage?.large}
+                    title={displayTitle(media)}
+                    score={media.averageScore}
+                    format={media.format}
+                    year={media.seasonYear}
+                  />
+                ))}
+              </PosterRail>
+            ) : (
+              <HomePlaceholderRail
+                title="For your genres"
+                description={
+                  anilistOn
+                    ? 'Need a few scored genres on your AniList list to personalize this rail.'
+                    : 'Personalized genre picks land here after AniList sync — based on what you watch most.'
+                }
+                ctaHref="/app/settings/"
+                ctaLabel={anilistOn ? 'Open Settings' : 'Connect AniList'}
+              />
+            )}
+
+            <PosterRail title="Popular of all time">
+              {allTime.map((media) => (
+                <PosterCard
+                  key={media.id}
+                  size="lg"
+                  href={`/app/anime/?id=${media.id}`}
+                  image={media.coverImage?.large}
+                  title={displayTitle(media)}
+                  score={media.averageScore}
+                  format={media.format}
+                  year={media.seasonYear}
+                />
+              ))}
+            </PosterRail>
+          </>
+        )}
+      </div>
+    </div>
   )
 }

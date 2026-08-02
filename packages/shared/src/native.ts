@@ -6,11 +6,28 @@ export interface AuthResponse {
   token_type: 'Bearer'
 }
 
+export interface MalAuthCodeResponse {
+  code: string
+  state: string
+}
+
 export interface SpawnPlayerOptions {
   url: string
   playerHint?: PlayerHint
   title?: string
   episode?: number
+  /** AniList media id — required for native watch-progress events */
+  anilistId?: number
+  idMal?: number | null
+}
+
+/** Emitted by SaizenPlayer `playbackProgress` (native → JS). */
+export interface NativePlaybackProgress {
+  anilistId: number
+  episode: number
+  positionSec: number
+  durationSec: number
+  idMal?: number | null
 }
 
 /**
@@ -24,8 +41,11 @@ export interface SaizenNative {
   share(data: ShareData): Promise<void>
   getDeviceInfo(): Promise<Record<string, unknown>>
 
-  authAnilist(url: string): Promise<AuthResponse>
-  authMAL(url: string): Promise<{ code: string; state: string }>
+  authAnilist(url: string): Promise<AuthResponse | MalAuthCodeResponse>
+  authMAL(url: string): Promise<MalAuthCodeResponse>
+  getSecureItem?(key: string): Promise<string | null>
+  setSecureItem?(key: string, value: string): Promise<void>
+  deleteSecureItem?(key: string): Promise<void>
 
   playTorrent(
     id: string | ArrayBufferView,
@@ -34,6 +54,10 @@ export interface SaizenNative {
   ): Promise<TorrentFile[]>
   spawnPlayer(options: SpawnPlayerOptions): Promise<void>
   stopPlayer(): Promise<void>
+  /** Subscribe to native player position updates. Returns unsubscribe. */
+  onPlaybackProgress?(
+    cb: (progress: NativePlaybackProgress) => void
+  ): Promise<() => void> | (() => void)
 
   torrentInfo(hash: string): Promise<TorrentInfo>
   library(): Promise<LibraryEntry[]>

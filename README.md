@@ -1,23 +1,45 @@
-# Saizen (最善)
+# Saizen · v1.0
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
-## Status (Day-0)
+## Changelog
 
-Proven on a physical iPhone:
+### v1.0 — First release
 
-- AniList browse (CapacitorHttp)
-- Hayase-compatible **remote extensions** (catalogs from https://exten.pages.dev) + legacy SubsPlease / Erai / Nyaa (off by default)
-- Magnets / `.torrent` URLs → libtorrent metadata + **piece-priority head focus**
-- Disk-backed `PieceStore` + loopback `HTTPRangeServer`
-- **Early open**: player launches as soon as metadata + local HTTP URL exist (no long warm wait)
-- In-player HUD on loopback streams (peers / speed / buffered)
-- Progressive **HTTP** sources also stream via PieceStore + Range (open ASAP), not download-then-play
-- **VLC** for incomplete Range / MKV (incl. 1080p HEVC + ASS); AVPlayer for complete MP4 when appropriate
+**Features**
 
-Not productized yet: auth, library, polish UI, App Store packaging.
+- Browse AniList (trending, seasonal, search) with a cinematic dark UI
+- Anime detail: cast + Japanese VAs, staff, source material, OP/ED themes
+- Episode list enriched via AniZip / MAL (titles, synopsis, thumbnails)
+- Torrent + HTTP streaming through libtorrent → loopback Range → VLC
+- Hayase-compatible remote extensions + built-in providers
+- Local watch progress, continue-watching rail, mark-watched threshold
+- AniList / MAL Sign in (app-owned OAuth) with list sync on threshold
+- Personalized Home rails when AniList is connected
+- Native playback progress reporting from the iOS player
+- In-app version + Changelog page (Settings)
+
+**Security hardening (same release)**
+
+- No OAuth client secrets in the app — MAL is a public/installed client (PKCE only)
+- Access tokens live in Keychain (+ session memory); never mirrored to `localStorage`
+- Loopback stream URLs include a per-session access token (`401` without it)
+- `spawnPlayer` allowlists `https://` and `http://127.0.0.1` only
+- Web Inspector (`isInspectable`) gated to Debug builds
+- Extension code URLs must be `https://`
+- MAL OAuth `state` verified fail-closed; refresh failures clear credentials
+- React error boundaries; guarded `localStorage` writes; free-space gate before play
+- Release packaging runs a secret scan (`pnpm package:ipa`) and fails closed on leaks
+
+Full test matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
+
+## Status
+
+Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, plus AniList/MAL sign-in and watch sync.
+
+This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
 ## Repo layout
 
@@ -26,11 +48,11 @@ Not productized yet: auth, library, polish UI, App Store packaging.
 | `apps/web` | Next.js static UI (Capacitor `webDir`) |
 | `apps/mobile` | Capacitor iOS shell + sync scripts |
 | `packages/shared` | Shared TS types / `window.saizen` contract |
-| `ios/App/SaizenCore` | Canonical Swift: torrent, HTTP, player |
-| `ios/App/Plugins` | Capacitor plugins (`SaizenTorrent`, `SaizenPlayer`, …) |
+| `ios/App/SaizenCore` | Canonical Swift: torrent, HTTP, player, auth |
+| `ios/App/Plugins` | Capacitor plugins (`SaizenTorrent`, `SaizenPlayer`, `SaizenAuth`) |
 | `ios/vendor/` | **Gitignored** — build libtorrent here locally |
-| `scripts/` | Sync Swift into Cap, build libtorrent, Cap HTML fixups |
-| `docs/` | Native contract, HTTP Range notes, extensions |
+| `scripts/` | Sync Swift into Cap, build libtorrent, Cap HTML fixups, IPA packaging |
+| `docs/` | Native contract, HTTP Range notes, extensions, security test plan |
 
 See [STRUCTURE.md](./STRUCTURE.md) for the full tree.
 
@@ -41,6 +63,7 @@ See [STRUCTURE.md](./STRUCTURE.md) for the full tree.
 - CocoaPods (`pod` on PATH)
 - Physical device recommended (BitTorrent + VLC)
 - Optional: Boost + Xcode CLT to rebuild libtorrent (`scripts/build-libtorrent-ios.sh`)
+- OAuth (once, as the app developer): set **public** Client IDs in `apps/web/.env.local` — see `.env.example`. Users only **Sign in**; they never create API apps. **Never** put a client secret in `NEXT_PUBLIC_*`.
 
 ## Quick start — web UI
 
@@ -49,7 +72,7 @@ pnpm install
 pnpm dev
 ```
 
-Open the local Next.js URL → pick anime → **Find sources** → **Test Sample** (bundled / progressive MP4 on native; HTML5 `<video>` on web).
+Open the local Next.js URL → pick anime → sources → **Test Sample** (bundled / progressive MP4 on native; HTML5 `<video>` on web).
 
 ## Native iOS (device)
 
@@ -57,6 +80,7 @@ Open the local Next.js URL → pick anime → **Find sources** → **Test Sample
 
 ```bash
 pnpm install
+# copy apps/web/.env.example → apps/web/.env.local and fill Client IDs (public IDs only)
 pnpm sync:ios          # builds web, cap sync, registers plugins, copies Swift
 cd apps/mobile/ios/App
 pod install            # Capacitor + MobileVLCKit
@@ -92,23 +116,69 @@ bash scripts/sync-swift-into-cap.sh
 
 **Blank WKWebView:** always use `pnpm build` / `pnpm sync:ios` so `scripts/fix-capacitor-html.mjs` rewrites asset URLs for Capacitor.
 
+## Distributing an IPA (without the $99 Apple Developer Program)
+
+Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
+
+| Method | Needs $99? | Notes |
+|--------|------------|--------|
+| **Xcode → Run** on your phone | No (free Apple ID) | Best for daily personal use; cert lasts ~7 days |
+| **Sideloadly / AltStore / Feather** + IPA | No | Free Apple ID; ~7-day signing; re-sign periodically |
+| **GitHub Release asset** (`.ipa`) | No to *host* | Install still needs a sideload tool or a paid cert |
+| App Store / TestFlight | **Yes** | Not available on a free account |
+
+**Export an IPA from your local Xcode build (no paid account required to *create* the file):**
+
+```bash
+pnpm sync:ios                 # rebuild web + sync Swift
+# Build/Run once on a device from Xcode (prefer Release when possible)
+pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.0.ipa
+```
+
+### IPA security warning (read before uploading a Release)
+
+`package-ipa.sh` **fails closed** if a client secret or `NEXT_PUBLIC_*SECRET` string appears in the `.app` / IPA.
+
+| What you may see in the IPA | OK? |
+|-----------------------------|-----|
+| `NEXT_PUBLIC_ANILIST_CLIENT_ID` / `NEXT_PUBLIC_MAL_CLIENT_ID` (public OAuth Client IDs) | Yes — required for Sign in |
+| Any `*_SECRET`, `client_secret`, or `malClientSecret` | **No — do not ship** |
+| OAuth access/refresh tokens | **No — must never be baked in** |
+
+**Rules:**
+
+1. Only public Client IDs go in `apps/web/.env.local`. Register MAL as an **installed/public** client (PKCE, **no secret**).
+2. If a secret was ever present in an older build, **rotate it** in the MAL developer console and rebuild — treat the old value as compromised.
+3. Always use `pnpm package:ipa` (or `bash scripts/preflight-release.sh` then `bash scripts/package-ipa.sh`). Do not zip an `.app` by hand for public releases.
+4. Re-scan before upload: `bash scripts/preflight-release.sh` and confirm the packaged IPA has no `*_SECRET` identifiers.
+
+**Last scanned:** `dist/Saizen-v1.0.ipa` (~19 MB) — old leaked MAL secret **absent**; no `*_SECRET` / `client_secret` identifiers; public Client IDs present (expected); token paths scrub `localStorage` and use Keychain; extension loads require `https://`.
+
+Your device build lives under DerivedData, e.g.:
+
+`~/Library/Developer/Xcode/DerivedData/App-…/Build/Products/Debug-iphoneos/App.app`
+
+There is **no `.ipa` until you package one** — Run in Xcode only produces `.app`. Upload `dist/Saizen-v1.0.ipa` as a GitHub Release asset; install with Sideloadly/AltStore (free Apple ID, ~7-day cert).
+
+Expect: no App Store listing, 7-day cert renewals on free IDs, and each installer must trust the certificate on their device.
+
 ## Playback path
 
 ```
 Provider (magnet | .torrent URL | http URL)
   → SaizenTorrent.playTorrent
   → libtorrent (or ProgressiveHTTP) → PieceStore
-  → HTTPRangeServer  http://127.0.0.1:PORT/…/stream
+  → HTTPRangeServer  http://127.0.0.1:PORT/{token}/…/stream
   → focus ~4MB head (+ lookahead); MKV cues/tail deferred
   → open player ASAP (buffering overlay + live stats)
   → SaizenPlayer → MobileVLCKit (MKV / incomplete Range) / AVPlayer (MP4)
 ```
 
-Download continues in the background while VLC plays from the contiguous head. File-wide “high priority” alone is avoided so mid/tail pieces do not starve the start of the file.
+Download continues in the background while VLC plays from the contiguous head.
 
 ## Providers
 
-Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev — sub / dub / multi / hentai catalogs). Manage them in-app under **Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL (often faster time-to-first-frame than magnets).
+Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev). Manage them in-app under **Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL. Extension JS is fetched over **HTTPS only**.
 
 | Built-in | Notes |
 |----------|--------|
@@ -120,16 +190,21 @@ Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.
 | Script | Purpose |
 |--------|---------|
 | `pnpm sync:ios` | Build web + Capacitor sync + plugin register + Swift copy |
+| `pnpm preflight` | Fail-closed security gate before release |
+| `pnpm package:ipa` | Preflight + secret-scanned IPA → `dist/Saizen-v*.ipa` |
 | `scripts/sync-swift-into-cap.sh` | Copy `ios/App/*` → Cap `App/Saizen/` |
 | `scripts/build-libtorrent-ios.sh` | Build ios-arm64 libtorrent into `ios/vendor/` |
 | `scripts/register-local-ios-plugins.mjs` | Register local Capacitor plugins |
 | `scripts/fix-capacitor-html.mjs` | Fix relative asset paths for WKWebView |
+| `scripts/package-ipa.sh` | Secret-scanned zip of DerivedData `App.app` → `dist/Saizen-v*.ipa` |
+| `scripts/preflight-release.sh` | Fail-closed gate: no secrets in env/source/out before release |
 
 ## Docs
 
 - [docs/NATIVE_CONTRACT.md](./docs/NATIVE_CONTRACT.md)
 - [docs/HTTP_RANGE_SERVER.md](./docs/HTTP_RANGE_SERVER.md)
 - [docs/EXTENSIONS.md](./docs/EXTENSIONS.md)
+- [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md)
 - [docs/REFERENCE.md](./docs/REFERENCE.md)
 
 ## License / intent

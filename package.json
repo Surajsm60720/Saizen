@@ -1,14 +1,16 @@
 {
   "name": "saizen",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "packageManager": "pnpm@10.28.2",
   "scripts": {
     "dev": "pnpm --filter @saizen/web dev",
     "build": "pnpm --filter @saizen/shared build && pnpm --filter @saizen/web build",
     "build:web": "pnpm --filter @saizen/web build",
     "sync:ios": "pnpm build:web && pnpm --filter @saizen/mobile sync",
-    "open:ios": "pnpm --filter @saizen/mobile open:ios"
+    "open:ios": "pnpm --filter @saizen/mobile open:ios",
+    "preflight": "bash scripts/preflight-release.sh",
+    "package:ipa": "bash scripts/preflight-release.sh && bash scripts/package-ipa.sh"
   },
   "engines": {
     "node": ">=20"

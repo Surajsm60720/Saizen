@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { searchAnime, displayTitle, type AnimeMedia } from '@/lib/anilist'
 import { ensureExtensions, hasAdultExtensionsEnabled } from '@/lib/extensions'
-import styles from './page.module.css'
+import { PageHeader, PosterCard, PosterGrid } from '@/components/saizen'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 export default function SearchPage() {
   const [term, setTerm] = useState('')
@@ -37,43 +38,44 @@ export default function SearchPage() {
 
   return (
     <>
-      <h1 className={styles.h1}>Search</h1>
-      <form className={styles.row} onSubmit={(e) => void run(e)}>
-        <input
+      <PageHeader title="Search" description="Find anime by romaji, English, or native title." dense />
+
+      <form className="flex gap-2" onSubmit={(e) => void run(e)}>
+        <Input
           ref={inputRef}
-          className={styles.input}
+          className="min-h-11"
           placeholder="Romaji / English / Japanese title"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
         />
-        <button className="btn btn-primary" type="submit" disabled={loading}>
+        <Button type="submit" size="lg" className="min-h-11 px-5" disabled={loading}>
           {loading ? '…' : 'Search'}
-        </button>
+        </Button>
       </form>
+
       {includeAdult ? (
-        <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+        <p className="mt-2 text-xs text-muted-foreground">
           Adult titles included (hentai extension enabled).
         </p>
       ) : null}
 
-      {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
+      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
 
-      <div className="grid" style={{ marginTop: '1.25rem' }}>
+      <PosterGrid className="mt-5">
         {results.map((media) => (
-          <Link
+          <PosterCard
             key={media.id}
-            className={`card ${styles.poster}`}
+            size="sm"
+            className="w-full min-w-0"
             href={`/app/anime/?id=${media.id}`}
-          >
-            {media.coverImage?.large ? (
-              <img src={media.coverImage.large} alt={displayTitle(media)} loading="lazy" />
-            ) : null}
-            <div className={styles.meta}>
-              <strong>{displayTitle(media)}</strong>
-            </div>
-          </Link>
+            image={media.coverImage?.large}
+            title={displayTitle(media)}
+            score={media.averageScore}
+            format={media.format}
+            year={media.seasonYear}
+          />
         ))}
-      </div>
+      </PosterGrid>
     </>
   )
 }

@@ -46,9 +46,11 @@ static void log(SaizenLTSession *s, const std::string &msg) {
 static void handle_metadata(SaizenLTSession *s);
 
 static int pick_video_file(lt::torrent_info const &ti) {
-  int best = 0;
+  int const nfiles = ti.files().num_files();
+  if (nfiles <= 0) return -1;
+  int best = -1;
   int64_t best_size = -1;
-  auto const n = lt::file_index_t(ti.files().num_files());
+  auto const n = lt::file_index_t(nfiles);
   for (lt::file_index_t i(0); i < n; ++i) {
     auto const sz = ti.files().file_size(i);
     auto const name = ti.files().file_path(i);
@@ -64,7 +66,7 @@ static int pick_video_file(lt::torrent_info const &ti) {
       best = int(i);
     }
   }
-  if (best_size < 0) {
+  if (best < 0) {
     // fallback: largest file
     for (lt::file_index_t i(0); i < n; ++i) {
       auto const sz = ti.files().file_size(i);
@@ -134,12 +136,16 @@ extern "C" SaizenLTSession *saizen_lt_create(const char *save_path, SaizenLTCall
 
 extern "C" void saizen_lt_destroy(SaizenLTSession *session) {
   if (!session) return;
-  session->alive = false;
   {
     std::lock_guard<std::mutex> lock(session->mu);
+    session->alive = false;
     if (session->handle.is_valid()) {
       session->ses.remove_torrent(session->handle, lt::session::delete_files);
     }
+  }
+  // Re-acquire so any in-flight tick (which holds mu for the whole pump) has finished.
+  {
+    std::lock_guard<std::mutex> lock(session->mu);
   }
   delete session;
 }
@@ -297,7 +303,12 @@ static void handle_metadata(SaizenLTSession *s) {
   if (s->has_meta) return;
   auto ti = s->handle.torrent_file();
   if (!ti) return;
+  int const nfiles = ti->files().num_files();
   s->file_index = pick_video_file(*ti);
+  if (s->file_index < 0 || s->file_index >= nfiles) {
+    log(s, "metadata: torrent has no usable files — ignoring");
+    return;
+  }
   auto const idx = lt::file_index_t(s->file_index);
   s->file_size = ti->files().file_size(idx);
   s->file_offset = ti->files().file_offset(idx);
@@ -305,11 +316,8 @@ static void handle_metadata(SaizenLTSession *s) {
   s->has_meta = true;
 
   // Select video file at low default priority — piece-level focus_head raises the window.
-  int nfiles = ti->files().num_files();
-  std::vector<lt::download_priority_t> prios(nfiles, lt::download_priority_t(0));
-  if (s->file_index >= 0 && s->file_index < nfiles) {
-    prios[std::size_t(s->file_index)] = lt::download_priority_t(1);
-  }
+  std::vector<lt::download_priority_t> prios(std::size_t(nfiles), lt::download_priority_t(0));
+  prios[std::size_t(s->file_index)] = lt::download_priority_t(1);
   s->handle.prioritize_files(prios);
   s->handle.set_flags(lt::torrent_flags::sequential_download);
 
@@ -324,20 +332,21 @@ static void handle_metadata(SaizenLTSession *s) {
 }
 
 extern "C" void saizen_lt_tick(SaizenLTSession *session) {
-  if (!session || !session->alive) return;
+  if (!session) return;
+  // Hold mu for the entire alert pump so destroy cannot free the session mid-tick.
+  std::lock_guard<std::mutex> lock(session->mu);
+  if (!session->alive) return;
 
   std::vector<lt::alert *> alerts;
   session->ses.pop_alerts(&alerts);
   for (lt::alert *a : alerts) {
     if (auto *m = lt::alert_cast<lt::metadata_received_alert>(a)) {
-      std::lock_guard<std::mutex> lock(session->mu);
       if (m->handle == session->handle) handle_metadata(session);
     } else if (auto *rp = lt::alert_cast<lt::read_piece_alert>(a)) {
       if (rp->error) {
         log(session, std::string("read_piece error: ") + rp->error.message());
         continue;
       }
-      std::lock_guard<std::mutex> lock(session->mu);
       if (!session->has_meta || !rp->buffer) continue;
       int piece = int(rp->piece);
       int64_t piece_off = int64_t(piece) * session->piece_length;
@@ -361,7 +370,6 @@ extern "C" void saizen_lt_tick(SaizenLTSession *session) {
         );
       }
     } else if (auto *pf = lt::alert_cast<lt::piece_finished_alert>(a)) {
-      std::lock_guard<std::mutex> lock(session->mu);
       if (pf->handle != session->handle || !session->has_meta) continue;
       // Ask libtorrent to give us the piece bytes
       session->handle.read_piece(pf->piece_index);
@@ -403,7 +411,6 @@ extern "C" void saizen_lt_tick(SaizenLTSession *session) {
   // Heartbeat every ~5s (ticker is 200ms)
   session->tick_count += 1;
   if (session->tick_count % 25 == 0) {
-    std::lock_guard<std::mutex> lock(session->mu);
     int peers = 0;
     int seeds = 0;
     std::string state = "n/a";

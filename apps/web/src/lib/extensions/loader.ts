@@ -130,6 +130,11 @@ export async function loadExtensionInstance(
   const hit = cache.get(key)
   if (hit) return hit
 
+  // Only HTTPS extension sources — never plaintext HTTP (S-02 / S-09).
+  if (!/^https:\/\//i.test(manifest.code)) {
+    throw new Error(`Extension ${manifest.id} code URL must be https://`)
+  }
+
   const res = await saizenFetch(manifest.code, {
     headers: {
       Accept: 'application/javascript, text/javascript, text/plain, */*',
