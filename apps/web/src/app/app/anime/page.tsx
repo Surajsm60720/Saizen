@@ -12,7 +12,12 @@ import {
   trailerWatchUrl,
   deriveSourceMaterials,
   peekViewerListCache,
-  type AnimeMedia
+  fetchViewerListEntry,
+  buildFranchiseGraph,
+  franchiseWatchOrder,
+  listStoryRelations,
+  type AnimeMedia,
+  type FranchiseGraph
 } from '@/lib/anilist'
 import { fetchThemesByAniListId, type AnimeThemeTrack } from '@/lib/animethemes'
 import { fetchSkipTimes } from '@/lib/aniskip'
@@ -22,6 +27,8 @@ import { ensureExtensions, searchExtensions, rankScore } from '@/lib/extensions'
 import { searchAllProviders, type ProviderResult } from '@/lib/providers'
 import getNative from '@/lib/native'
 import type { NativePlayerAction, SkipTimes, TorrentInfo } from '@saizen/shared'
+import { isAnilistConnected, isMalConnected } from '@/lib/auth/tokens'
+import type { AniListStatus } from '@/lib/auth/sync'
 import { recordContinueWatching } from '@/lib/watch/continue'
 import { getProbedDurationSec } from '@/lib/watch/episodeMeta'
 import { isEpisodeWatched } from '@/lib/watch/progress'
@@ -36,25 +43,18 @@ import {
   EpisodeList,
   EpisodeRow,
   EpisodeSourcesSheet,
+  ListEditSheet,
   PersonRail,
   PosterCard,
   PosterRail,
   ThemeTracks,
   buildEpisodeItems,
   type EpisodeItem,
+  type ListEditValues,
   type PersonRailItem
 } from '@/components/saizen'
 import { Skeleton } from '@/components/ui/skeleton'
-
-const RELATED_TYPES = new Set([
-  'PREQUEL',
-  'SEQUEL',
-  'PARENT',
-  'SIDE_STORY',
-  'SPIN_OFF',
-  'ALTERNATIVE',
-  'SUMMARY'
-])
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '0 KB'
@@ -101,6 +101,22 @@ function AnimeDetail() {
   )
   const [aniZipCount, setAniZipCount] = useState<number | null>(null)
   const [listProgress, setListProgress] = useState<number | null>(null)
+  const [listEntry, setListEntry] = useState<ListEditValues | null>(null)
+  const [listConnected, setListConnected] = useState(false)
+  const [listSheetOpen, setListSheetOpen] = useState(false)
+  const [detailTab, setDetailTab] = useState('overview')
+  const [franchise, setFranchise] = useState<FranchiseGraph | null>(null)
+  const [franchiseLoading, setFranchiseLoading] = useState(false)
+  const [franchiseLoadedFor, setFranchiseLoadedFor] = useState<number | null>(null)
+
+  const LIST_STATUS_LABELS: Record<string, string> = {
+    CURRENT: 'Watching',
+    PLANNING: 'Plan to watch',
+    COMPLETED: 'Completed',
+    PAUSED: 'On hold',
+    DROPPED: 'Dropped',
+    REPEATING: 'Rewatching'
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -121,6 +137,12 @@ function AnimeDetail() {
       setAniZipByEp(new Map())
       setAniZipCount(null)
       setListProgress(null)
+      setListEntry(null)
+      setListSheetOpen(false)
+      setFranchise(null)
+      setFranchiseLoadedFor(null)
+      setFranchiseLoading(false)
+      setDetailTab('overview')
       try {
         // Don't block detail on extension catalog warm-up
         void ensureExtensions()
@@ -130,7 +152,16 @@ function AnimeDetail() {
         else {
           setMedia(m)
           const cached = peekViewerListCache()?.find((e) => e.media.id === id)
-          if (cached) setListProgress(cached.progress)
+          if (cached) {
+            setListProgress(cached.progress)
+            setListEntry({
+              entryId: cached.id,
+              status: (cached.status as AniListStatus) || 'CURRENT',
+              score: cached.score ?? 0,
+              progress: cached.progress ?? 0,
+              repeat: cached.repeat ?? 0
+            })
+          }
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
@@ -142,6 +173,77 @@ function AnimeDetail() {
       cancelled = true
     }
   }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([isAnilistConnected(), isMalConnected()]).then(([a, m]) => {
+      if (!cancelled) setListConnected(a || m)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (!id || !listConnected) return
+    let cancelled = false
+    // Prefer full list cache (fewer AniList hits) then fall back to single-entry fetch.
+    void (async () => {
+      try {
+        const { fetchViewerAnimeList } = await import('@/lib/anilist')
+        const entries = await fetchViewerAnimeList(
+          ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED', 'PLANNING', 'DROPPED']
+        )
+        if (cancelled) return
+        const hit = entries.find((e) => e.media.id === id)
+        if (hit) {
+          setListProgress(hit.progress)
+          setListEntry({
+            entryId: hit.id,
+            status: (hit.status as AniListStatus) || 'CURRENT',
+            score: hit.score ?? 0,
+            progress: hit.progress ?? 0,
+            repeat: hit.repeat ?? 0
+          })
+          return
+        }
+      } catch {
+        /* fall through to single-entry */
+      }
+
+      const result = await fetchViewerListEntry(id)
+      if (cancelled) return
+      if (result.status === 'found') {
+        setListProgress(result.entry.progress)
+        setListEntry({
+          entryId: result.entry.id,
+          status: (result.entry.status as AniListStatus) || 'CURRENT',
+          score: result.entry.score ?? 0,
+          progress: result.entry.progress ?? 0,
+          repeat: result.entry.repeat ?? 0
+        })
+        return
+      }
+      if (result.status === 'missing') {
+        setListEntry(null)
+        setListProgress(null)
+        return
+      }
+      if (result.entry) {
+        setListProgress(result.entry.progress)
+        setListEntry({
+          entryId: result.entry.id,
+          status: (result.entry.status as AniListStatus) || 'CURRENT',
+          score: result.entry.score ?? 0,
+          progress: result.entry.progress ?? 0,
+          repeat: result.entry.repeat ?? 0
+        })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id, listConnected])
 
   useEffect(() => {
     if (!media?.id) return
@@ -185,6 +287,32 @@ function AnimeDetail() {
       window.clearTimeout(t)
     }
   }, [media?.id])
+
+  // Franchise BFS only when Relations tab opens (same walk as Mermaid, cards only).
+  useEffect(() => {
+    if (detailTab !== 'franchise' || !media?.id) return
+    if (franchiseLoadedFor === media.id) return
+    let cancelled = false
+    setFranchiseLoading(true)
+    void buildFranchiseGraph(media.id)
+      .then((g) => {
+        if (cancelled) return
+        setFranchise(g)
+        setFranchiseLoadedFor(media.id)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFranchise(null)
+          setFranchiseLoadedFor(media.id)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFranchiseLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [detailTab, media?.id, franchiseLoadedFor])
 
   useEffect(() => {
     if (!media?.idMal) return
@@ -293,22 +421,18 @@ function AnimeDetail() {
   ])
 
   const related = useMemo(() => {
-    const edges = media?.relations?.edges ?? []
-    const seen = new Set<number>()
-    return edges
-      .filter((e) => e?.node?.id && RELATED_TYPES.has(e.relationType ?? ''))
-      .map((e) => ({
-        id: e.node!.id,
-        relationType: e.relationType ?? 'RELATED',
-        media: e.node!
+    if (franchise && franchise.nodes.length > 1) {
+      // Full franchise in diagram-style watch order (local), including current title.
+      return franchiseWatchOrder(franchise).map((n) => ({
+        id: n.id,
+        relationType:
+          n.id === franchise.rootId ? 'CURRENT' : n.relationFromRoot ?? 'RELATED',
+        media: n,
+        isCurrent: n.id === franchise.rootId
       }))
-      .filter((r) => {
-        if (seen.has(r.id)) return false
-        seen.add(r.id)
-        return true
-      })
-      .slice(0, 12)
-  }, [media])
+    }
+    return listStoryRelations(media).map((r) => ({ ...r, isCurrent: false }))
+  }, [media, franchise])
 
   const sourceMaterials = useMemo(
     () => (media ? deriveSourceMaterials(media) : []),
@@ -329,8 +453,9 @@ function AnimeDetail() {
       .slice(0, 12)
   }, [media])
 
-  const cast: PersonRailItem[] = useMemo(() => {
-    return (media?.characters?.edges ?? [])
+  const characters: PersonRailItem[] = useMemo(() => {
+    if (!media) return []
+    return (media.characters?.edges ?? [])
       .filter((e) => e?.node?.id)
       .map((e) => {
         const va = (e.voiceActors ?? []).find((v) => v?.id && v?.name?.full)
@@ -340,19 +465,44 @@ function AnimeDetail() {
           role: e.role,
           detail: va?.name?.full ? `CV: ${va.name.full}` : null,
           image: e.node!.image?.large,
-          overlayImage: va?.image?.large ?? null
+          overlayImage: va?.image?.large ?? null,
+          href: `/app/character/?id=${e.node!.id}&from=${media.id}`
         }
       })
   }, [media])
 
+  const voiceActors: PersonRailItem[] = useMemo(() => {
+    if (!media) return []
+    const seen = new Set<number>()
+    const out: PersonRailItem[] = []
+    for (const e of media.characters?.edges ?? []) {
+      const charName = e?.node?.name?.full
+      for (const va of e?.voiceActors ?? []) {
+        if (!va?.id || !va.name?.full || seen.has(va.id)) continue
+        seen.add(va.id)
+        out.push({
+          id: va.id,
+          name: va.name.full,
+          role: 'Voice actor',
+          detail: charName ? `as ${charName}` : null,
+          image: va.image?.large,
+          href: `/app/staff/?id=${va.id}&from=${media.id}`
+        })
+      }
+    }
+    return out
+  }, [media])
+
   const staff: PersonRailItem[] = useMemo(() => {
-    return (media?.staff?.edges ?? [])
+    if (!media) return []
+    return (media.staff?.edges ?? [])
       .filter((e) => e?.node?.id)
       .map((e) => ({
         id: e.node!.id,
         name: e.node!.name?.full || 'Unknown',
         role: e.role,
-        image: e.node!.image?.large
+        image: e.node!.image?.large,
+        href: `/app/staff/?id=${e.node!.id}&from=${media.id}`
       }))
   }, [media])
 
@@ -577,101 +727,151 @@ function AnimeDetail() {
         source={formatSource(media.source)}
         studio={mainStudioName(media)}
         onTrailer={trailerUrl ? () => void openTrailer() : null}
+        onEditList={listConnected ? () => setListSheetOpen(true) : null}
+        listStatusLabel={
+          listEntry
+            ? LIST_STATUS_LABELS[listEntry.status] || listEntry.status
+            : null
+        }
       />
 
-      <section className="space-y-3.5">
-        <div className="flex items-end justify-between gap-2">
+      <Tabs
+        value={detailTab}
+        onValueChange={setDetailTab}
+        className="gap-5"
+      >
+        <TabsList variant="line" className="w-full max-w-md">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="franchise">Relations</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-7">
+          <section className="space-y-3.5">
+            <div className="flex items-end justify-between gap-2">
+              <div>
+                <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
+                <h2 className="font-heading text-2xl tracking-tight sm:text-[1.7rem]">
+                  Episodes
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Tap an episode to hunt sources
+                </p>
+              </div>
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.7rem] font-medium text-primary ring-1 ring-primary/25">
+                {episodes.length} listed
+              </span>
+            </div>
+            <EpisodeList>
+              {episodes.map((ep) => (
+                <li key={ep.number}>
+                  <EpisodeRow episode={ep} onSelect={() => void searchSources(ep)} />
+                </li>
+              ))}
+            </EpisodeList>
+          </section>
+
+          <ThemeTracks tracks={themes} loading={themesLoading} />
+
+          {sourceMaterials.length > 0 ? (
+            <PosterRail title="Source material" dense>
+              {sourceMaterials.map(({ media: m, relationType }) => {
+                const kind = (m as { type?: string | null }).type
+                const href =
+                  kind === 'MANGA'
+                    ? `https://anilist.co/manga/${m.id}`
+                    : `/app/anime/?id=${m.id}`
+                return (
+                  <PosterCard
+                    key={m.id}
+                    size="md"
+                    href={href}
+                    image={m.coverImage?.large ?? m.coverImage?.medium}
+                    title={displayTitle(m)}
+                    score={m.averageScore}
+                    format={
+                      [kind, relationType.replaceAll('_', ' ')].filter(Boolean).join(' · ') ||
+                      m.format
+                    }
+                    year={m.seasonYear}
+                  />
+                )
+              })}
+            </PosterRail>
+          ) : null}
+
+          <PersonRail
+            title="Characters"
+            subtitle="Tap for character details"
+            people={characters}
+          />
+          <PersonRail
+            title="Voice actors"
+            subtitle="Japanese CVs when AniList has data"
+            people={voiceActors}
+          />
+          <PersonRail title="Staff" subtitle="Key creatives" people={staff} />
+
+          {recommendations.length > 0 ? (
+            <PosterRail title="More like this" dense>
+              {recommendations.map((m) => (
+                <PosterCard
+                  key={m.id}
+                  size="md"
+                  href={`/app/anime/?id=${m.id}`}
+                  image={m.coverImage?.large ?? m.coverImage?.medium}
+                  title={displayTitle(m)}
+                  score={m.averageScore}
+                  format={m.format}
+                  year={m.seasonYear}
+                />
+              ))}
+            </PosterRail>
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="franchise" className="space-y-5">
           <div>
             <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
             <h2 className="font-heading text-2xl tracking-tight sm:text-[1.7rem]">
-              Episodes
+              Relations
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Tap an episode to hunt sources
+              Watch order from AniList prequel/sequel links — same graph as before, cards only
             </p>
           </div>
-          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.7rem] font-medium text-primary ring-1 ring-primary/25">
-            {episodes.length} listed
-          </span>
-        </div>
-        <EpisodeList>
-          {episodes.map((ep) => (
-            <li key={ep.number}>
-              <EpisodeRow episode={ep} onSelect={() => void searchSources(ep)} />
-            </li>
-          ))}
-        </EpisodeList>
-      </section>
-
-      <ThemeTracks tracks={themes} loading={themesLoading} />
-
-      {sourceMaterials.length > 0 ? (
-        <PosterRail title="Source material" dense>
-          {sourceMaterials.map(({ media: m, relationType }) => {
-            const kind = (m as { type?: string | null }).type
-            const href =
-              kind === 'MANGA'
-                ? `https://anilist.co/manga/${m.id}`
-                : `/app/anime/?id=${m.id}`
-            return (
-              <PosterCard
-                key={m.id}
-                size="md"
-                href={href}
-                image={m.coverImage?.large ?? m.coverImage?.medium}
-                title={displayTitle(m)}
-                score={m.averageScore}
-                format={
-                  [kind, relationType.replaceAll('_', ' ')].filter(Boolean).join(' · ') ||
-                  m.format
-                }
-                year={m.seasonYear}
-              />
-            )
-          })}
-        </PosterRail>
-      ) : null}
-
-      <PersonRail
-        title="Cast & voice actors"
-        subtitle="Japanese CV shown when AniList has data"
-        people={cast}
-      />
-      <PersonRail title="Staff" subtitle="Key creatives" people={staff} />
-
-      {recommendations.length > 0 ? (
-        <PosterRail title="More like this" dense>
-          {recommendations.map((m) => (
-            <PosterCard
-              key={m.id}
-              size="md"
-              href={`/app/anime/?id=${m.id}`}
-              image={m.coverImage?.large ?? m.coverImage?.medium}
-              title={displayTitle(m)}
-              score={m.averageScore}
-              format={m.format}
-              year={m.seasonYear}
-            />
-          ))}
-        </PosterRail>
-      ) : null}
-
-      {related.length > 0 ? (
-        <PosterRail title="In the same story" dense>
-          {related.map(({ id: rid, relationType, media: m }) => (
-            <PosterCard
-              key={rid}
-              size="md"
-              href={`/app/anime/?id=${rid}`}
-              image={m.coverImage?.large ?? m.coverImage?.medium}
-              title={displayTitle(m)}
-              score={m.averageScore}
-              format={relationType.replaceAll('_', ' ')}
-              year={m.seasonYear}
-            />
-          ))}
-        </PosterRail>
-      ) : null}
+          {franchiseLoading && related.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Loading related titles…</p>
+          ) : null}
+          {franchiseLoading && related.length > 0 ? (
+            <p className="text-xs text-muted-foreground">Expanding franchise…</p>
+          ) : null}
+          {!franchiseLoading && related.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No franchise links on AniList for this title.
+            </p>
+          ) : null}
+          {related.length > 0 ? (
+            <PosterRail title="Watch order" dense>
+              {related.map(({ id: rid, relationType, media: m, isCurrent }, index) => (
+                <PosterCard
+                  key={rid}
+                  size="md"
+                  href={`/app/anime/?id=${rid}`}
+                  image={m.coverImage?.large ?? m.coverImage?.medium}
+                  title={`${index + 1}. ${displayTitle(m)}`}
+                  score={m.averageScore}
+                  format={
+                    isCurrent
+                      ? 'This title'
+                      : relationType.replaceAll('_', ' ')
+                  }
+                  year={m.seasonYear}
+                />
+              ))}
+            </PosterRail>
+          ) : null}
+        </TabsContent>
+      </Tabs>
 
       <EpisodeSourcesSheet
         open={sheetOpen}
@@ -684,6 +884,20 @@ function AnimeDetail() {
         results={results}
         playing={playing}
         onPlay={(r) => void playResult(r)}
+      />
+
+      <ListEditSheet
+        open={listSheetOpen}
+        onOpenChange={setListSheetOpen}
+        mediaId={media.id}
+        idMal={media.idMal}
+        totalEpisodes={media.episodes}
+        media={media}
+        hint={listEntry}
+        onSaved={(next) => {
+          setListEntry(next)
+          setListProgress(next?.progress ?? null)
+        }}
       />
     </div>
   )

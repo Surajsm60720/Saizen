@@ -4,6 +4,7 @@ export {
   getAppDefaultCredentials,
   hasAppClientIds,
   scrubLegacyCredentialSecrets,
+  clearOAuthCredentialOverrides,
   ANILIST_REDIRECT_URI,
   MAL_REDIRECT_URI
 } from './credentials'

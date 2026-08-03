@@ -757,7 +757,7 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
     button.layer.borderWidth = 1
     button.layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
     button.clipsToBounds = true
-    button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, trailing: 14)
+    button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
     button.setContentHuggingPriority(.required, for: .horizontal)
     button.setContentCompressionResistancePriority(.required, for: .horizontal)
   }
@@ -778,7 +778,7 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
     volumeButton.layer.borderWidth = 1
     volumeButton.layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
     volumeButton.clipsToBounds = true
-    volumeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, trailing: 14)
+    volumeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 14)
     volumeButton.setContentHuggingPriority(.required, for: .horizontal)
     volumeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
   }

@@ -36,6 +36,9 @@ export type MediaListEntry = {
   id: number
   status: string
   progress: number
+  /** Normalized 0–10 score (from score(format: POINT_10)) */
+  score: number
+  repeat: number
   updatedAt: number
   media: AnimeMedia
 }
@@ -53,14 +56,15 @@ type ListCache = {
   entries: MediaListEntry[]
 }
 
-function readListCache(): MediaListEntry[] | null {
+function readListCache(opts?: { allowStale?: boolean }): MediaListEntry[] | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = sessionStorage.getItem(LIST_CACHE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as ListCache
-    if (!parsed?.at || Date.now() - parsed.at > LIST_CACHE_TTL_MS) return null
-    return Array.isArray(parsed.entries) ? parsed.entries : null
+    if (!parsed?.at || !Array.isArray(parsed.entries)) return null
+    if (!opts?.allowStale && Date.now() - parsed.at > LIST_CACHE_TTL_MS) return null
+    return parsed.entries
   } catch {
     return null
   }
@@ -78,6 +82,45 @@ function writeListCache(entries: MediaListEntry[]) {
 export function clearViewerListCache() {
   if (typeof window === 'undefined') return
   sessionStorage.removeItem(LIST_CACHE_KEY)
+}
+
+function normalizeEntry(partial: {
+  id: number
+  status?: string | null
+  progress?: number | null
+  score?: number | null
+  repeat?: number | null
+  /** AniList unix seconds */
+  updatedAt?: number | null
+  media: AnimeMedia
+}): MediaListEntry {
+  const rawScore = partial.score ?? 0
+  // POINT_10 should already be 0–10; if a 100-point value slips through, scale it.
+  const score =
+    rawScore > 10 ? Math.round(rawScore / 10) : Math.round(rawScore)
+
+  return {
+    id: partial.id,
+    status: partial.status ?? 'CURRENT',
+    progress: partial.progress ?? 0,
+    score,
+    repeat: partial.repeat ?? 0,
+    updatedAt: (partial.updatedAt ?? 0) * 1000,
+    media: partial.media
+  }
+}
+
+/** Patch one entry in the session list cache (keeps Home rails warm). */
+export function upsertViewerListCacheEntry(entry: MediaListEntry) {
+  const existing = readListCache() ?? []
+  const next = [entry, ...existing.filter((e) => e.media.id !== entry.media.id)]
+  writeListCache(next)
+}
+
+export function removeViewerListCacheEntry(mediaId: number) {
+  const existing = readListCache()
+  if (!existing) return
+  writeListCache(existing.filter((e) => e.media.id !== mediaId))
 }
 
 /** Sync peek for Home first paint (avoids empty rails while network runs). */
@@ -135,23 +178,26 @@ export async function fetchViewerAnimeList(
     if (cached) return cached
   }
 
-  const viewer = await fetchViewer()
-  if (!viewer) return []
+  try {
+    const viewer = await fetchViewer()
+    if (!viewer) return readListCache({ allowStale: true }) ?? []
 
-  const data = await authedQuery<{
-    MediaListCollection: {
-      lists?: Array<{
-        entries?: Array<{
-          id: number
-          status?: string | null
-          progress?: number | null
-          updatedAt?: number | null
-          media?: AnimeMedia | null
+    const data = await authedQuery<{
+      MediaListCollection: {
+        lists?: Array<{
+          entries?: Array<{
+            id: number
+            status?: string | null
+            progress?: number | null
+            score?: number | null
+            repeat?: number | null
+            updatedAt?: number | null
+            media?: AnimeMedia | null
+          } | null> | null
         } | null> | null
-      } | null> | null
-    } | null
-  }>(
-    `
+      } | null
+    }>(
+      `
     query ($userId: Int, $status_in: [MediaListStatus]) {
       MediaListCollection(userId: $userId, type: ANIME, status_in: $status_in) {
         lists {
@@ -159,6 +205,8 @@ export async function fetchViewerAnimeList(
             id
             status
             progress
+            score(format: POINT_10)
+            repeat
             updatedAt
             media {
               ${LIST_MEDIA}
@@ -168,27 +216,128 @@ export async function fetchViewerAnimeList(
       }
     }
   `,
-    { userId: viewer.id, status_in: statusIn }
-  )
+      { userId: viewer.id, status_in: statusIn }
+    )
 
-  const out: MediaListEntry[] = []
-  const seen = new Set<number>()
-  for (const list of data.MediaListCollection?.lists ?? []) {
-    for (const entry of list?.entries ?? []) {
-      if (!entry?.media?.id) continue
-      if (seen.has(entry.media.id)) continue
-      seen.add(entry.media.id)
-      out.push({
-        id: entry.id,
-        status: entry.status ?? 'CURRENT',
-        progress: entry.progress ?? 0,
-        updatedAt: (entry.updatedAt ?? 0) * 1000,
-        media: entry.media
-      })
+    const out: MediaListEntry[] = []
+    const seen = new Set<number>()
+    for (const list of data.MediaListCollection?.lists ?? []) {
+      for (const entry of list?.entries ?? []) {
+        if (!entry?.media?.id) continue
+        if (seen.has(entry.media.id)) continue
+        seen.add(entry.media.id)
+        out.push(
+          normalizeEntry({
+            id: entry.id,
+            status: entry.status,
+            progress: entry.progress,
+            score: entry.score,
+            repeat: entry.repeat,
+            updatedAt: entry.updatedAt,
+            media: entry.media
+          })
+        )
+      }
     }
+    writeListCache(out)
+    return out
+  } catch (e) {
+    const stale = readListCache({ allowStale: true })
+    if (stale?.length) return stale
+    throw e
   }
-  writeListCache(out)
-  return out
+}
+
+export type ViewerListEntryResult =
+  | { status: 'found'; entry: MediaListEntry }
+  | { status: 'missing' }
+  | { status: 'unavailable'; entry: MediaListEntry | null }
+
+function isMediaListMissingError(message: string): boolean {
+  const m = message.toLowerCase()
+  return (
+    m.includes('not found') ||
+    m.includes('no media list') ||
+    (m.includes('medialist') && m.includes('null'))
+  )
+}
+
+/**
+ * Fetch a single list entry. Distinguishes:
+ * - found: server returned the entry (use these values strictly)
+ * - missing: confirmed not on the user's AniList
+ * - unavailable: network/rate-limit/auth — keep any cached entry; do not invent defaults
+ */
+export async function fetchViewerListEntry(
+  mediaId: number
+): Promise<ViewerListEntryResult> {
+  const cached = readListCache({ allowStale: true })?.find((e) => e.media.id === mediaId) ?? null
+  const token = await getAnilistToken()
+  if (!token?.accessToken) {
+    return cached
+      ? { status: 'unavailable', entry: cached }
+      : { status: 'unavailable', entry: null }
+  }
+
+  const viewer = await fetchViewer().catch(() => null)
+  if (!viewer) {
+    return cached
+      ? { status: 'unavailable', entry: cached }
+      : { status: 'unavailable', entry: null }
+  }
+
+  try {
+    const data = await authedQuery<{
+      MediaList: {
+        id: number
+        status?: string | null
+        progress?: number | null
+        score?: number | null
+        repeat?: number | null
+        updatedAt?: number | null
+        media?: AnimeMedia | null
+      } | null
+    }>(
+      `
+      query ($userId: Int, $mediaId: Int) {
+        MediaList(userId: $userId, mediaId: $mediaId) {
+          id
+          status
+          progress
+          score(format: POINT_10)
+          repeat
+          updatedAt
+          media {
+            ${LIST_MEDIA}
+          }
+        }
+      }
+    `,
+      { userId: viewer.id, mediaId }
+    )
+
+    const raw = data.MediaList
+    if (!raw?.media?.id) return { status: 'missing' }
+
+    const entry = normalizeEntry({
+      id: raw.id,
+      status: raw.status,
+      progress: raw.progress,
+      score: raw.score,
+      repeat: raw.repeat,
+      updatedAt: raw.updatedAt,
+      media: raw.media
+    })
+    upsertViewerListCacheEntry(entry)
+    return { status: 'found', entry }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    if (isMediaListMissingError(message)) {
+      if (cached) removeViewerListCacheEntry(mediaId)
+      return { status: 'missing' }
+    }
+    return { status: 'unavailable', entry: cached }
+  }
 }
 
 export async function fetchGenrePopular(

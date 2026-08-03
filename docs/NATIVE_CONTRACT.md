@@ -14,6 +14,7 @@ See `packages/shared/src/native.ts` for the TypeScript source of truth.
 | `torrentInfo(hash)` | stub/partial | |
 | `checkAvailableSpace()` | done | Documents volume |
 | `authAnilist` / `authMAL` | done | ASWebAuthenticationSession → `saizen://` callbacks |
+| `exchangeMalToken` | done | URLSession form POST + Basic auth (public client / PKCE) |
 | `getSecureItem` / `setSecureItem` / `deleteSecureItem` | done | Keychain-backed token storage |
 | `library` / `cachedTorrents` | stub | Phase 5 |
 

@@ -1,8 +1,13 @@
 import getNative from '@/lib/native'
-import { clearViewerListCache } from '@/lib/anilist'
+import {
+  clearViewerListCache,
+  fetchViewerAnimeList
+} from '@/lib/anilist'
+import { flushPendingListSync } from '@/lib/watch/progress'
 import {
   ANILIST_REDIRECT_URI,
   MAL_REDIRECT_URI,
+  clearOAuthCredentialOverrides,
   getOAuthCredentials
 } from './credentials'
 import {
@@ -20,6 +25,7 @@ function randomVerifier(length = 64): string {
 }
 
 export async function connectAnilist(): Promise<void> {
+  clearOAuthCredentialOverrides()
   const { anilistClientId } = getOAuthCredentials()
   if (!anilistClientId) {
     throw new Error(
@@ -47,14 +53,26 @@ export async function connectAnilist(): Promise<void> {
     expiresAt: Number.isFinite(expiresIn) && expiresIn > 0 ? Date.now() + expiresIn * 1000 : null
   })
   clearViewerListCache()
+  // Warm list cache so Home rails + episode watched marks pull AniList progress.
+  try {
+    await fetchViewerAnimeList(
+      ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED', 'PLANNING'],
+      { force: true }
+    )
+  } catch {
+    /* rate limit — cache stays empty until Home retries */
+  }
+  void flushPendingListSync()
 }
 
 export async function disconnectAnilist(): Promise<void> {
   await clearAnilistToken()
+  clearViewerListCache()
 }
 
 /** MAL OAuth2 + PKCE (plain challenge = verifier, per MAL docs). Public client — no secret. */
 export async function connectMal(): Promise<void> {
+  clearOAuthCredentialOverrides()
   const { malClientId } = getOAuthCredentials()
   if (!malClientId) {
     throw new Error(
@@ -80,6 +98,7 @@ export async function connectMal(): Promise<void> {
     `?response_type=code` +
     `&client_id=${encodeURIComponent(malClientId)}` +
     `&code_challenge=${encodeURIComponent(verifier)}` +
+    `&code_challenge_method=plain` +
     `&state=${encodeURIComponent(state)}` +
     `&redirect_uri=${encodeURIComponent(MAL_REDIRECT_URI)}`
 
@@ -93,27 +112,32 @@ export async function connectMal(): Promise<void> {
   sessionStorage.removeItem('saizen:mal:state')
   sessionStorage.removeItem('saizen:mal:verifier')
 
-  const body = new URLSearchParams()
-  body.set('client_id', malClientId)
-  body.set('code', res.code)
-  body.set('code_verifier', verifier)
-  body.set('grant_type', 'authorization_code')
-  body.set('redirect_uri', MAL_REDIRECT_URI)
-
-  const tokenRes = await fetch('https://myanimelist.net/v1/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
-  })
-  if (!tokenRes.ok) {
-    const text = await tokenRes.text().catch(() => '')
-    throw new Error(`MAL token exchange failed (${tokenRes.status}) ${text.slice(0, 160)}`)
+  // CapacitorHttp has mangled form bodies before (invalid_client). Use native URLSession.
+  if (!native.exchangeMalToken) {
+    throw new Error('Native MAL token exchange unavailable — rebuild the iOS app (pnpm sync:ios).')
   }
-  const json = (await tokenRes.json()) as {
+  let json: {
     access_token: string
     refresh_token?: string
     expires_in?: number
   }
+  try {
+    json = await native.exchangeMalToken({
+      clientId: malClientId,
+      code: res.code,
+      codeVerifier: verifier,
+      redirectUri: MAL_REDIRECT_URI
+    })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/invalid_client/i.test(msg)) {
+      throw new Error(
+        'MAL invalid_client — at myanimelist.net/apiconfig the app must be type other/iOS (public, no secret) with App Redirect URL exactly saizen://mal/callback. Web-type apps need a secret and will not work. Put that Client ID in NEXT_PUBLIC_MAL_CLIENT_ID and rebuild.'
+      )
+    }
+    throw new Error(msg)
+  }
+  if (!json.access_token) throw new Error('MAL token response missing access_token')
   await setMalToken({
     accessToken: json.access_token,
     refreshToken: json.refresh_token ?? '',
@@ -122,6 +146,7 @@ export async function connectMal(): Promise<void> {
         ? Date.now() + json.expires_in * 1000
         : null
   })
+  void flushPendingListSync()
 }
 
 export async function disconnectMal(): Promise<void> {

@@ -1,10 +1,31 @@
-# Saizen · v1.0.1
+# Saizen · v1.0.2
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
 ## Changelog
+
+### v1.0.2 — Cast, relations & list editing
+
+**Anime detail**
+
+- Separate **Characters**, **Voice actors**, and **Staff** rails (cards link to in-app detail pages)
+- New **/app/character** and **/app/staff** pages (AniList bios, appearances, voice roles, crew credits)
+- **Relations** tab: walks AniList prequel/sequel/spin-off links and shows a numbered **watch-order** poster rail (no Mermaid diagram; ordering is local after the franchise fetch)
+- **Edit list entry** sheet (status, score 0–10, progress, rewatched times) when AniList and/or MAL is connected — saves to both providers; Delete supported
+
+**List sync & accounts**
+
+- Watching / list status no longer defaults to **Plan to watch** when a list lookup fails — Save stays blocked until the entry loads (or is confirmed missing)
+- AniList Home rails and list progress use a corrected score field (broken GraphQL selection had emptied rails)
+- After AniList sign-in (and Settings → Refresh list), viewer lists warm so episode marks and Home rails match the account
+- Offline episode completions flush to connected providers when you reconnect
+
+**Fixes**
+
+- Finished titles use AniList’s episode count so franchise/AniZip mappings no longer inflate lists (e.g. K-On)
+- Hentai catalog / Sukebei: safer extension media payload, prefer magnet from infohash, native fetch User-Agent, consistent adult catalog gating
 
 ### v1.0.1 — Media player redesign
 
@@ -19,21 +40,6 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 - AniSkip OP/ED: skip pill while inside an opening/ending; optional **Auto-skip openings & endings** in Settings → Playback (default off)
 - Fixed controls dismissing on every button tap; removed mid-play Sources chip
 - AniSkip client fixed (`episodeLength` required by API); `spawnPlayer` / native contract extended with `skipTimes`, `resolution`, `autoSkipOpEd`, `hasNextEpisode`, and `playerAction` (`nextEpisode`)
-
-### v1.0 — First release
-
-**Features**
-
-- Browse AniList (trending, seasonal, search) with a cinematic dark UI
-- Anime detail: cast + Japanese VAs, staff, source material, OP/ED themes
-- Episode list enriched via AniZip / MAL (titles, synopsis, thumbnails)
-- Torrent + HTTP streaming through libtorrent → loopback Range → VLC
-- Hayase-compatible remote extensions + built-in providers
-- Local watch progress, continue-watching rail, mark-watched threshold
-- AniList / MAL Sign in (app-owned OAuth) with list sync on threshold
-- Personalized Home rails when AniList is connected
-- Native playback progress reporting from the iOS player
-- In-app version + Changelog page (Settings)
 
 **Security hardening (same release)**
 
@@ -51,7 +57,7 @@ Full test matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
 
 ## Status
 
-Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, plus AniList/MAL sign-in and watch sync.
+Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, plus AniList/MAL sign-in and bidirectional list/progress sync.
 
 This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
@@ -77,7 +83,7 @@ See [STRUCTURE.md](./STRUCTURE.md) for the full tree.
 - CocoaPods (`pod` on PATH)
 - Physical device recommended (BitTorrent + VLC)
 - Optional: Boost + Xcode CLT to rebuild libtorrent (`scripts/build-libtorrent-ios.sh`)
-- OAuth (once, as the app developer): set **public** Client IDs in `apps/web/.env.local` — see `.env.example`. Users only **Sign in**; they never create API apps. **Never** put a client secret in `NEXT_PUBLIC_*`.
+- OAuth (once, as the app developer): set **public** Client IDs in `apps/web/.env.local` — see `.env.example`. Users only **Sign in**; they never create API apps. MAL app type must be **iOS** or **other** (PKCE only). **Never** put a client secret in `NEXT_PUBLIC_*`.
 
 ## Quick start — web UI
 
@@ -132,7 +138,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, …) are for in-app / local sideload builds — do not attach a new IPA for those.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, `1.0.2`, …) are for in-app / local sideload builds — do not attach a new IPA for those.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 
@@ -163,12 +169,12 @@ pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.0.ipa
 
 **Rules:**
 
-1. Only public Client IDs go in `apps/web/.env.local`. Register MAL as an **installed/public** client (PKCE, **no secret**).
-2. If a secret was ever present in an older build, **rotate it** in the MAL developer console and rebuild — treat the old value as compromised.
+1. Only public Client IDs go in `apps/web/.env.local`. Register MAL as **iOS** or **other** (public client, PKCE, **no secret**). Web-type MAL apps are not supported.
+2. If a secret was ever present in an older build, **rotate it** in the provider console and rebuild — treat the old value as compromised.
 3. Always use `pnpm package:ipa` (or `bash scripts/preflight-release.sh` then `bash scripts/package-ipa.sh`). Do not zip an `.app` by hand for public releases.
 4. Re-scan before upload: `bash scripts/preflight-release.sh` and confirm the packaged IPA has no `*_SECRET` identifiers.
 
-**Last scanned:** `dist/Saizen-v1.0.ipa` (~19 MB) — old leaked MAL secret **absent**; no `*_SECRET` / `client_secret` identifiers; public Client IDs present (expected); token paths scrub `localStorage` and use Keychain; extension loads require `https://`.
+**Last scanned:** `dist/Saizen-v1.0.ipa` (~19 MB) — no `*_SECRET` / `client_secret` identifiers; public Client IDs present (expected); token paths scrub `localStorage` and use Keychain; extension loads require `https://`.
 
 Your device build lives under DerivedData, e.g.:
 

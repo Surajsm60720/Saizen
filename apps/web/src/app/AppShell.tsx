@@ -13,7 +13,7 @@ import {
 import { installSaizenBridge } from '@/lib/native/bridge'
 import { refreshNative } from '@/lib/native'
 import { markBridgeReady } from '@/lib/native/ready'
-import { hydrateTokenMirrors, scrubLegacyCredentialSecrets } from '@/lib/auth'
+import { hydrateTokenMirrors, scrubLegacyCredentialSecrets, clearOAuthCredentialOverrides } from '@/lib/auth'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 import HomePage from './page'
@@ -91,6 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       await installSaizenBridge()
       refreshNative()
       scrubLegacyCredentialSecrets()
+      clearOAuthCredentialOverrides()
       await hydrateTokenMirrors()
       markBridgeReady()
     })()

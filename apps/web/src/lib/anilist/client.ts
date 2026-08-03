@@ -164,7 +164,7 @@ const DETAIL_FIELDS = `
       node { id name }
     }
   }
-  characters(page: 1, perPage: 12, sort: [ROLE, RELEVANCE, ID]) {
+  characters(page: 1, perPage: 25, sort: [ROLE, RELEVANCE, ID]) {
     edges {
       role
       node {
@@ -180,7 +180,7 @@ const DETAIL_FIELDS = `
       }
     }
   }
-  staff(page: 1, perPage: 12, sort: [RELEVANCE, ID]) {
+  staff(page: 1, perPage: 25, sort: [RELEVANCE, ID]) {
     edges {
       role
       node {
@@ -406,3 +406,187 @@ export function trailerWatchUrl(trailer?: AnimeTrailer | null): string | null {
   if (site === 'dailymotion') return `https://www.dailymotion.com/video/${trailer.id}`
   return null
 }
+
+export interface CharacterMediaEdge {
+  characterRole?: string | null
+  node?: AnimeRelationNode | null
+}
+
+export interface AniCharacter {
+  id: number
+  name?: { full?: string | null; native?: string | null; alternative?: string[] | null } | null
+  image?: { large?: string | null } | null
+  description?: string | null
+  gender?: string | null
+  age?: string | null
+  dateOfBirth?: AnimeFuzzyDate | null
+  favourites?: number | null
+  siteUrl?: string | null
+  media?: { edges?: CharacterMediaEdge[] | null } | null
+}
+
+export interface StaffCharacterEdge {
+  role?: string | null
+  node?: {
+    id: number
+    name?: { full?: string | null } | null
+    image?: { large?: string | null } | null
+  } | null
+  media?: AnimeRelationNode[] | null
+}
+
+export interface StaffMediaEdge {
+  staffRole?: string | null
+  node?: AnimeRelationNode | null
+}
+
+export interface AniStaff {
+  id: number
+  name?: { full?: string | null; native?: string | null; alternative?: string[] | null } | null
+  image?: { large?: string | null } | null
+  description?: string | null
+  primaryOccupations?: string[] | null
+  homeTown?: string | null
+  yearsActive?: number[] | null
+  dateOfBirth?: AnimeFuzzyDate | null
+  favourites?: number | null
+  siteUrl?: string | null
+  characters?: { edges?: StaffCharacterEdge[] | null } | null
+  staffMedia?: { edges?: StaffMediaEdge[] | null } | null
+}
+
+/** Slim media + one-hop relations for franchise BFS. */
+export async function fetchMediaRelations(id: number): Promise<AnimeRelationNode & {
+  relations?: { edges?: AnimeRelationEdge[] | null } | null
+} | null> {
+  const query = `
+    query ($id: Int) {
+      Media(id: $id) {
+        id
+        type
+        format
+        status
+        averageScore
+        seasonYear
+        startDate { year month day }
+        endDate { year month day }
+        title { romaji english native userPreferred }
+        coverImage { large medium }
+        relations {
+          edges {
+            relationType
+            node {
+              id
+              type
+              format
+              status
+              averageScore
+              seasonYear
+              startDate { year month day }
+              endDate { year month day }
+              title { romaji english native userPreferred }
+              coverImage { large medium }
+            }
+          }
+        }
+      }
+    }
+  `
+  const result = await anilist.query(query, { id }).toPromise()
+  if (result.error) throw result.error
+  return (result.data?.Media ?? null) as
+    | (AnimeRelationNode & { relations?: { edges?: AnimeRelationEdge[] | null } | null })
+    | null
+}
+
+export async function fetchCharacter(id: number): Promise<AniCharacter | null> {
+  const query = `
+    query ($id: Int) {
+      Character(id: $id) {
+        id
+        name { full native alternative }
+        image { large }
+        description(asHtml: true)
+        gender
+        age
+        dateOfBirth { year month day }
+        favourites
+        siteUrl
+        media(page: 1, perPage: 25, sort: [POPULARITY_DESC]) {
+          edges {
+            characterRole
+            node {
+              id
+              type
+              format
+              status
+              averageScore
+              seasonYear
+              title { romaji english native userPreferred }
+              coverImage { large medium }
+            }
+          }
+        }
+      }
+    }
+  `
+  const result = await anilist.query(query, { id }).toPromise()
+  if (result.error) throw result.error
+  return (result.data?.Character ?? null) as AniCharacter | null
+}
+
+export async function fetchStaff(id: number): Promise<AniStaff | null> {
+  const query = `
+    query ($id: Int) {
+      Staff(id: $id) {
+        id
+        name { full native alternative }
+        image { large }
+        description(asHtml: true)
+        primaryOccupations
+        homeTown
+        yearsActive
+        dateOfBirth { year month day }
+        favourites
+        siteUrl
+        characters(page: 1, perPage: 25, sort: [FAVOURITES_DESC]) {
+          edges {
+            role
+            node {
+              id
+              name { full }
+              image { large }
+            }
+            media {
+              id
+              type
+              format
+              seasonYear
+              title { romaji english native userPreferred }
+              coverImage { large medium }
+            }
+          }
+        }
+        staffMedia(page: 1, perPage: 25, sort: [START_DATE_DESC]) {
+          edges {
+            staffRole
+            node {
+              id
+              type
+              format
+              status
+              averageScore
+              seasonYear
+              title { romaji english native userPreferred }
+              coverImage { large medium }
+            }
+          }
+        }
+      }
+    }
+  `
+  const result = await anilist.query(query, { id }).toPromise()
+  if (result.error) throw result.error
+  return (result.data?.Staff ?? null) as AniStaff | null
+}
+

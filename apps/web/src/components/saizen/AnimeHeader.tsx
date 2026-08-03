@@ -1,4 +1,4 @@
-import { Star, Clock, Film, ListVideo, Calendar, Building2, BookOpen, Play } from 'lucide-react'
+import { Star, Clock, Film, ListVideo, Calendar, Building2, BookOpen, Play, ListPlus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,8 @@ export function AnimeHeader({
   source,
   studio,
   onTrailer,
+  onEditList,
+  listStatusLabel,
   className
 }: {
   title: string
@@ -38,6 +40,10 @@ export function AnimeHeader({
   source?: string | null
   studio?: string | null
   onTrailer?: (() => void) | null
+  /** Open list editor (AniList / MAL) */
+  onEditList?: (() => void) | null
+  /** User list status label, e.g. Watching */
+  listStatusLabel?: string | null
   backHref?: string
   className?: string
 }) {
@@ -130,17 +136,33 @@ export function AnimeHeader({
                 ) : null}
               </div>
             ) : null}
-            {onTrailer ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="mt-3 gap-1.5 rounded-full bg-[#0c0c0e]/75 text-foreground hover:bg-[#0c0c0e]"
-                onClick={onTrailer}
-              >
-                <Play className="size-3.5 fill-current" />
-                Trailer
-              </Button>
+            {onTrailer || onEditList ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {onTrailer ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5 rounded-full bg-[#0c0c0e]/75 text-foreground hover:bg-[#0c0c0e]"
+                    onClick={onTrailer}
+                  >
+                    <Play className="size-3.5 fill-current" />
+                    Trailer
+                  </Button>
+                ) : null}
+                {onEditList ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5 rounded-full bg-primary/15 text-primary ring-1 ring-primary/30 hover:bg-primary/25"
+                    onClick={onEditList}
+                  >
+                    <ListPlus className="size-3.5" />
+                    {listStatusLabel || 'Add to list'}
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>

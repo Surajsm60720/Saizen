@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.0.1'
+export const APP_VERSION = '1.0.2'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,23 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.0.2',
+    date: '2026-08-03',
+    title: 'Cast, relations & list editing',
+    highlights: [
+      'Character and Staff detail pages (AniList-backed bios, appearances, voice roles, crew credits)',
+      'Anime page splits Characters, Voice actors, and Staff into separate clickable rails',
+      'Relations tab: franchise BFS over AniList links, shown as numbered watch-order cards (no Mermaid diagram)',
+      'Edit list entry on anime pages — status, score, progress, rewatches; syncs to AniList and MyAnimeList',
+      'List editor never invents Plan to watch when a lookup fails; Save waits until the entry is loaded',
+      'AniList Home rails and progress sync fixed (score field + warm list after sign-in / Refresh list)',
+      'Offline completions flush to connected list providers on reconnect',
+      'MAL sign-in uses native token exchange (public iOS/other client + PKCE; redirect saizen://mal/callback)',
+      'Finished shows trust AniList episode counts (fixes inflated lists like K-On from AniZip/TVDB)',
+      'Hentai / Sukebei extension reliability: safer media payload, magnet-from-hash, browser User-Agent, catalog gating'
+    ]
+  },
   {
     version: '1.0.1',
     date: '2026-08-03',

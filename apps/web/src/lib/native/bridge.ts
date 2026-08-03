@@ -63,6 +63,17 @@ export async function installSaizenBridge(): Promise<void> {
       callbackScheme?: string
     }): Promise<AuthResponse | MalAuthCodeResponse>
     authMAL(o: { url: string; callbackScheme?: string }): Promise<MalAuthCodeResponse>
+    exchangeMalToken(o: {
+      clientId: string
+      code: string
+      codeVerifier: string
+      redirectUri: string
+    }): Promise<{
+      access_token: string
+      refresh_token?: string
+      expires_in?: number
+      token_type?: string
+    }>
     getSecureItem(o: { key: string }): Promise<{ value: string | null }>
     setSecureItem(o: { key: string; value: string }): Promise<void>
     deleteSecureItem(o: { key: string }): Promise<void>
@@ -122,6 +133,9 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async authMAL(url) {
       return SaizenAuth.authMAL({ url, callbackScheme: 'saizen' })
+    },
+    async exchangeMalToken(options) {
+      return SaizenAuth.exchangeMalToken(options)
     },
     async getSecureItem(key) {
       const { value } = await SaizenAuth.getSecureItem({ key })

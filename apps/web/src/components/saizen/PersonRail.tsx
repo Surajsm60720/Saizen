@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 export type PersonRailItem = {
@@ -9,6 +10,8 @@ export type PersonRailItem = {
   image?: string | null
   /** Small avatar overlay (VA face on character card) */
   overlayImage?: string | null
+  /** In-app detail link */
+  href?: string | null
 }
 
 export function PersonRail({
@@ -35,9 +38,15 @@ export function PersonRail({
       </div>
       <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:px-5">
         <ul className="flex gap-3">
-          {people.map((p) => (
-            <li key={`${p.id}-${p.role ?? ''}-${p.detail ?? ''}`} className="w-[5.75rem] shrink-0">
-              <div className="overflow-hidden rounded-2xl bg-card/40 ring-1 ring-white/10">
+          {people.map((p) => {
+            const card = (
+              <div
+                className={cn(
+                  'overflow-hidden rounded-2xl bg-card/40 ring-1 ring-white/10',
+                  p.href &&
+                    'transition hover:ring-primary/40 hover:shadow-[0_0_0_1px_rgba(232,196,120,0.25)]'
+                )}
+              >
                 <div className="relative aspect-[3/4] bg-zinc-900">
                   {p.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -73,8 +82,20 @@ export function PersonRail({
                   ) : null}
                 </div>
               </div>
-            </li>
-          ))}
+            )
+
+            return (
+              <li key={`${p.id}-${p.role ?? ''}-${p.detail ?? ''}`} className="w-[5.75rem] shrink-0">
+                {p.href ? (
+                  <Link href={p.href} className="block outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {card}
+                  </Link>
+                ) : (
+                  card
+                )}
+              </li>
+            )
+          })}
         </ul>
       </div>
     </section>

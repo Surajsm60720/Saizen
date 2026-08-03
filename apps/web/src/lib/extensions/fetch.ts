@@ -12,7 +12,11 @@ export async function saizenFetch(
     const { Capacitor, CapacitorHttp } = await import('@capacitor/core')
     if (Capacitor.isNativePlatform()) {
       const method = (init?.method ?? 'GET').toUpperCase()
-      const headers: Record<string, string> = {}
+      const headers: Record<string, string> = {
+        // Many trackers (Nyaa/Sukebei) reject empty/non-browser UAs.
+        'User-Agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+      }
       if (init?.headers) {
         const h = new Headers(init.headers)
         h.forEach((v, k) => {
@@ -21,7 +25,19 @@ export async function saizenFetch(
       }
       let data: string | undefined
       if (init?.body != null) {
-        data = typeof init.body === 'string' ? init.body : String(init.body)
+        if (typeof init.body === 'string') {
+          data = init.body
+        } else if (
+          typeof URLSearchParams !== 'undefined' &&
+          init.body instanceof URLSearchParams
+        ) {
+          // String(URLSearchParams) => "[object URLSearchParams]" — breaks MAL OAuth.
+          data = init.body.toString()
+        } else if (typeof Blob !== 'undefined' && init.body instanceof Blob) {
+          data = await init.body.text()
+        } else {
+          data = String(init.body)
+        }
       }
       const res = await CapacitorHttp.request({
         url,

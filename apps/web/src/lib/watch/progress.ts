@@ -130,6 +130,24 @@ export function listPendingSync(): WatchProgress[] {
   )
 }
 
+/** Push any locally completed episodes that never reached AniList/MAL (e.g. watched while signed out). */
+export async function flushPendingListSync(): Promise<void> {
+  const pending = listPendingSync()
+  if (!pending.length) return
+  const { syncListProgress } = await import('@/lib/auth/sync')
+  for (const p of pending) {
+    try {
+      await syncListProgress({
+        anilistId: p.anilistId,
+        idMal: p.idMal,
+        episode: p.episode
+      })
+    } catch {
+      /* keep pending for next attempt */
+    }
+  }
+}
+
 /** Episodes marked completed locally for a title. */
 export function listWatchedEpisodes(anilistId: number): Set<number> {
   const out = new Set<number>()

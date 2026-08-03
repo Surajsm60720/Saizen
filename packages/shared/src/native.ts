@@ -68,6 +68,18 @@ export interface SaizenNative {
 
   authAnilist(url: string): Promise<AuthResponse | MalAuthCodeResponse>
   authMAL(url: string): Promise<MalAuthCodeResponse>
+  /** Native MAL token exchange (URLSession form POST + Basic auth). */
+  exchangeMalToken?(options: {
+    clientId: string
+    code: string
+    codeVerifier: string
+    redirectUri: string
+  }): Promise<{
+    access_token: string
+    refresh_token?: string
+    expires_in?: number
+    token_type?: string
+  }>
   getSecureItem?(key: string): Promise<string | null>
   setSecureItem?(key: string, value: string): Promise<void>
   deleteSecureItem?(key: string): Promise<void>

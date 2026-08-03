@@ -32,24 +32,19 @@ function normalizeResult(
 
   if (link.startsWith('magnet:')) {
     magnet = link
-  } else if (/^https?:\/\//i.test(link)) {
-    if (/\.torrent(\?|$)/i.test(link) || /\/download/i.test(link) || /torrent_url/i.test(link)) {
-      torrentUrl = link
-    } else if (hash) {
-      try {
-        magnet = magnetFromInfoHash(hash, title)
-      } catch {
-        return null
-      }
-    } else {
-      // NekoBT / AnimeTosho download endpoints
-      torrentUrl = link
-    }
   } else if (hash) {
+    // Prefer infohash → magnet (Nyaa/Sukebei RSS returns view-page URLs + hash).
     try {
       magnet = magnetFromInfoHash(hash, title)
     } catch {
       return null
+    }
+  } else if (/^https?:\/\//i.test(link)) {
+    if (/\.torrent(\?|$)/i.test(link) || /\/download/i.test(link) || /torrent_url/i.test(link)) {
+      torrentUrl = link
+    } else {
+      // Bare HTML tracker pages without a hash are not playable.
+      torrentUrl = link
     }
   } else if (/^[a-fA-F0-9]{40}$/i.test(link) || /^[a-zA-Z0-9]{32}$/.test(link)) {
     // Seadex often puts infohash in `link`
@@ -143,7 +138,17 @@ export async function searchExtensions(query: ExtensionSearchQuery): Promise<{
     episodeCount: media.episodes ?? undefined,
     resolution,
     exclusions,
-    media,
+    // Extensions (esp. Sukebei) assume genres/relations arrays exist.
+    media: {
+      ...media,
+      title: media.title ?? {},
+      genres: media.genres ?? [],
+      synonyms: media.synonyms ?? [],
+      isAdult: Boolean(media.isAdult),
+      relations: media.relations ?? { edges: [] },
+      status: media.status ?? null,
+      format: media.format ?? null
+    },
     anidbAid: ids.anidbAid ?? ids.anidb,
     anidbEid: ids.anidbEid,
     tvdbId: ids.tvdb,

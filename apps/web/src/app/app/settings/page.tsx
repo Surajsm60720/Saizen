@@ -19,9 +19,12 @@ import {
   disconnectAnilist,
   disconnectMal,
   getOAuthCredentials,
+  clearOAuthCredentialOverrides,
   isAnilistConnected,
   isMalConnected
 } from '@/lib/auth'
+import { clearViewerListCache, fetchViewerAnimeList } from '@/lib/anilist'
+import { flushPendingListSync } from '@/lib/watch/progress'
 import getNative from '@/lib/native'
 import { APP_VERSION_LABEL } from '@/lib/version'
 
@@ -33,13 +36,15 @@ export default function SettingsPage() {
   }))
   const [anilistOn, setAnilistOn] = useState(false)
   const [malOn, setMalOn] = useState(false)
-  const [busy, setBusy] = useState<'anilist' | 'mal' | null>(null)
+  const [busy, setBusy] = useState<'anilist' | 'mal' | 'refresh' | null>(null)
   const isApp = typeof window !== 'undefined' ? getNative().isApp : false
-  const creds = getOAuthCredentials()
+  const [creds, setCreds] = useState(() => getOAuthCredentials())
   const canAnilist = Boolean(creds.anilistClientId)
   const canMal = Boolean(creds.malClientId)
 
   useEffect(() => {
+    clearOAuthCredentialOverrides()
+    setCreds(getOAuthCredentials())
     setSettings(getWatchSettings())
     void Promise.all([isAnilistConnected(), isMalConnected()]).then(([a, m]) => {
       setAnilistOn(a)
@@ -56,7 +61,7 @@ export default function SettingsPage() {
     try {
       await connectAnilist()
       setAnilistOn(true)
-      toast.success('Signed in with AniList')
+      toast.success('Signed in with AniList — list synced')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
     } finally {
@@ -87,6 +92,26 @@ export default function SettingsPage() {
     await disconnectMal()
     setMalOn(false)
     toast.message('MyAnimeList signed out')
+  }
+
+  async function onRefreshListSync() {
+    setBusy('refresh')
+    try {
+      if (!(await isAnilistConnected())) {
+        throw new Error('Sign in with AniList first')
+      }
+      clearViewerListCache()
+      await fetchViewerAnimeList(
+        ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED', 'PLANNING'],
+        { force: true }
+      )
+      await flushPendingListSync()
+      toast.success('Pulled AniList progress into Saizen')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (
@@ -200,6 +225,20 @@ export default function SettingsPage() {
                 {busy === 'mal' ? '…' : 'Sign in'}
               </Button>
             )}
+          </SettingsRow>
+          <SettingsRow
+            label="Refresh list sync"
+            hint="Pull AniList progress into episode marks / Home rails"
+            showSeparator
+          >
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={busy === 'refresh' || !anilistOn}
+              onClick={() => void onRefreshListSync()}
+            >
+              {busy === 'refresh' ? '…' : 'Refresh'}
+            </Button>
           </SettingsRow>
         </SettingsGroup>
 

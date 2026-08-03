@@ -42,12 +42,13 @@ function readOverrides(): Partial<OAuthCredentials> {
   }
 }
 
-/** Merged credentials: local override → app env defaults. */
+/** Merged credentials: baked app env IDs always win over any localStorage override. */
 export function getOAuthCredentials(): OAuthCredentials {
   const o = readOverrides()
   return {
-    anilistClientId: String(o.anilistClientId || APP_DEFAULTS.anilistClientId || '').trim(),
-    malClientId: String(o.malClientId || APP_DEFAULTS.malClientId || '').trim()
+    // Prefer build-time IDs — stale localStorage overrides caused MAL invalid_client.
+    anilistClientId: String(APP_DEFAULTS.anilistClientId || o.anilistClientId || '').trim(),
+    malClientId: String(APP_DEFAULTS.malClientId || o.malClientId || '').trim()
   }
 }
 
@@ -90,6 +91,16 @@ export function scrubLegacyCredentialSecrets(): void {
       }
     }
     if (changed) localStorage.setItem(CRED_KEY, JSON.stringify(parsed))
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Drop localStorage client-id overrides so baked NEXT_PUBLIC_* IDs are used. */
+export function clearOAuthCredentialOverrides(): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(CRED_KEY)
   } catch {
     /* ignore */
   }

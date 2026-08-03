@@ -231,9 +231,13 @@ export function buildEpisodeItems(opts: {
   const nextEp = opts.nextAiringEpisode?.episode ?? 0
   const maxStreamEp = byNumber.size ? Math.max(...byNumber.keys()) : 0
 
-  // Never let a lone trailer / incomplete streaming list shrink the season
-  const total = Math.max(
-    opts.episodeCount ?? 0,
+  // Prefer AniList's official count for finished seasons — AniZip/TVDB absolute
+  // numbering (e.g. franchise stacks) must not inflate the episode list.
+  const anilistCount = opts.episodeCount ?? 0
+  const finished =
+    opts.status === 'FINISHED' || opts.status === 'CANCELLED'
+  let total = Math.max(
+    anilistCount,
     maxStreamEp,
     nextEp,
     opts.externalEpisodeCount ?? 0,
@@ -242,6 +246,12 @@ export function buildEpisodeItems(opts: {
       : 0,
     1
   )
+  if (finished && anilistCount > 0) {
+    total = anilistCount
+  } else if (anilistCount > 0 && (opts.externalEpisodeCount ?? 0) > anilistCount * 1.5) {
+    // External mapping wildly larger than AniList — trust AniList + streaming max
+    total = Math.max(anilistCount, maxStreamEp, nextEp, 1)
+  }
 
   const lastReleased = resolveLastReleasedEpisode({
     episodeCount: opts.episodeCount,

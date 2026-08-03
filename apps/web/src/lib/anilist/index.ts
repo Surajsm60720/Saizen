@@ -7,6 +7,9 @@ export {
   currentAniSeason,
   fetchAnime,
   searchAnime,
+  fetchCharacter,
+  fetchStaff,
+  fetchMediaRelations,
   displayTitle,
   stripHtml,
   formatSource,
@@ -27,12 +30,20 @@ export type {
   AnimeCharacterEdge,
   AnimeStaffEdge,
   AnimeRecommendation,
-  AniSeason
+  AniSeason,
+  AniCharacter,
+  AniStaff,
+  CharacterMediaEdge,
+  StaffCharacterEdge,
+  StaffMediaEdge
 } from './client'
 export {
   fetchViewer,
   fetchViewerAnimeList,
+  fetchViewerListEntry,
   peekViewerListCache,
+  upsertViewerListCacheEntry,
+  removeViewerListCacheEntry,
   fetchGenrePopular,
   derivePrequelsSequels,
   deriveSourceMaterials,
@@ -40,6 +51,14 @@ export {
   continueEntriesFromList,
   clearViewerListCache
 } from './viewer'
-export type { MediaListEntry, ViewerProfile } from './viewer'
+export type { MediaListEntry, ViewerProfile, ViewerListEntryResult } from './viewer'
 export { peekHomeRails, writeHomeRails } from './homeCache'
 export type { HomeRailsCache } from './homeCache'
+export {
+  FRANCHISE_RELATION_TYPES,
+  buildFranchiseGraph,
+  franchiseRelatedList,
+  franchiseWatchOrder,
+  listStoryRelations
+} from './franchise'
+export type { RelatedTitle, FranchiseGraph, FranchiseNode, FranchiseEdge } from './franchise'

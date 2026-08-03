@@ -43,11 +43,11 @@ function writeState(): void {
   }
 }
 
-function isEnabled(id: string, catalogId?: CatalogId): boolean {
+function isEnabled(id: string, catalogId?: CatalogId, media?: string): boolean {
   if (id in state.enabled) return state.enabled[id]!
   if ((DEFAULT_ENABLED_IDS as readonly string[]).includes(id)) return true
-  // Hentai catalog off by default
-  if (catalogId === 'hentai') return false
+  // Adult catalogs / media stay off until the user opts in
+  if (catalogId === 'hentai' || media === 'hentai') return false
   return false
 }
 
@@ -78,7 +78,9 @@ export async function refreshCatalogs(): Promise<ExtensionManifest[]> {
           .map((m) => ({
             ...m,
             catalogId: cat.id as CatalogId,
-            catalogName: cat.name
+            catalogName: cat.name,
+            // Remote hentai catalog often tags media as "sub" — normalize for gating/UI.
+            media: cat.id === 'hentai' ? 'hentai' : m.media
           }))
       } catch (e) {
         console.warn(`[saizen] catalog ${cat.id} failed`, e)
@@ -115,7 +117,7 @@ export async function initExtensions(): Promise<LoadedExtension[]> {
 
   await Promise.all(
     manifests.map(async (manifest) => {
-      const enabled = isEnabled(manifest.id, manifest.catalogId)
+      const enabled = isEnabled(manifest.id, manifest.catalogId, manifest.media)
       if (!enabled) {
         loaded.set(manifest.id, { manifest, instance: {}, enabled: false })
         return
@@ -151,7 +153,7 @@ export function listExtensions(): LoadedExtension[] {
     return {
       manifest,
       instance: {},
-      enabled: isEnabled(manifest.id, manifest.catalogId)
+      enabled: isEnabled(manifest.id, manifest.catalogId, manifest.media)
     }
   })
 }
