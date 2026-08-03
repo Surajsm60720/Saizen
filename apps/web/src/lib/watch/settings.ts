@@ -5,11 +5,14 @@ export interface WatchSettings {
   markWatchedAtPercent: number
   /** Persist continue-watching rail entries. */
   continueWatchingEnabled: boolean
+  /** When true, player seeks past AniSkip OP/ED intervals once on enter. */
+  autoSkipOpEd: boolean
 }
 
 const DEFAULTS: WatchSettings = {
   markWatchedAtPercent: 90,
-  continueWatchingEnabled: true
+  continueWatchingEnabled: true,
+  autoSkipOpEd: false
 }
 
 function clampPercent(n: number): number {
@@ -28,7 +31,8 @@ export function getWatchSettings(): WatchSettings {
         parsed.markWatchedAtPercent ?? DEFAULTS.markWatchedAtPercent
       ),
       continueWatchingEnabled:
-        parsed.continueWatchingEnabled ?? DEFAULTS.continueWatchingEnabled
+        parsed.continueWatchingEnabled ?? DEFAULTS.continueWatchingEnabled,
+      autoSkipOpEd: parsed.autoSkipOpEd ?? DEFAULTS.autoSkipOpEd
     }
   } catch {
     return { ...DEFAULTS }

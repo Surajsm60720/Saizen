@@ -2,12 +2,14 @@ import type {
   AuthResponse,
   MalAuthCodeResponse,
   NativePlaybackProgress,
+  NativePlayerAction,
   SaizenNative,
   SpawnPlayerOptions,
   TorrentFile
 } from '@saizen/shared'
 import { updateWatchProgress } from '@/lib/watch/progress'
 import { getActivePlayback } from '@/lib/watch/activePlayback'
+import { dispatchPlayerAction } from '@/lib/watch/playerActions'
 
 /**
  * Install window.saizen when running inside Capacitor.
@@ -30,7 +32,11 @@ export async function installSaizenBridge(): Promise<void> {
   if (!Capacitor?.isNativePlatform() || !registerPlugin) return
 
   const SaizenTorrent = registerPlugin<{
-    playTorrent(o: { source: string; mediaId: number; episode: number }): Promise<{ files: TorrentFile[] }>
+    playTorrent(o: {
+      source: string
+      mediaId: number
+      episode: number
+    }): Promise<{ files: TorrentFile[] }>
     torrentInfo(o: { hash: string }): Promise<Record<string, unknown>>
     stop(): Promise<void>
     checkAvailableSpace(): Promise<{ bytes: number }>
@@ -43,27 +49,43 @@ export async function installSaizenBridge(): Promise<void> {
       event: 'playbackProgress',
       cb: (p: NativePlaybackProgress) => void
     ): Promise<{ remove: () => Promise<void> }>
+    addListener(
+      event: 'playerAction',
+      cb: (p: NativePlayerAction) => void
+    ): Promise<{ remove: () => Promise<void> }>
   }
 
   const SaizenPlayer = registerPlugin<PlayerPlugin>('SaizenPlayer')
 
   const SaizenAuth = registerPlugin<{
-    authAnilist(o: { url: string; callbackScheme?: string }): Promise<AuthResponse | MalAuthCodeResponse>
+    authAnilist(o: {
+      url: string
+      callbackScheme?: string
+    }): Promise<AuthResponse | MalAuthCodeResponse>
     authMAL(o: { url: string; callbackScheme?: string }): Promise<MalAuthCodeResponse>
     getSecureItem(o: { key: string }): Promise<{ value: string | null }>
     setSecureItem(o: { key: string; value: string }): Promise<void>
     deleteSecureItem(o: { key: string }): Promise<void>
   }>('SaizenAuth')
 
-  void SaizenPlayer.addListener('playbackProgress', (p) => {
+  void SaizenPlayer.addListener('playbackProgress', (progress) => {
     const active = getActivePlayback()
     updateWatchProgress({
-      anilistId: Number(p.anilistId),
-      episode: Number(p.episode),
-      idMal: p.idMal ?? active?.idMal ?? null,
-      positionSec: Number(p.positionSec),
-      durationSec: Number(p.durationSec),
+      anilistId: Number(progress.anilistId),
+      episode: Number(progress.episode),
+      idMal: progress.idMal ?? active?.idMal ?? null,
+      positionSec: Number(progress.positionSec),
+      durationSec: Number(progress.durationSec),
       totalEpisodes: active?.totalEpisodes
+    })
+  }).catch(() => {})
+
+  void SaizenPlayer.addListener('playerAction', (p) => {
+    if (p?.action !== 'nextEpisode' && p?.action !== 'changeSource') return
+    dispatchPlayerAction({
+      action: p.action,
+      anilistId: Number(p.anilistId),
+      episode: Number(p.episode)
     })
   }).catch(() => {})
 
@@ -85,6 +107,12 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async onPlaybackProgress(cb) {
       const handle = await SaizenPlayer.addListener('playbackProgress', cb)
+      return () => {
+        void handle.remove()
+      }
+    },
+    async onPlayerAction(cb) {
+      const handle = await SaizenPlayer.addListener('playerAction', cb)
       return () => {
         void handle.remove()
       }

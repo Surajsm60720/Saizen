@@ -7,6 +7,7 @@ import type {
   AuthResponse,
   MalAuthCodeResponse,
   NativePlaybackProgress,
+  NativePlayerAction,
   SaizenNative,
   SpawnPlayerOptions,
   TorrentFile
@@ -29,6 +30,10 @@ interface SaizenPlayerPlugin {
   addListener(
     event: 'playbackProgress',
     cb: (p: NativePlaybackProgress) => void
+  ): Promise<{ remove: () => Promise<void> }>
+  addListener(
+    event: 'playerAction',
+    cb: (p: NativePlayerAction) => void
   ): Promise<{ remove: () => Promise<void> }>
 }
 
@@ -65,6 +70,20 @@ export function installSaizenBridge(): void {
     },
     async onPlaybackProgress(cb) {
       const handle = await SaizenPlayer.addListener('playbackProgress', cb)
+      return () => {
+        void handle.remove()
+      }
+    },
+    async onPlayerAction(cb) {
+      const handle = await SaizenPlayer.addListener('playerAction', (raw) => {
+        cb(raw as NativePlayerAction)
+      })
+      return () => {
+        void handle.remove()
+      }
+    },
+    async onPlayerAction(cb) {
+      const handle = await SaizenPlayer.addListener('playerAction', cb)
       return () => {
         void handle.remove()
       }

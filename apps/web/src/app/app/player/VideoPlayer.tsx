@@ -1,12 +1,30 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react'
+import {
+  Pause,
+  Play,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Minimize,
+  SkipForward,
+  ChevronLeft
+} from 'lucide-react'
+import type { SkipTimes, TorrentInfo } from '@saizen/shared'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import getNative from '@/lib/native'
 import { recordProbedDuration } from '@/lib/watch/episodeMeta'
 import { updateWatchProgress } from '@/lib/watch/progress'
+import { dispatchPlayerAction } from '@/lib/watch/playerActions'
 
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2]
 
@@ -20,13 +38,53 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0 KB'
+  if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.round(n / 1024)} KB`
+}
+
+function formatRate(bytesPerSec: number): string {
+  if (!Number.isFinite(bytesPerSec) || bytesPerSec <= 0) return '0 KB/s'
+  if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`
+  return `${Math.round(bytesPerSec / 1024)} KB/s`
+}
+
+function statsLine(info: TorrentInfo): string {
+  const peers = info.peers?.wires ?? info.peers?.seeders ?? 0
+  const down = info.speed?.down ?? 0
+  const downloaded = info.size?.downloaded ?? 0
+  const total = info.size?.total ?? 0
+  const pct = Math.round(Math.min(1, Math.max(0, info.progress ?? 0)) * 100)
+  return `${peers} peers · ${formatRate(down)} · ${formatBytes(downloaded)}${
+    total > 0 ? `/${formatBytes(total)}` : ''
+  }${pct > 0 ? ` · ${pct}%` : ''}`
+}
+
+function isLoopback(src: string): boolean {
+  try {
+    const u = new URL(src)
+    return u.hostname === '127.0.0.1' || u.hostname === 'localhost'
+  } catch {
+    return false
+  }
+}
+
 export function VideoPlayer({
   src,
   title,
   anilistId,
   episode,
   idMal,
-  totalEpisodes
+  totalEpisodes,
+  resolution,
+  sourceLabel,
+  skipTimes,
+  autoSkipOpEd,
+  hasNextEpisode,
+  onBack,
+  onNextEpisode
 }: {
   src: string
   title?: string
@@ -34,10 +92,20 @@ export function VideoPlayer({
   episode?: number
   idMal?: number | null
   totalEpisodes?: number | null
+  resolution?: string
+  sourceLabel?: string
+  skipTimes?: SkipTimes | null
+  autoSkipOpEd?: boolean
+  hasNextEpisode?: boolean
+  onBack?: () => void
+  onNextEpisode?: () => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastPersist = useRef(0)
+  const didAutoSkipOp = useRef(false)
+  const didAutoSkipEd = useRef(false)
 
   const [playing, setPlaying] = useState(false)
   const [current, setCurrent] = useState(0)
@@ -45,12 +113,21 @@ export function VideoPlayer({
   const [buffered, setBuffered] = useState(0)
   const [volume, setVolume] = useState(1)
   const [muted, setMuted] = useState(false)
+  const [volumeOpen, setVolumeOpen] = useState(false)
   const [rate, setRate] = useState(1)
   const [seeking, setSeeking] = useState(false)
   const [chrome, setChrome] = useState(true)
   const [fs, setFs] = useState(false)
   const [error, setError] = useState('')
-  const lastPersist = useRef(0)
+  const [torrentLine, setTorrentLine] = useState('')
+  const [skipKind, setSkipKind] = useState<'op' | 'ed' | null>(null)
+
+  const canNext =
+    hasNextEpisode ??
+    (typeof episode === 'number' &&
+      typeof totalEpisodes === 'number' &&
+      episode > 0 &&
+      episode < totalEpisodes)
 
   const clearHide = () => {
     if (hideTimer.current) clearTimeout(hideTimer.current)
@@ -60,7 +137,10 @@ export function VideoPlayer({
     clearHide()
     const v = videoRef.current
     if (!v || v.paused) return
-    hideTimer.current = setTimeout(() => setChrome(false), 3200)
+    hideTimer.current = setTimeout(() => {
+      setChrome(false)
+      setVolumeOpen(false)
+    }, 3200)
   }, [])
 
   const showChrome = useCallback(
@@ -70,6 +150,44 @@ export function VideoPlayer({
       else clearHide()
     },
     [scheduleHide]
+  )
+
+  const seekTo = useCallback(
+    (t: number) => {
+      const v = videoRef.current
+      if (!v) return
+      v.currentTime = Math.max(0, Math.min(v.duration || 0, t))
+      setCurrent(v.currentTime)
+      showChrome()
+    },
+    [showChrome]
+  )
+
+  const applySkipLogic = useCallback(
+    (t: number) => {
+      const op = skipTimes?.op
+      const ed = skipTimes?.ed
+      if (op && t >= op.start && t < op.end) {
+        setSkipKind('op')
+        if (autoSkipOpEd && !didAutoSkipOp.current) {
+          didAutoSkipOp.current = true
+          seekTo(op.end)
+          setSkipKind(null)
+        }
+        return
+      }
+      if (ed && t >= ed.start && t < ed.end) {
+        setSkipKind('ed')
+        if (autoSkipOpEd && !didAutoSkipEd.current) {
+          didAutoSkipEd.current = true
+          seekTo(ed.end)
+          setSkipKind(null)
+        }
+        return
+      }
+      setSkipKind(null)
+    },
+    [autoSkipOpEd, seekTo, skipTimes]
   )
 
   useEffect(() => {
@@ -85,7 +203,10 @@ export function VideoPlayer({
       showChrome(true)
     }
     const onTime = () => {
-      if (!seeking) setCurrent(v.currentTime)
+      if (!seeking) {
+        setCurrent(v.currentTime)
+        applySkipLogic(v.currentTime)
+      }
       if (!anilistId || !episode) return
       const now = Date.now()
       if (now - lastPersist.current < 2000) return
@@ -144,7 +265,29 @@ export function VideoPlayer({
       v.removeEventListener('error', onErr)
       document.removeEventListener('fullscreenchange', onFs)
     }
-  }, [scheduleHide, seeking, showChrome, anilistId, episode, idMal, totalEpisodes])
+  }, [
+    applySkipLogic,
+    scheduleHide,
+    seeking,
+    showChrome,
+    anilistId,
+    episode,
+    idMal,
+    totalEpisodes
+  ])
+
+  useEffect(() => {
+    if (!isLoopback(src)) return
+    const tick = () => {
+      void getNative()
+        .torrentInfo('')
+        .then((info) => setTorrentLine(statsLine(info)))
+        .catch(() => {})
+    }
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [src])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -161,14 +304,12 @@ export function VideoPlayer({
         case 'arrowleft':
         case 'j':
           e.preventDefault()
-          v.currentTime = Math.max(0, v.currentTime - 10)
-          showChrome()
+          seekBy(e.shiftKey ? -5 : -10)
           break
         case 'arrowright':
         case 'l':
           e.preventDefault()
-          v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 10)
-          showChrome()
+          seekBy(e.shiftKey ? 5 : 10)
           break
         case 'arrowup':
           e.preventDefault()
@@ -187,13 +328,17 @@ export function VideoPlayer({
         case 'f':
           void toggleFullscreen()
           break
+        case 'n':
+          if (canNext) handleNext()
+          break
         default:
           break
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [showChrome])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers use latest closures via refs/state
+  }, [showChrome, canNext])
 
   async function toggleFullscreen() {
     const root = rootRef.current
@@ -220,31 +365,56 @@ export function VideoPlayer({
     showChrome()
   }
 
-  function cycleRate() {
+  function setPlaybackRate(next: number) {
     const v = videoRef.current
     if (!v) return
-    const i = RATES.indexOf(rate)
-    const next = RATES[(i + 1) % RATES.length] ?? 1
     v.playbackRate = next
     setRate(next)
     showChrome()
   }
 
+  function handleSkipSegment() {
+    if (skipKind === 'op' && skipTimes?.op) {
+      didAutoSkipOp.current = true
+      seekTo(skipTimes.op.end)
+    } else if (skipKind === 'ed' && skipTimes?.ed) {
+      didAutoSkipEd.current = true
+      seekTo(skipTimes.ed.end)
+    }
+    setSkipKind(null)
+  }
+
+  function handleNext() {
+    if (anilistId && episode) {
+      dispatchPlayerAction({
+        action: 'nextEpisode',
+        anilistId,
+        episode
+      })
+    }
+    onNextEpisode?.()
+  }
+
   const bufferPct = duration > 0 ? (buffered / duration) * 100 : 0
   const playPct = duration > 0 ? (current / duration) * 100 : 0
+  const qualityLabel = resolution || 'Quality'
 
   return (
     <div
       ref={rootRef}
       className={cn(
-        'relative aspect-video w-full overflow-hidden rounded-xl bg-black select-none',
-        fs && 'rounded-none'
+        'relative flex min-h-[56vw] w-full flex-col overflow-hidden bg-black select-none sm:min-h-[420px]',
+        fs ? 'fixed inset-0 z-50 min-h-screen rounded-none' : 'rounded-none sm:rounded-xl'
       )}
       onMouseMove={() => showChrome()}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest('[data-player-bar]')) return
+        if ((e.target as HTMLElement).closest('[data-player-bar],[data-player-top],[data-skip-pill]'))
+          return
         if (chrome) {
-          if (playing) setChrome(false)
+          if (playing) {
+            setChrome(false)
+            setVolumeOpen(false)
+          }
         } else {
           showChrome(!playing)
         }
@@ -252,7 +422,7 @@ export function VideoPlayer({
     >
       <video
         ref={videoRef}
-        className="size-full object-contain"
+        className="absolute inset-0 size-full object-contain"
         src={src}
         autoPlay
         playsInline
@@ -263,27 +433,70 @@ export function VideoPlayer({
         }}
       />
 
-      {title ? (
-        <div
-          className={cn(
-            'pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-4 py-3 text-sm font-medium text-white transition-opacity duration-200',
-            chrome ? 'opacity-100' : 'opacity-0'
-          )}
+      {/* Top chrome */}
+      <div
+        data-player-top
+        className={cn(
+          'absolute inset-x-0 top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-8 transition-opacity duration-200',
+          chrome ? 'opacity-100' : 'pointer-events-none opacity-0'
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="shrink-0 text-white hover:bg-white/10 hover:text-white"
+          onClick={() => onBack?.()}
+          aria-label="Back"
         >
-          {title}
+          <ChevronLeft className="size-5" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-heading text-base text-white sm:text-lg">{title || 'Saizen'}</p>
+          {sourceLabel ? (
+            <p className="truncate text-xs text-white/55">{sourceLabel}</p>
+          ) : null}
         </div>
-      ) : null}
+        {canNext ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0 gap-1 rounded-full bg-white/10 text-white ring-1 ring-white/15 hover:bg-white/15 hover:text-white"
+            onClick={handleNext}
+          >
+            Next
+            <SkipForward className="size-3.5" />
+          </Button>
+        ) : null}
+      </div>
 
       {error ? (
-        <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 rounded-lg bg-destructive/90 px-3 py-2 text-center text-sm text-white">
+        <div className="absolute inset-x-4 top-1/2 z-20 -translate-y-1/2 rounded-lg bg-destructive/90 px-3 py-2 text-center text-sm text-white">
           {error}
         </div>
       ) : null}
 
+      {skipKind ? (
+        <button
+          type="button"
+          data-skip-pill
+          className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full bg-player-accent px-5 py-2.5 text-sm font-semibold text-[#1a1510] shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:brightness-110"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleSkipSegment()
+          }}
+        >
+          {skipKind === 'op' ? 'Skip Opening' : 'Skip Ending'}
+        </button>
+      ) : null}
+
+      {/* Bottom chrome */}
       <div
         data-player-bar
         className={cn(
-          'absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-3 pt-10 pb-3 transition-opacity duration-200',
+          'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pt-12 pb-[max(0.75rem,env(safe-area-inset-bottom))] transition-opacity duration-200',
           chrome ? 'opacity-100' : 'pointer-events-none opacity-0'
         )}
         onClick={(e) => e.stopPropagation()}
@@ -313,88 +526,191 @@ export function VideoPlayer({
               const next = v[0] ?? 0
               const el = videoRef.current
               if (el) el.currentTime = next
+              if (skipTimes?.op && next < skipTimes.op.start) didAutoSkipOp.current = false
+              if (skipTimes?.ed && next < skipTimes.ed.start) didAutoSkipEd.current = false
               setSeeking(false)
               scheduleHide()
             }}
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="min-h-10 text-white hover:bg-white/10 hover:text-white"
-              onClick={() => seekBy(-10)}
-              aria-label="Back 10s"
-            >
-              −10
-            </Button>
-            <Button
-              type="button"
-              size="icon-lg"
-              className="min-h-11 min-w-11 rounded-full"
-              onClick={togglePlay}
-              aria-label={playing ? 'Pause' : 'Play'}
-            >
-              {playing ? <Pause className="size-5" /> : <Play className="size-5 fill-current" />}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="min-h-10 text-white hover:bg-white/10 hover:text-white"
-              onClick={() => seekBy(10)}
-              aria-label="Forward 10s"
-            >
-              +10
-            </Button>
-            <span className="ml-1 text-xs text-white/85 tabular-nums">
-              {formatTime(current)} / {formatTime(duration)}
-            </span>
-          </div>
+        <div className="mb-2 flex items-center justify-center gap-2 sm:gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="min-h-9 text-white/90 hover:bg-white/10 hover:text-white"
+            onClick={() => seekBy(-5)}
+            aria-label="Back 5s"
+          >
+            −5
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="min-h-9 text-white/90 hover:bg-white/10 hover:text-white"
+            onClick={() => seekBy(-10)}
+            aria-label="Back 10s"
+          >
+            −10
+          </Button>
+          <Button
+            type="button"
+            size="icon-lg"
+            className="min-h-12 min-w-12 rounded-full bg-player-accent text-[#1a1510] hover:bg-player-accent/90"
+            onClick={togglePlay}
+            aria-label={playing ? 'Pause' : 'Play'}
+          >
+            {playing ? <Pause className="size-5" /> : <Play className="size-5 fill-current" />}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="min-h-9 text-white/90 hover:bg-white/10 hover:text-white"
+            onClick={() => seekBy(10)}
+            aria-label="Forward 10s"
+          >
+            +10
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="min-h-9 text-white/90 hover:bg-white/10 hover:text-white"
+            onClick={() => seekBy(5)}
+            aria-label="Forward 5s"
+          >
+            +5
+          </Button>
+        </div>
 
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="min-h-9 text-white hover:bg-white/10 hover:text-white"
-              onClick={cycleRate}
-              aria-label="Playback speed"
-            >
-              {rate === 1 ? '1×' : `${rate}×`}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/10 hover:text-white"
-              onClick={() => {
-                const v = videoRef.current
-                if (v) v.muted = !v.muted
-              }}
-              aria-label={muted ? 'Unmute' : 'Mute'}
-            >
-              {muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
-            </Button>
-            <Slider
-              className="hidden w-24 sm:flex"
-              min={0}
-              max={1}
-              step={0.01}
-              value={[muted ? 0 : volume]}
-              aria-label="Volume"
-              onValueChange={(v) => {
-                const el = videoRef.current
-                if (!el) return
-                const next = v[0] ?? 0
-                el.muted = next === 0
-                el.volume = next
-                showChrome()
-              }}
-            />
+        <div className="mb-2 flex items-center justify-between gap-2 text-xs text-white/80 tabular-nums">
+          <span>
+            {formatTime(current)} / {formatTime(duration)}
+          </span>
+          {torrentLine ? (
+            <span className="max-w-[70%] truncate rounded-full bg-white/10 px-2.5 py-1 ring-1 ring-white/12">
+              {torrentLine}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-full bg-white/10 px-3 text-white ring-1 ring-white/14 hover:bg-white/15 hover:text-white"
+              >
+                {rate === 1 ? '1×' : `${rate}×`}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-28">
+              {RATES.map((r) => (
+                <DropdownMenuItem key={r} onClick={() => setPlaybackRate(r)}>
+                  {r === 1 ? '1×' : `${r}×`}
+                  {r === rate ? ' ✓' : ''}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-full bg-white/10 px-3 text-white ring-1 ring-white/14 hover:bg-white/15 hover:text-white"
+              >
+                {qualityLabel}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-40">
+              <DropdownMenuItem disabled>
+                Current: {resolution || 'unknown'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <div className="relative ml-auto flex items-center gap-1">
+            <div className="relative">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 rounded-full bg-white/10 px-3 text-white ring-1 ring-white/14 hover:bg-white/15 hover:text-white"
+                onClick={() => {
+                  setVolumeOpen((o) => !o)
+                  showChrome(true)
+                }}
+                aria-label="Volume"
+                aria-expanded={volumeOpen}
+              >
+                {muted || volume === 0 ? (
+                  <VolumeX className="size-3.5" />
+                ) : (
+                  <Volume2 className="size-3.5" />
+                )}
+                <span className="tabular-nums">
+                  {muted ? 0 : Math.round(volume * 100)}%
+                </span>
+              </Button>
+              {volumeOpen ? (
+                <div
+                  data-player-bar
+                  className="absolute right-0 bottom-[calc(100%+10px)] z-30 flex w-14 flex-col items-center gap-2 rounded-2xl bg-[#141416]/95 px-2 py-3 ring-1 ring-white/15 backdrop-blur-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="text-[11px] font-medium text-white/80 tabular-nums">
+                    {muted ? 0 : Math.round(volume * 100)}%
+                  </span>
+                  <Slider
+                    orientation="vertical"
+                    className="h-36 w-8 touch-manipulation data-vertical:min-h-36"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={[muted ? 0 : volume]}
+                    aria-label="Volume"
+                    onValueChange={(v) => {
+                      const el = videoRef.current
+                      if (!el) return
+                      const next = v[0] ?? 0
+                      el.muted = next === 0
+                      el.volume = next
+                      setVolume(next)
+                      setMuted(next === 0)
+                      showChrome(true)
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-white hover:bg-white/10 hover:text-white"
+                    onClick={() => {
+                      const el = videoRef.current
+                      if (!el) return
+                      el.muted = !el.muted
+                      setMuted(el.muted)
+                      showChrome(true)
+                    }}
+                    aria-label={muted ? 'Unmute' : 'Mute'}
+                  >
+                    {muted || volume === 0 ? (
+                      <VolumeX className="size-3.5" />
+                    ) : (
+                      <Volume2 className="size-3.5" />
+                    )}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
             <Button
               type="button"
               variant="ghost"

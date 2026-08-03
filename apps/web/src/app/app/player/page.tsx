@@ -1,16 +1,29 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import type { SkipTimes } from '@saizen/shared'
 import { VideoPlayer } from './VideoPlayer'
+import { getWatchSettings } from '@/lib/watch/settings'
+import { dispatchPlayerAction } from '@/lib/watch/playerActions'
+
+type LastStream = {
+  url: string
+  title: string
+  episode: number
+  anilistId?: number
+  idMal?: number | null
+  totalEpisodes?: number | null
+  resolution?: string
+  sourceLabel?: string
+  skipTimes?: SkipTimes | null
+  autoSkipOpEd?: boolean
+  hasNextEpisode?: boolean
+}
 
 export default function PlayerPage() {
-  const [url, setUrl] = useState('')
-  const [title, setTitle] = useState('')
-  const [episode, setEpisode] = useState(0)
-  const [anilistId, setAnilistId] = useState(0)
-  const [idMal, setIdMal] = useState<number | null>(null)
-  const [totalEpisodes, setTotalEpisodes] = useState<number | null>(null)
+  const router = useRouter()
+  const [stream, setStream] = useState<LastStream | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -20,58 +33,68 @@ export default function PlayerPage() {
         setError('No stream queued. Play something from an anime page first.')
         return
       }
-      const data = JSON.parse(raw) as {
-        url: string
-        title: string
-        episode: number
-        anilistId?: number
-        idMal?: number | null
-        totalEpisodes?: number | null
-      }
-      setUrl(data.url)
-      setTitle(data.title)
-      setEpisode(data.episode)
-      setAnilistId(data.anilistId ?? 0)
-      setIdMal(data.idMal ?? null)
-      setTotalEpisodes(data.totalEpisodes ?? null)
+      const data = JSON.parse(raw) as LastStream
+      const settings = getWatchSettings()
+      setStream({
+        ...data,
+        autoSkipOpEd: data.autoSkipOpEd ?? settings.autoSkipOpEd
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }, [])
 
-  const heading = title
-    ? episode
-      ? `${title} · Ep ${episode}`
-      : title
+  function goAnime(action: 'nextEpisode' | 'changeSource') {
+    if (!stream?.anilistId) {
+      router.push('/')
+      return
+    }
+    dispatchPlayerAction({
+      action,
+      anilistId: stream.anilistId,
+      episode: stream.episode
+    })
+    router.push(`/app/anime/?id=${stream.anilistId}`)
+  }
+
+  const heading = stream
+    ? stream.episode
+      ? `${stream.title} · Ep ${stream.episode}`
+      : stream.title
     : 'Player'
 
   return (
-    <div className="mx-auto max-w-5xl space-y-3 px-4 py-4 sm:px-5">
-      <Link
-        href="/"
-        className="inline-flex text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        ← Home
-      </Link>
-      <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{heading}</h1>
-
+    <div className="-mx-4 min-h-[70vh] bg-[#141416] sm:-mx-5">
       {error ? (
-        <p className="text-sm text-destructive">{error}</p>
-      ) : url ? (
-        <>
-          <VideoPlayer
-            src={url}
-            title={heading}
-            anilistId={anilistId || undefined}
-            episode={episode || undefined}
-            idMal={idMal}
-            totalEpisodes={totalEpisodes}
-          />
-          <p className="truncate text-xs text-muted-foreground">{url}</p>
-          <p className="text-xs text-muted-foreground">
-            Space / K play · J / L ±10s · ← → seek · ↑ ↓ volume · M mute · F fullscreen
-          </p>
-        </>
+        <div className="space-y-3 px-4 py-6 sm:px-5">
+          <p className="text-sm text-destructive">{error}</p>
+          <button
+            type="button"
+            className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            onClick={() => router.push('/')}
+          >
+            ← Home
+          </button>
+        </div>
+      ) : stream?.url ? (
+        <VideoPlayer
+          src={stream.url}
+          title={heading}
+          anilistId={stream.anilistId || undefined}
+          episode={stream.episode || undefined}
+          idMal={stream.idMal}
+          totalEpisodes={stream.totalEpisodes}
+          resolution={stream.resolution}
+          sourceLabel={stream.sourceLabel}
+          skipTimes={stream.skipTimes}
+          autoSkipOpEd={stream.autoSkipOpEd}
+          hasNextEpisode={stream.hasNextEpisode}
+          onBack={() => {
+            if (stream.anilistId) router.push(`/app/anime/?id=${stream.anilistId}`)
+            else router.push('/')
+          }}
+          onNextEpisode={() => goAnime('nextEpisode')}
+        />
       ) : null}
     </div>
   )

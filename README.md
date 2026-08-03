@@ -1,10 +1,24 @@
-# Saizen · v1.0
+# Saizen · v1.0.1
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
 ## Changelog
+
+### v1.0.1 — Media player redesign
+
+**Player (native VLC + web)**
+
+- Chrome restyled to match the app (gold accent, glass chips, cinematic scrims)
+- Transport: ±5s / ±10s, play/pause, **Next episode**
+- Speed picker; native **Audio** / **Subs** track sheets; quality chip (current resolution)
+- **Volume** button opens a vertical slider panel (no cramped horizontal slider)
+- Torrent download stats moved into a compact bottom pill (not centered over video)
+- Portrait / landscape layout fixes: volume pinned visible, shorter landscape bar, top bar flush under the safe area
+- AniSkip OP/ED: skip pill while inside an opening/ending; optional **Auto-skip openings & endings** in Settings → Playback (default off)
+- Fixed controls dismissing on every button tap; removed mid-play Sources chip
+- AniSkip client fixed (`episodeLength` required by API); `spawnPlayer` / native contract extended with `skipTimes`, `resolution`, `autoSkipOpEd`, `hasNextEpisode`, and `playerAction` (`nextEpisode`)
 
 ### v1.0 — First release
 
@@ -117,6 +131,8 @@ bash scripts/sync-swift-into-cap.sh
 **Blank WKWebView:** always use `pnpm build` / `pnpm sync:ios` so `scripts/fix-capacitor-html.mjs` rewrites asset URLs for Capacitor.
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
+
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, …) are for in-app / local sideload builds — do not attach a new IPA for those.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

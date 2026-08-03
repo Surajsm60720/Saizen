@@ -11,6 +11,17 @@ export interface MalAuthCodeResponse {
   state: string
 }
 
+/** AniSkip opening/ending interval in seconds. */
+export interface SkipInterval {
+  start: number
+  end: number
+}
+
+export interface SkipTimes {
+  op?: SkipInterval
+  ed?: SkipInterval
+}
+
 export interface SpawnPlayerOptions {
   url: string
   playerHint?: PlayerHint
@@ -19,6 +30,15 @@ export interface SpawnPlayerOptions {
   /** AniList media id — required for native watch-progress events */
   anilistId?: number
   idMal?: number | null
+  /** Current source resolution label (e.g. "1080p"), display-only */
+  resolution?: string
+  /** Short source / release title for the quality chip */
+  sourceLabel?: string
+  totalEpisodes?: number | null
+  hasNextEpisode?: boolean
+  /** From watch settings — when true, seek past OP/ED once on enter */
+  autoSkipOpEd?: boolean
+  skipTimes?: SkipTimes
 }
 
 /** Emitted by SaizenPlayer `playbackProgress` (native → JS). */
@@ -29,6 +49,11 @@ export interface NativePlaybackProgress {
   durationSec: number
   idMal?: number | null
 }
+
+/** Emitted by SaizenPlayer `playerAction` (native → JS). */
+export type NativePlayerAction =
+  | { action: 'nextEpisode'; episode: number; anilistId: number }
+  | { action: 'changeSource'; episode: number; anilistId: number }
 
 /**
  * Capacitor native bridge contract (window.saizen).
@@ -57,6 +82,10 @@ export interface SaizenNative {
   /** Subscribe to native player position updates. Returns unsubscribe. */
   onPlaybackProgress?(
     cb: (progress: NativePlaybackProgress) => void
+  ): Promise<() => void> | (() => void)
+  /** Subscribe to native player UI actions (next ep / change source). */
+  onPlayerAction?(
+    cb: (action: NativePlayerAction) => void
   ): Promise<() => void> | (() => void)
 
   torrentInfo(hash: string): Promise<TorrentInfo>

@@ -15,16 +15,22 @@ import {
   type AnimeMedia
 } from '@/lib/anilist'
 import { fetchThemesByAniListId, type AnimeThemeTrack } from '@/lib/animethemes'
+import { fetchSkipTimes } from '@/lib/aniskip'
 import { fetchAniZipEpisodes, type AniZipEpisode } from '@/lib/anizip/episodes'
 import { fetchJikanEpisodeList, type JikanEpisodeDetail } from '@/lib/jikan/episodes'
 import { ensureExtensions, searchExtensions, rankScore } from '@/lib/extensions'
 import { searchAllProviders, type ProviderResult } from '@/lib/providers'
 import getNative from '@/lib/native'
-import type { TorrentInfo } from '@saizen/shared'
+import type { NativePlayerAction, SkipTimes, TorrentInfo } from '@saizen/shared'
 import { recordContinueWatching } from '@/lib/watch/continue'
 import { getProbedDurationSec } from '@/lib/watch/episodeMeta'
 import { isEpisodeWatched } from '@/lib/watch/progress'
 import { setActivePlayback } from '@/lib/watch/activePlayback'
+import { getWatchSettings } from '@/lib/watch/settings'
+import {
+  consumePendingPlayerAction,
+  onPlayerAction
+} from '@/lib/watch/playerActions'
 import {
   AnimeHeader,
   EpisodeList,
@@ -399,6 +405,29 @@ function AnimeDetail() {
     [media]
   )
 
+  useEffect(() => {
+    if (!media || !episodes.length) return
+
+    function handleAction(action: NativePlayerAction) {
+      if (action.anilistId !== media!.id) return
+      if (action.action === 'nextEpisode') {
+        const nextNum = action.episode + 1
+        const next = episodes.find((e) => e.number === nextNum && !e.unreleased)
+        if (next) void searchSources(next)
+        return
+      }
+      if (action.action === 'changeSource') {
+        const current = episodes.find((e) => e.number === action.episode && !e.unreleased)
+        if (current) void searchSources(current)
+      }
+    }
+
+    const pending = consumePendingPlayerAction()
+    if (pending) handleAction(pending)
+
+    return onPlayerAction(handleAction)
+  }, [media, episodes, searchSources])
+
   async function openTrailer() {
     if (!media) return
     const url = trailerWatchUrl(media.trailer)
@@ -433,21 +462,42 @@ function AnimeDetail() {
       const file = files[0]
       if (!file?.url) throw new Error('playTorrent returned no stream URL')
 
+      const watch = getWatchSettings()
+      const totalEpisodes = media.episodes ?? null
+      const hasNextEpisode =
+        typeof totalEpisodes === 'number' &&
+        totalEpisodes > 0 &&
+        selected.number < totalEpisodes
+
+      let skipTimes: SkipTimes | null = null
+      if (media.idMal) {
+        const probed = getProbedDurationSec(media.id, selected.number)
+        const approxSec =
+          probed ?? (media.duration != null && media.duration > 0 ? media.duration * 60 : 0)
+        skipTimes = await fetchSkipTimes(media.idMal, selected.number, approxSec)
+      }
+
       recordContinueWatching(media, selected.number)
       setActivePlayback({
         anilistId: media.id,
         episode: selected.number,
         idMal: media.idMal ?? null,
-        totalEpisodes: media.episodes ?? null
+        totalEpisodes
       })
       setStatus(`Stream ready (${file.playerHint}) — opening player`)
       await native.spawnPlayer({
         url: file.url,
         playerHint: file.playerHint,
-        title: displayTitle(media),
+        title: `${displayTitle(media)} · Ep ${selected.number}`,
         episode: selected.number,
         anilistId: media.id,
-        idMal: media.idMal ?? null
+        idMal: media.idMal ?? null,
+        resolution: result.resolution,
+        sourceLabel: result.title,
+        totalEpisodes,
+        hasNextEpisode,
+        autoSkipOpEd: watch.autoSkipOpEd,
+        skipTimes: skipTimes ?? undefined
       })
 
       if (!native.isApp) {
@@ -459,7 +509,12 @@ function AnimeDetail() {
             episode: selected.number,
             anilistId: media.id,
             idMal: media.idMal ?? null,
-            totalEpisodes: media.episodes ?? null,
+            totalEpisodes,
+            resolution: result.resolution,
+            sourceLabel: result.title,
+            skipTimes,
+            autoSkipOpEd: watch.autoSkipOpEd,
+            hasNextEpisode,
             playerHint: file.playerHint
           })
         )

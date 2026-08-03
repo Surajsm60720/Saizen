@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.0'
+export const APP_VERSION = '1.0.1'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,22 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.0.1',
+    date: '2026-08-03',
+    title: 'Media player redesign',
+    highlights: [
+      'Native VLC + web players rebuilt to match Saizen glass/gold chrome',
+      'Transport controls: ±5s / ±10s, play/pause, next episode',
+      'Speed picker; native audio & subtitle track selection; quality chip',
+      'Volume button opens a vertical slider panel (replaces cramped horizontal slider)',
+      'Torrent download stats in a compact bottom pill instead of center overlay',
+      'AniSkip opening/ending skip pill; optional auto-skip in Settings → Playback',
+      'Portrait & landscape chrome fixes: pinned volume, shorter landscape bar, tight top header',
+      'Fixed controls dismissing on every button tap; removed mid-play Sources chip',
+      'AniSkip client fixed (required episodeLength); spawnPlayer contract extended for skip times & player actions'
+    ]
+  },
   {
     version: '1.0',
     date: '2026-08-02',

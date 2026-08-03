@@ -28,7 +28,8 @@ import { APP_VERSION_LABEL } from '@/lib/version'
 export default function SettingsPage() {
   const [settings, setSettings] = useState<WatchSettings>(() => ({
     markWatchedAtPercent: 90,
-    continueWatchingEnabled: true
+    continueWatchingEnabled: true,
+    autoSkipOpEd: false
   }))
   const [anilistOn, setAnilistOn] = useState(false)
   const [malOn, setMalOn] = useState(false)
@@ -98,7 +99,17 @@ export default function SettingsPage() {
 
       <div className="space-y-5">
         <SettingsGroup title="Playback" description="Defaults for the native and web players.">
-          <SettingsRow label="Prefer VLC for MKV / HEVC" hint="Recommended on iOS">
+          <SettingsRow
+            label="Auto-skip openings & endings"
+            hint="Uses AniSkip timestamps when available"
+          >
+            <Switch
+              checked={settings.autoSkipOpEd}
+              onCheckedChange={(v) => patch({ autoSkipOpEd: v })}
+              aria-label="Auto-skip openings and endings"
+            />
+          </SettingsRow>
+          <SettingsRow label="Prefer VLC for MKV / HEVC" hint="Recommended on iOS" showSeparator>
             <Switch defaultChecked aria-label="Prefer VLC" />
           </SettingsRow>
           <SettingsRow label="Early open" hint="Launch player as soon as a stream URL exists" showSeparator>
