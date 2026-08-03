@@ -1,6 +1,7 @@
 /** AnimeThemes.moe — public read API for OP/ED clips. No auth required. */
 
 const BASE = 'https://api.animethemes.moe'
+const SITE = 'https://animethemes.moe'
 
 export type ThemeKind = 'OP' | 'ED' | 'IN' | 'OTHER'
 
@@ -12,6 +13,10 @@ export interface AnimeThemeTrack {
   title: string
   videoUrl: string | null
   resolution: number | null
+  /** AnimeThemes anime slug (underscored), e.g. cowboy_bebop */
+  animeSlug: string | null
+  /** Public AnimeThemes anime page (theme deep-links 404; anime page is canonical). */
+  pageUrl: string | null
 }
 
 type ApiVideo = {
@@ -54,7 +59,14 @@ function mapKind(type?: string | null): ThemeKind {
   return 'OTHER'
 }
 
-function normalizeThemes(themes: ApiTheme[]): AnimeThemeTrack[] {
+function animePageUrl(animeSlug: string | null | undefined): string | null {
+  const slug = animeSlug?.trim()
+  if (!slug) return null
+  return `${SITE}/anime/${encodeURIComponent(slug)}`
+}
+
+function normalizeThemes(themes: ApiTheme[], animeSlug: string | null): AnimeThemeTrack[] {
+  const pageUrl = animePageUrl(animeSlug)
   const out: AnimeThemeTrack[] = []
   for (const theme of themes) {
     const entries = theme.animethemeentries ?? []
@@ -67,7 +79,9 @@ function normalizeThemes(themes: ApiTheme[]): AnimeThemeTrack[] {
       slug: theme.slug || `${theme.type ?? 'T'}${theme.sequence ?? ''}`,
       title: theme.song?.title?.trim() || theme.slug || 'Theme',
       videoUrl: best?.link ?? null,
-      resolution: best?.resolution ?? null
+      resolution: best?.resolution ?? null,
+      animeSlug,
+      pageUrl
     })
   }
   const rank = (k: ThemeKind) => (k === 'OP' ? 0 : k === 'ED' ? 1 : k === 'IN' ? 2 : 3)
@@ -103,8 +117,9 @@ export async function fetchThemesByAniListId(
   const data = (await res.json()) as { anime?: ApiAnime[] }
   const anime = data.anime?.[0]
   if (!anime?.animethemes?.length) return []
+  const animeSlug = anime.slug?.trim() || null
   // Prefer OP/ED; cap so long-running series don't flood the page
-  return normalizeThemes(anime.animethemes)
+  return normalizeThemes(anime.animethemes, animeSlug)
     .filter((t) => t.kind === 'OP' || t.kind === 'ED')
     .slice(0, 24)
 }

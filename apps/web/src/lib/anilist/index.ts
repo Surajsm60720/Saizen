@@ -62,3 +62,14 @@ export {
   listStoryRelations
 } from './franchise'
 export type { RelatedTitle, FranchiseGraph, FranchiseNode, FranchiseEdge } from './franchise'
+export {
+  fetchAiringSchedulesInRange,
+  fetchWeekSchedule,
+  clearWeekScheduleCache
+} from './schedule'
+export type {
+  AiringScheduleItem,
+  ScheduleMedia,
+  WeekScheduleResult,
+  WeekScheduleMode
+} from './schedule'

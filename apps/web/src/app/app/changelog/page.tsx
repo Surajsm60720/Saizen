@@ -30,7 +30,7 @@ export default function ChangelogPage() {
             className="rounded-2xl border border-border/60 bg-card/30 px-4 py-4"
           >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-heading text-xl tracking-tight">
+              <h2 className="text-section text-[1.25rem]">
                 v{entry.version}
                 <span className="ml-2 text-base text-muted-foreground">{entry.title}</span>
               </h2>

@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.0.2'
+export const APP_VERSION = '1.0.3'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,19 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.0.3',
+    date: '2026-08-03',
+    title: 'Typography, themes & airing calendar',
+    highlights: [
+      'Typography: Fraunces for titles + DM Sans for UI, with shared type roles (brand, hero, page, section, body, meta)',
+      'Schedule calendar in the main tab bar (replaces Client): week strip with Mon–Sun labels and local date cells',
+      'Smart local air times — AniList airing timestamps mapped to your device timezone and weekday',
+      'My list / Season toggle — Watching & Rewatching, or the full current-season airing board',
+      'Opening & Ending rows: play AnimeThemes clips and open the AnimeThemes anime page',
+      'Client / torrent-stats screen removed from primary navigation'
+    ]
+  },
   {
     version: '1.0.2',
     date: '2026-08-03',

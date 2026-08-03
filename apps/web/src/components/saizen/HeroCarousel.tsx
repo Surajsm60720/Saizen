@@ -79,7 +79,7 @@ export function HeroCarousel({
         >
           <h1
             key={featured.id}
-            className="font-heading max-w-[16ch] animate-in fade-in-0 slide-in-from-bottom-2 duration-500 text-[1.85rem] leading-[1.1] tracking-tight sm:max-w-[20ch] sm:text-4xl"
+            className="text-hero-title max-w-[16ch] animate-in fade-in-0 slide-in-from-bottom-2 duration-500 sm:max-w-[20ch]"
             title={displayTitle(featured)}
           >
             {name}

@@ -1,18 +1,17 @@
 import type { Metadata, Viewport } from 'next'
-import { Instrument_Sans, Instrument_Serif } from 'next/font/google'
+import { DM_Sans, Fraunces } from 'next/font/google'
 import './globals.css'
 import { AppShell } from './AppShell'
 import { cn } from '@/lib/utils'
 
-const sans = Instrument_Sans({
+const sans = DM_Sans({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap'
 })
 
-const display = Instrument_Serif({
+const display = Fraunces({
   subsets: ['latin'],
-  weight: '400',
   variable: '--font-heading',
   display: 'swap'
 })

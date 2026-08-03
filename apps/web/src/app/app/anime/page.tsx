@@ -750,7 +750,7 @@ function AnimeDetail() {
             <div className="flex items-end justify-between gap-2">
               <div>
                 <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
-                <h2 className="font-heading text-2xl tracking-tight sm:text-[1.7rem]">
+                <h2 className="text-section">
                   Episodes
                 </h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
@@ -832,10 +832,10 @@ function AnimeDetail() {
         <TabsContent value="franchise" className="space-y-5">
           <div>
             <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
-            <h2 className="font-heading text-2xl tracking-tight sm:text-[1.7rem]">
+            <h2 className="text-section">
               Relations
             </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="text-meta mt-0.5">
               Watch order from AniList prequel/sequel links — same graph as before, cards only
             </p>
           </div>

@@ -262,32 +262,12 @@ export default function SettingsPage() {
 
         <SettingsGroup title="More">
           <Link
-            href="/app/schedule/"
-            className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
-          >
-            <div>
-              <div className="text-sm font-medium">Schedule</div>
-              <div className="text-xs text-muted-foreground">Airing calendar</div>
-            </div>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-          <Link
             href="/app/extensions/"
-            className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
+            className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
           >
             <div>
               <div className="text-sm font-medium">Extensions</div>
               <div className="text-xs text-muted-foreground">Torrent catalogs</div>
-            </div>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-          <Link
-            href="/app/client/"
-            className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
-          >
-            <div>
-              <div className="text-sm font-medium">Torrent client</div>
-              <div className="text-xs text-muted-foreground">Peers, speed, buffer</div>
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>

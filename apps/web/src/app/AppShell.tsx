@@ -7,7 +7,7 @@ import {
   Home,
   Search,
   Puzzle,
-  HardDrive,
+  CalendarDays,
   MoreHorizontal
 } from 'lucide-react'
 import { installSaizenBridge } from '@/lib/native/bridge'
@@ -27,10 +27,10 @@ const primaryNav = [
     match: (p: string) => p.startsWith('/app/search')
   },
   {
-    href: '/app/client/',
-    label: 'Client',
-    icon: HardDrive,
-    match: (p: string) => p.startsWith('/app/client')
+    href: '/app/schedule/',
+    label: 'Schedule',
+    icon: CalendarDays,
+    match: (p: string) => p.startsWith('/app/schedule')
   },
   {
     href: '/app/extensions/',
@@ -43,9 +43,7 @@ const primaryNav = [
     label: 'More',
     icon: MoreHorizontal,
     match: (p: string) =>
-      p.startsWith('/app/settings') ||
-      p.startsWith('/app/schedule') ||
-      p.startsWith('/app/changelog')
+      p.startsWith('/app/settings') || p.startsWith('/app/changelog')
   }
 ] as const
 
@@ -57,14 +55,14 @@ const desktopNav = [
     match: (p: string) => p.startsWith('/app/search')
   },
   {
+    href: '/app/schedule/',
+    label: 'Schedule',
+    match: (p: string) => p.startsWith('/app/schedule')
+  },
+  {
     href: '/app/extensions/',
     label: 'Extensions',
     match: (p: string) => p.startsWith('/app/extensions')
-  },
-  {
-    href: '/app/client/',
-    label: 'Client',
-    match: (p: string) => p.startsWith('/app/client')
   },
   {
     href: '/app/settings/',
@@ -169,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               href="/"
               draggable={false}
-              className="font-heading text-2xl tracking-tight text-foreground transition-opacity hover:opacity-90"
+              className="text-brand text-foreground transition-opacity hover:opacity-90"
               tabIndex={immersiveHeader && headerFaded ? -1 : undefined}
             >
               Saizen

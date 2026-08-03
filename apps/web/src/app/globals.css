@@ -130,6 +130,65 @@
   --font-heading: var(--font-heading), ui-serif, Georgia, "Times New Roman", serif;
 }
 
+/* Role-based type scale — Fraunces (heading) + DM Sans (UI/body) */
+@utility text-brand {
+  font-family: var(--font-heading), ui-serif, Georgia, serif;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+@utility text-hero-title {
+  font-family: var(--font-heading), ui-serif, Georgia, serif;
+  font-size: 1.85rem;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+@utility text-page-title {
+  font-family: var(--font-heading), ui-serif, Georgia, serif;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+@utility text-section {
+  font-family: var(--font-heading), ui-serif, Georgia, serif;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+@utility text-subhead {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+@utility text-body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+@utility text-meta {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+}
+
+@media (min-width: 640px) {
+  .text-brand {
+    font-size: 1.5rem;
+  }
+  .text-hero-title {
+    font-size: 2.25rem;
+  }
+  .text-page-title {
+    font-size: 1.75rem;
+  }
+  .text-section {
+    font-size: 1.5rem;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -31,9 +31,9 @@ export function PersonRail({
     <section className={cn('space-y-3.5', className)}>
       <div>
         <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
-        <h2 className="font-heading text-2xl tracking-tight sm:text-[1.7rem]">{title}</h2>
+        <h2 className="text-section">{title}</h2>
         {subtitle ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+          <p className="text-meta mt-0.5">{subtitle}</p>
         ) : null}
       </div>
       <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:px-5">

@@ -83,14 +83,13 @@ export function PageHeader({
       <div className="min-w-0">
         <h1
           className={cn(
-            'font-heading tracking-tight',
-            dense ? 'text-2xl' : 'text-3xl sm:text-4xl'
+            dense ? 'text-page-title' : 'text-hero-title'
           )}
         >
           {title}
         </h1>
         {description ? (
-          <div className="mt-1.5 text-sm text-muted-foreground">{description}</div>
+          <div className="text-subhead mt-1.5">{description}</div>
         ) : null}
       </div>
       {action}

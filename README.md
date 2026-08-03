@@ -1,10 +1,28 @@
-# Saizen · v1.0.2
+# Saizen · v1.0.3
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
 ## Changelog
+
+### v1.0.3 — Typography, themes & airing calendar
+
+**Typography**
+
+- Display font **Fraunces** + UI/body **DM Sans** (replaces Instrument)
+- Shared type roles in CSS: brand, hero title, page title, section, subhead, body, meta — used across Home, anime, rails, settings, schedule
+
+**Schedule**
+
+- Bottom / desktop nav: **Schedule** replaces the Client tab
+- Week calendar strip (Mon–Sun + local dates); airings placed by **device-local** weekday and clock time
+- **My list** (Watching / Rewatching) and **Season** (full current-season airing board) toggle
+- Day agenda timeline with local times; tap a row to open the anime page
+
+**Opening & Ending**
+
+- AnimeThemes clips still open on tap; secondary control opens the AnimeThemes anime page
 
 ### v1.0.2 — Cast, relations & list editing
 
@@ -21,6 +39,7 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 - AniList Home rails and list progress use a corrected score field (broken GraphQL selection had emptied rails)
 - After AniList sign-in (and Settings → Refresh list), viewer lists warm so episode marks and Home rails match the account
 - Offline episode completions flush to connected providers when you reconnect
+- MAL sign-in token exchange runs natively (URLSession + PKCE). Register the MAL API app as **iOS** or **other** (public client — no secret); redirect `saizen://mal/callback`
 
 **Fixes**
 
@@ -57,7 +76,7 @@ Full test matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
 
 ## Status
 
-Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, plus AniList/MAL sign-in and bidirectional list/progress sync.
+Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, AniList/MAL sign-in and list sync, plus Schedule (local airing calendar).
 
 This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
@@ -138,7 +157,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, `1.0.2`, …) are for in-app / local sideload builds — do not attach a new IPA for those.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, `1.0.2`, `1.0.3`, …) are for in-app / local sideload builds — do not attach a new IPA for those.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

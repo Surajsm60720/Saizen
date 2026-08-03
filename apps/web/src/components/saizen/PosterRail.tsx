@@ -15,8 +15,8 @@ export function PosterRail({
     <section className={cn(dense ? 'mt-6' : 'mt-8 sm:mt-10', className)}>
       <h2
         className={cn(
-          'mb-3.5 font-heading tracking-tight',
-          dense ? 'text-xl' : 'text-2xl sm:text-[1.7rem]'
+          'mb-3.5',
+          dense ? 'text-section text-[1.25rem]' : 'text-section'
         )}
       >
         {title}
