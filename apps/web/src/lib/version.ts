@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.1.0'
+export const APP_VERSION = '1.1.1'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.1.1',
+    date: '2026-08-04',
+    title: 'Search filters',
+    highlights: [
+      'Search Filters sheet: genre dropdown, year (1900+), season, format, status, sort, and In my list',
+      'Filters control sits beside the Search title so the title field stays full-width',
+      'Active filter chips under the search bar — tap to remove; Clear all resets',
+      'Browse by filters alone (title optional); Load more pagination',
+      'AniList filter queries omit unused nulls and fall back from Best match → Popularity when there’s no title'
+    ]
+  },
   {
     version: '1.1.0',
     date: '2026-08-04',

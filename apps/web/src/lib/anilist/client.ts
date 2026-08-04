@@ -264,6 +264,110 @@ export async function fetchPopular(page = 1, perPage = 24): Promise<AnimeMedia[]
 
 export type AniSeason = 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL'
 
+export type MediaFormat =
+  | 'TV'
+  | 'TV_SHORT'
+  | 'MOVIE'
+  | 'SPECIAL'
+  | 'OVA'
+  | 'ONA'
+  | 'MUSIC'
+
+export type MediaStatusFilter =
+  | 'FINISHED'
+  | 'RELEASING'
+  | 'NOT_YET_RELEASED'
+  | 'CANCELLED'
+  | 'HIATUS'
+
+export type MediaSortOption =
+  | 'SEARCH_MATCH'
+  | 'TRENDING_DESC'
+  | 'POPULARITY_DESC'
+  | 'SCORE_DESC'
+  | 'START_DATE_DESC'
+  | 'START_DATE'
+  | 'TITLE_ROMAJI'
+  | 'TITLE_ENGLISH'
+
+/** Client-side only — applied after AniList results using the viewer list cache. */
+export type ListMembershipFilter = 'any' | 'in' | 'out'
+
+export type AnimeSearchFilters = {
+  genres: string[]
+  seasonYear: number | null
+  season: AniSeason | null
+  format: MediaFormat | null
+  status: MediaStatusFilter | null
+  sort: MediaSortOption
+  listMembership: ListMembershipFilter
+}
+
+export const DEFAULT_SEARCH_FILTERS: AnimeSearchFilters = {
+  genres: [],
+  seasonYear: null,
+  season: null,
+  format: null,
+  status: null,
+  sort: 'SEARCH_MATCH',
+  listMembership: 'any'
+}
+
+export const MEDIA_FORMAT_OPTIONS: Array<{ value: MediaFormat; label: string }> = [
+  { value: 'TV', label: 'TV' },
+  { value: 'TV_SHORT', label: 'TV Short' },
+  { value: 'MOVIE', label: 'Movie' },
+  { value: 'SPECIAL', label: 'Special' },
+  { value: 'OVA', label: 'OVA' },
+  { value: 'ONA', label: 'ONA' },
+  { value: 'MUSIC', label: 'Music' }
+]
+
+export const MEDIA_STATUS_OPTIONS: Array<{ value: MediaStatusFilter; label: string }> = [
+  { value: 'FINISHED', label: 'Finished' },
+  { value: 'RELEASING', label: 'Releasing' },
+  { value: 'NOT_YET_RELEASED', label: 'Not yet released' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'HIATUS', label: 'Hiatus' }
+]
+
+export const MEDIA_SORT_OPTIONS: Array<{ value: MediaSortOption; label: string }> = [
+  { value: 'SEARCH_MATCH', label: 'Best match' },
+  { value: 'TRENDING_DESC', label: 'Trending' },
+  { value: 'POPULARITY_DESC', label: 'Popularity' },
+  { value: 'SCORE_DESC', label: 'Score' },
+  { value: 'START_DATE_DESC', label: 'Newest release' },
+  { value: 'START_DATE', label: 'Oldest release' },
+  { value: 'TITLE_ROMAJI', label: 'Title (romaji)' },
+  { value: 'TITLE_ENGLISH', label: 'Title (English)' }
+]
+
+export const SEASON_OPTIONS: Array<{ value: AniSeason; label: string }> = [
+  { value: 'WINTER', label: 'Winter' },
+  { value: 'SPRING', label: 'Spring' },
+  { value: 'SUMMER', label: 'Summer' },
+  { value: 'FALL', label: 'Fall' }
+]
+
+export function searchYearOptions(now = new Date()): number[] {
+  const max = now.getFullYear() + 1
+  const years: number[] = []
+  for (let y = max; y >= 1900; y--) years.push(y)
+  return years
+}
+
+export function countActiveSearchFilters(f: AnimeSearchFilters): number {
+  let n = 0
+  if (f.genres.length) n += 1
+  if (f.seasonYear != null) n += 1
+  if (f.season) n += 1
+  if (f.format) n += 1
+  if (f.status) n += 1
+  if (f.sort !== 'SEARCH_MATCH') n += 1
+  if (f.listMembership !== 'any') n += 1
+  return n
+}
+
 export function currentAniSeason(date = new Date()): { season: AniSeason; year: number } {
   const month = date.getMonth() + 1
   const year = date.getFullYear()
@@ -345,24 +449,110 @@ export async function fetchAnime(id: number): Promise<AnimeMedia | null> {
   return media
 }
 
+export type SearchAnimeOpts = {
+  includeAdult?: boolean
+  genres?: string[]
+  season?: AniSeason | null
+  seasonYear?: number | null
+  format?: MediaFormat | null
+  status?: MediaStatusFilter | null
+  sort?: MediaSortOption | MediaSortOption[] | null
+}
+
+export type SearchAnimeResult = {
+  media: AnimeMedia[]
+  hasNextPage: boolean
+  currentPage: number
+}
+
+let genreCache: string[] | null = null
+
+/** AniList genre list for search filters (module-cached). */
+export async function fetchAniListGenres(): Promise<string[]> {
+  if (genreCache?.length) return genreCache
+  const query = `
+    query {
+      GenreCollection
+    }
+  `
+  const result = await anilist.query(query, {}).toPromise()
+  if (result.error) throw result.error
+  const list = (result.data?.GenreCollection ?? []) as string[]
+  genreCache = list.filter((g) => typeof g === 'string' && g.length > 0).sort((a, b) => a.localeCompare(b))
+  return genreCache
+}
+
 export async function searchAnime(
   term: string,
   page = 1,
-  opts?: { includeAdult?: boolean }
-): Promise<AnimeMedia[]> {
+  opts?: SearchAnimeOpts
+): Promise<SearchAnimeResult> {
   const includeAdult = opts?.includeAdult === true
+  const genres = (opts?.genres ?? []).filter(Boolean)
+  const q = term.trim()
+
+  const sortRaw = opts?.sort
+  let sort: MediaSortOption[]
+  if (Array.isArray(sortRaw) && sortRaw.length) {
+    sort = sortRaw
+  } else if (typeof sortRaw === 'string') {
+    sort = [sortRaw]
+  } else if (q) {
+    sort = ['SEARCH_MATCH']
+  } else {
+    sort = ['POPULARITY_DESC']
+  }
+  // SEARCH_MATCH with no search string always returns [] on AniList.
+  if (!q && sort.length === 1 && sort[0] === 'SEARCH_MATCH') {
+    sort = ['POPULARITY_DESC']
+  }
+
+  // Only declare/pass filters that are set. Explicit `null` args (e.g. search: null)
+  // make AniList return empty pages for many filter combos.
+  const decls = ['$page: Int']
+  const mediaArgs = ['type: ANIME']
+  const variables: Record<string, unknown> = { page }
+
+  const add = (name: string, gqlType: string, value: unknown) => {
+    if (value === null || value === undefined) return
+    if (Array.isArray(value) && value.length === 0) return
+    decls.push(`$${name}: ${gqlType}`)
+    mediaArgs.push(`${name}: $${name}`)
+    variables[name] = value
+  }
+
+  add('search', 'String', q || null)
+  add('genre_in', '[String]', genres.length ? genres : null)
+  add('season', 'MediaSeason', opts?.season ?? null)
+  add('seasonYear', 'Int', opts?.seasonYear ?? null)
+  add('format', 'MediaFormat', opts?.format ?? null)
+  add('status', 'MediaStatus', opts?.status ?? null)
+  add('sort', '[MediaSort]', sort)
+  // Omit isAdult when including adult — null/omitted returns both; false excludes adult.
+  if (!includeAdult) add('isAdult', 'Boolean', false)
+
   const query = `
-    query ($page: Int, $search: String) {
+    query (${decls.join(', ')}) {
       Page(page: $page, perPage: 24) {
-        media(type: ANIME, search: $search, sort: SEARCH_MATCH${includeAdult ? '' : ', isAdult: false'}) {
+        pageInfo {
+          hasNextPage
+          currentPage
+        }
+        media(${mediaArgs.join(', ')}) {
           ${MEDIA_FIELDS}
         }
       }
     }
   `
-  const result = await anilist.query(query, { page, search: term }).toPromise()
+
+  const result = await anilist.query(query, variables).toPromise()
   if (result.error) throw result.error
-  return (result.data?.Page?.media ?? []) as AnimeMedia[]
+  const pageData = result.data?.Page
+  return {
+    media: (pageData?.media ?? []) as AnimeMedia[],
+    hasNextPage: Boolean(pageData?.pageInfo?.hasNextPage),
+    currentPage: Number(pageData?.pageInfo?.currentPage ?? page)
+  }
 }
 
 export function displayTitle(media: {

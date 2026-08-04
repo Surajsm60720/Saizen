@@ -1,4 +1,4 @@
-# Saizen · v1.1.0
+# Saizen · v1.1.1
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
@@ -6,11 +6,12 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 
 ## What’s new since v1.0
 
-Major changes from **v1.0 → v1.1.0** (patch detail lives in-app under Settings → Changelog):
+Major changes from **v1.0 → v1.1.1** (patch detail lives in-app under Settings → Changelog):
 
 - **Player** — native VLC + web chrome redesign; ±seek / next episode; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
 - **Schedule** — week airing calendar in the tab bar (device-local times); My list vs current season
 - **Anime detail** — character / VA / staff rails + detail pages; franchise watch-order Relations; edit list entry (AniList + MAL); **Continue watching EP xx**; OP/ED song names
+- **Search** — Filters sheet (genre dropdown, year, season, format, status, sort, in-my-list); header Filters button; active chips + clear all; filter-only browse + Load more
 - **Accounts & lists** — AniList / MAL Sign in (PKCE, Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Typography** — Fraunces + DM Sans across the UI
 - **Sources** — Hayase extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
@@ -20,7 +21,7 @@ Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md)
 
 ## Status
 
-Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, and adult index mirror failover.
+Proven on a physical iPhone for browse → search filters → sources → torrent/HTTP stream → VLC playback, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, and adult index mirror failover.
 
 This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
