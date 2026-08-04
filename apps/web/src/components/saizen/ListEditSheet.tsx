@@ -213,7 +213,8 @@ export function ListEditSheet({
   }
 
   async function onDelete() {
-    if (!entryId && !idMal) {
+    // Allow delete from hint/cache even when a live re-fetch failed.
+    if (!entryId && !idMal && !mediaId) {
       onSaved(null)
       onOpenChange(false)
       return
@@ -226,8 +227,11 @@ export function ListEditSheet({
         anilistMediaId: mediaId,
         idMal
       })
-      if (res.anilist === 'error' && res.mal === 'error') {
-        throw new Error(res.errors[0] || 'Failed to delete list entry')
+      if (res.anilist !== 'ok' && res.mal !== 'ok') {
+        throw new Error(
+          res.errors[0] ||
+            'Could not delete this entry from AniList or MAL. Check your connection and try again.'
+        )
       }
       onSaved(null)
       onOpenChange(false)
@@ -344,11 +348,11 @@ export function ListEditSheet({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
           <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-            {entryId || idMal ? (
+            {entryId || idMal || mediaId ? (
               <Button
                 type="button"
                 variant="destructive"
-                disabled={saving || !ready}
+                disabled={saving || (!ready && !entryId && !idMal)}
                 onClick={() => void onDelete()}
               >
                 Delete

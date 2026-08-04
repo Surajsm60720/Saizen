@@ -1,2 +1,7 @@
-export { fetchThemesByAniListId } from './client'
-export type { AnimeThemeTrack, ThemeKind } from './client'
+export { fetchThemesByAniListId, titleSearchThemes, ThemesFetchError } from './client'
+export type {
+  AnimeThemeTrack,
+  ThemeKind,
+  ThemeStreamSite,
+  ThemesFetchResult
+} from './client'

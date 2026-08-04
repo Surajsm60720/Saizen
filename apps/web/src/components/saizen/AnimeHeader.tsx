@@ -22,6 +22,8 @@ export function AnimeHeader({
   onTrailer,
   onEditList,
   listStatusLabel,
+  onContinueWatching,
+  continueEpisode,
   className
 }: {
   title: string
@@ -44,6 +46,10 @@ export function AnimeHeader({
   onEditList?: (() => void) | null
   /** User list status label, e.g. Watching */
   listStatusLabel?: string | null
+  /** Jump to sources for the resume episode */
+  onContinueWatching?: (() => void) | null
+  /** Episode number shown on the continue CTA */
+  continueEpisode?: number | null
   backHref?: string
   className?: string
 }) {
@@ -136,8 +142,19 @@ export function AnimeHeader({
                 ) : null}
               </div>
             ) : null}
-            {onTrailer || onEditList ? (
+            {onContinueWatching || onTrailer || onEditList ? (
               <div className="mt-3 flex flex-wrap gap-2">
+                {onContinueWatching && continueEpisode != null ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={onContinueWatching}
+                  >
+                    <Play className="size-3.5 fill-current" />
+                    Continue watching EP {continueEpisode}
+                  </Button>
+                ) : null}
                 {onTrailer ? (
                   <Button
                     type="button"

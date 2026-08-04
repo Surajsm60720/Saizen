@@ -19,12 +19,36 @@ function guessResolution(title: string): string | undefined {
   return m ? `${m[1]}p` : undefined
 }
 
+/** Compact alphanumerics for fuzzy title matching (romaji + CJK). */
+function compactTitle(s: string): string {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+}
+
+function resultMatchesTitles(resultTitle: string, titles: string[]): boolean {
+  if (!titles.length) return true
+  const hay = resultTitle.toLowerCase()
+  const hayCompact = compactTitle(resultTitle)
+  for (const t of titles) {
+    const raw = t.trim()
+    if (raw.length < 3 || raw === 'MediaTitle') continue
+    if (hay.includes(raw.toLowerCase())) return true
+    const c = compactTitle(raw)
+    if (c.length >= 4 && hayCompact.includes(c)) return true
+  }
+  return false
+}
+
 function normalizeResult(
   ext: LoadedExtension,
   raw: ExtensionTorrentResult
 ): ProviderResult | null {
   const title = raw.title || 'Unknown'
-  const hash = raw.hash && raw.hash !== '?' && raw.hash !== '<redacted>' ? raw.hash : undefined
+  const rawHash = raw.hash && raw.hash !== '?' && raw.hash !== '<redacted>' ? raw.hash.trim() : ''
+  // Only trust real BTIH shapes — junk "hash" fields must not block a good torrent URL.
+  const hash =
+    rawHash && (/^[a-fA-F0-9]{40}$/.test(rawHash) || /^[a-zA-Z0-9]{32}$/.test(rawHash))
+      ? rawHash
+      : undefined
   const link = (raw.link ?? '').trim()
 
   let magnet: string | undefined
@@ -37,25 +61,31 @@ function normalizeResult(
     try {
       magnet = magnetFromInfoHash(hash, title)
     } catch {
-      return null
+      /* fall through to link */
     }
-  } else if (/^https?:\/\//i.test(link)) {
-    if (/\.torrent(\?|$)/i.test(link) || /\/download/i.test(link) || /torrent_url/i.test(link)) {
-      torrentUrl = link
-    } else {
-      // Bare HTML tracker pages without a hash are not playable.
-      torrentUrl = link
-    }
-  } else if (/^[a-fA-F0-9]{40}$/i.test(link) || /^[a-zA-Z0-9]{32}$/.test(link)) {
-    // Seadex often puts infohash in `link`
-    try {
-      magnet = magnetFromInfoHash(link, title)
-    } catch {
-      return null
-    }
-  } else {
-    return null
   }
+
+  if (!magnet) {
+    if (/^https?:\/\//i.test(link)) {
+      if (/\.torrent(\?|$)/i.test(link) || /\/download/i.test(link) || /torrent_url/i.test(link)) {
+        torrentUrl = link
+      } else if (!hash) {
+        // Bare HTML tracker pages without a usable hash are not playable.
+        return null
+      }
+    } else if (/^[a-fA-F0-9]{40}$/i.test(link) || /^[a-zA-Z0-9]{32}$/.test(link)) {
+      // Seadex often puts infohash in `link`
+      try {
+        magnet = magnetFromInfoHash(link, title)
+      } catch {
+        return null
+      }
+    } else if (!hash) {
+      return null
+    }
+  }
+
+  if (!magnet && !torrentUrl) return null
 
   return {
     providerId: ext.manifest.id,
@@ -116,19 +146,54 @@ export async function searchExtensions(query: ExtensionSearchQuery): Promise<{
   errors: Array<{ providerId: string; message: string }>
 }> {
   await ensureExtensions()
-  const enabled = listEnabledExtensions()
   const { media, episode } = query
+  const genres = Array.isArray(media.genres) ? media.genres : []
+  const synonyms = Array.isArray(media.synonyms) ? media.synonyms : []
+  const relationEdges = Array.isArray(media.relations?.edges)
+    ? media.relations!.edges!
+    : []
+  const isAdult =
+    Boolean(media.isAdult) || genres.some((g) => /hentai/i.test(g || ''))
+
+  // Adult titles: only query hentai-catalog extensions (Sukebei). Skip Seadex/Tosho
+  // which always return [] for adult and waste seconds on dead requests.
+  let enabled = listEnabledExtensions()
+  if (isAdult) {
+    const adultExts = enabled.filter(
+      (e) => e.manifest.catalogId === 'hentai' || e.manifest.media === 'hentai'
+    )
+    if (adultExts.length) enabled = adultExts
+  }
+
   const titles = [
     media.title.romaji,
     media.title.english,
     media.title.native,
     media.title.userPreferred,
-    ...(media.synonyms ?? [])
-  ].filter(Boolean) as string[]
+    ...synonyms
+  ].filter((t): t is string => Boolean(t) && t !== 'MediaTitle')
 
-  const ids = await resolveIds(media.id, episode)
+  // ARM/AniZip rarely map adult titles — skip the extra round-trips.
+  const ids = isAdult
+    ? {
+        anidb: undefined as number | undefined,
+        anidbAid: undefined as number | undefined,
+        anidbEid: undefined as number | undefined,
+        tvdb: undefined as number | undefined,
+        tvdbEId: undefined as number | undefined,
+        tmdb: undefined as number | undefined
+      }
+    : await resolveIds(media.id, episode)
   const exclusions = query.exclusions ?? []
   const resolution = query.resolution
+
+  // Never pass GraphQL __typename into extensions — Sukebei does Object.values(title).
+  const cleanTitle = {
+    romaji: media.title?.romaji ?? null,
+    english: media.title?.english ?? null,
+    native: media.title?.native ?? null,
+    userPreferred: media.title?.userPreferred ?? null
+  }
 
   const hostQuery: Record<string, unknown> = {
     anilistId: media.id,
@@ -141,13 +206,15 @@ export async function searchExtensions(query: ExtensionSearchQuery): Promise<{
     // Extensions (esp. Sukebei) assume genres/relations arrays exist.
     media: {
       ...media,
-      title: media.title ?? {},
-      genres: media.genres ?? [],
-      synonyms: media.synonyms ?? [],
-      isAdult: Boolean(media.isAdult),
-      relations: media.relations ?? { edges: [] },
+      title: cleanTitle,
+      genres,
+      synonyms,
+      isAdult,
+      relations: { edges: relationEdges },
       status: media.status ?? null,
-      format: media.format ?? null
+      format: media.format ?? null,
+      startDate: media.startDate ?? null,
+      endDate: media.endDate ?? null
     },
     anidbAid: ids.anidbAid ?? ids.anidb,
     anidbEid: ids.anidbEid,
@@ -161,22 +228,36 @@ export async function searchExtensions(query: ExtensionSearchQuery): Promise<{
   const errors: Array<{ providerId: string; message: string }> = []
   const annotated: Array<ProviderResult & { _best?: boolean }> = []
 
+  const EXT_TIMEOUT_MS = isAdult ? 12_000 : 20_000
+
   await withSaizenFetch(async () => {
     await Promise.all(
       enabled.map(async (ext) => {
         try {
           const options = getExtensionOptions(ext.manifest.id)
           if (typeof ext.instance.single !== 'function') return
-          // Must call on the instance — unbound `single` loses `this` (url/_fetch/_buildQuery).
-          const raw = (await ext.instance.single(hostQuery, options)) ?? []
+          const raw = await Promise.race([
+            ext.instance.single(hostQuery, options),
+            new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), EXT_TIMEOUT_MS)
+            )
+          ])
+          if (!raw) {
+            errors.push({
+              providerId: ext.manifest.id,
+              message: `Timed out after ${EXT_TIMEOUT_MS / 1000}s`
+            })
+            return
+          }
           for (const item of raw) {
             const n = normalizeResult(ext, item)
-            if (n) {
-              annotated.push({
-                ...n,
-                _best: item.type === 'best'
-              })
-            }
+            if (!n) continue
+            // Adult indexes are noisy; drop hits that don't mention the title.
+            if (isAdult && !resultMatchesTitles(n.title, titles)) continue
+            annotated.push({
+              ...n,
+              _best: item.type === 'best'
+            })
           }
         } catch (e) {
           errors.push({

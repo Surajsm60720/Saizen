@@ -215,9 +215,21 @@ export async function syncDeleteListEntry(opts: {
   const [alOn, malOn] = await Promise.all([isAnilistConnected(), isMalConnected()])
   const tasks: Promise<void>[] = []
 
-  if (alOn && opts.anilistEntryId) {
+  let entryId = opts.anilistEntryId ?? null
+  // Resolve entry id from media when the sheet only has a stale/missing hint.
+  if (alOn && !entryId && opts.anilistMediaId) {
+    try {
+      const { fetchViewerListEntry } = await import('@/lib/anilist')
+      const looked = await fetchViewerListEntry(opts.anilistMediaId)
+      if (looked.status === 'found') entryId = looked.entry.id
+    } catch {
+      /* fall through — MAL delete may still succeed */
+    }
+  }
+
+  if (alOn && entryId) {
     tasks.push(
-      deleteAniListEntry(opts.anilistEntryId)
+      deleteAniListEntry(entryId)
         .then(() => {
           result.anilist = 'ok'
         })
@@ -241,9 +253,66 @@ export async function syncDeleteListEntry(opts: {
     )
   }
 
+  // Nothing to delete on either connected provider — still purge local if we know
+  // the media id (entry may already be gone remotely / only lived in continue rail).
+  if (!tasks.length) {
+    if (opts.anilistMediaId) {
+      removeViewerListCacheEntry(opts.anilistMediaId)
+      const { removeContinueWatching } = await import('@/lib/watch/continue')
+      removeContinueWatching(opts.anilistMediaId)
+      try {
+        const { writeHomeSnapshot, readHomeSnapshot } = await import('@/lib/home/store')
+        const snap = readHomeSnapshot()
+        writeHomeSnapshot({
+          continueWatching: snap.continueWatching.filter(
+            (e) => e.anilistId !== opts.anilistMediaId
+          )
+        })
+      } catch {
+        /* optional */
+      }
+      return { anilist: 'ok', mal: 'ok', errors: [] }
+    }
+    if (alOn || malOn) {
+      errors.push('Could not find this title on your AniList / MAL list to delete.')
+      return { anilist: alOn ? 'error' : 'skip', mal: malOn ? 'error' : 'skip', errors }
+    }
+    errors.push('Connect AniList or MAL before deleting a list entry.')
+    return { anilist: 'error', mal: 'error', errors }
+  }
+
   await Promise.all(tasks)
-  if ((result.anilist === 'ok' || result.mal === 'ok') && opts.anilistMediaId) {
+
+  const remoteOk = result.anilist === 'ok' || result.mal === 'ok'
+  // If AniList already had no entry (lookup missing) but we had a cached id that
+  // deleted cleanly — or MAL wiped it — always clear local rails. Also clear when
+  // both providers report the entry already gone.
+  const alreadyGone =
+    !remoteOk &&
+    errors.every((e) => {
+      const m = e.toLowerCase()
+      return m.includes('not found') || m.includes('404') || m.includes('already')
+    })
+
+  if ((remoteOk || alreadyGone) && opts.anilistMediaId) {
     removeViewerListCacheEntry(opts.anilistMediaId)
+    const { removeContinueWatching } = await import('@/lib/watch/continue')
+    removeContinueWatching(opts.anilistMediaId)
+    try {
+      const { writeHomeSnapshot, readHomeSnapshot } = await import('@/lib/home/store')
+      const snap = readHomeSnapshot()
+      writeHomeSnapshot({
+        continueWatching: snap.continueWatching.filter(
+          (e) => e.anilistId !== opts.anilistMediaId
+        )
+      })
+    } catch {
+      /* home store optional */
+    }
+    if (alreadyGone && !remoteOk) {
+      result.anilist = alOn ? 'ok' : result.anilist
+      result.mal = malOn ? 'ok' : result.mal
+    }
   }
   return { ...result, errors }
 }

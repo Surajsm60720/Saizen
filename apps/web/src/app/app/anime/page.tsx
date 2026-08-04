@@ -19,7 +19,10 @@ import {
   type AnimeMedia,
   type FranchiseGraph
 } from '@/lib/anilist'
-import { fetchThemesByAniListId, type AnimeThemeTrack } from '@/lib/animethemes'
+import {
+  fetchThemesByAniListId,
+  type AnimeThemeTrack
+} from '@/lib/animethemes'
 import { fetchSkipTimes } from '@/lib/aniskip'
 import { fetchAniZipEpisodes, type AniZipEpisode } from '@/lib/anizip/episodes'
 import { fetchJikanEpisodeList, type JikanEpisodeDetail } from '@/lib/jikan/episodes'
@@ -29,7 +32,7 @@ import getNative from '@/lib/native'
 import type { NativePlayerAction, SkipTimes, TorrentInfo } from '@saizen/shared'
 import { isAnilistConnected, isMalConnected } from '@/lib/auth/tokens'
 import type { AniListStatus } from '@/lib/auth/sync'
-import { recordContinueWatching } from '@/lib/watch/continue'
+import { listContinueWatching, recordContinueWatching } from '@/lib/watch/continue'
 import { getProbedDurationSec } from '@/lib/watch/episodeMeta'
 import { isEpisodeWatched } from '@/lib/watch/progress'
 import { setActivePlayback } from '@/lib/watch/activePlayback'
@@ -92,6 +95,8 @@ function AnimeDetail() {
   const [status, setStatus] = useState('')
   const [themes, setThemes] = useState<AnimeThemeTrack[]>([])
   const [themesLoading, setThemesLoading] = useState(false)
+  const [themesNotice, setThemesNotice] = useState<string | null>(null)
+  const [themesReload, setThemesReload] = useState(0)
   const [probedTick, setProbedTick] = useState(0)
   const [jikanByEp, setJikanByEp] = useState<Map<number, JikanEpisodeDetail>>(
     () => new Map()
@@ -133,6 +138,7 @@ function AnimeDetail() {
       setResults([])
       setStatus('')
       setThemes([])
+      setThemesNotice(null)
       setJikanByEp(new Map())
       setAniZipByEp(new Map())
       setAniZipCount(null)
@@ -248,16 +254,29 @@ function AnimeDetail() {
   useEffect(() => {
     if (!media?.id) return
     let cancelled = false
-    // Defer Themes so the header paints first (reduces freeze on open)
     const t = window.setTimeout(() => {
       if (cancelled) return
       setThemesLoading(true)
-      void fetchThemesByAniListId(media.id)
-        .then((tracks) => {
-          if (!cancelled) setThemes(tracks)
+      setThemesNotice(null)
+      void fetchThemesByAniListId(media.id, {
+        idMal: media.idMal,
+        title: displayTitle(media)
+      })
+        .then((res) => {
+          if (cancelled) return
+          setThemes(res.tracks)
+          setThemesNotice(
+            res.source === 'jikan' || res.source === 'mal'
+              ? 'From MyAnimeList'
+              : res.tracks.length === 0
+                ? 'No themes found for this title'
+                : null
+          )
         })
         .catch(() => {
-          if (!cancelled) setThemes([])
+          if (cancelled) return
+          setThemes([])
+          setThemesNotice('Could not load themes')
         })
         .finally(() => {
           if (!cancelled) setThemesLoading(false)
@@ -267,7 +286,10 @@ function AnimeDetail() {
       cancelled = true
       window.clearTimeout(t)
     }
-  }, [media?.id])
+  }, [media?.id, media?.idMal, themesReload])
+
+  // media title used inside effect — ok as media changes with id
+
 
   useEffect(() => {
     if (!media?.id) return
@@ -439,6 +461,34 @@ function AnimeDetail() {
     [media]
   )
 
+  /** Next episode to resume — local continue rail, list progress, or first unwatched. */
+  const continueEpisode = useMemo(() => {
+    const released = episodes.filter((e) => !e.unreleased)
+    if (!media?.id || !released.length) return null
+
+    const local = listContinueWatching().find((e) => e.anilistId === media.id)
+    const hasProgress =
+      Boolean(local) ||
+      (listProgress != null && listProgress > 0) ||
+      released.some((e) => e.watched)
+    if (!hasProgress) return null
+
+    const candidate =
+      local?.episode ??
+      (listProgress != null && listProgress >= 0 ? listProgress + 1 : null)
+
+    if (candidate != null) {
+      const hit = released.find((e) => e.number === candidate)
+      if (hit && !hit.watched) return hit
+      const after = released.find(
+        (e) => e.number > (candidate as number) && !e.watched
+      )
+      if (after) return after
+    }
+
+    return released.find((e) => !e.watched) ?? null
+  }, [media?.id, episodes, listProgress])
+
   const recommendations = useMemo(() => {
     const nodes = media?.recommendations?.nodes ?? []
     const seen = new Set<number>()
@@ -522,15 +572,22 @@ function AnimeDetail() {
           media.title.userPreferred
         ].filter(Boolean) as string[]
 
+        const adult =
+          Boolean(media.isAdult) ||
+          (media.genres ?? []).some((g) => /hentai/i.test(g || ''))
+
         const [extOut, builtInOut] = await Promise.all([
           searchExtensions({ media, episode: ep.number }),
-          searchAllProviders({
-            anilistId: media.id,
-            title: displayTitle(media),
-            titles,
-            episode: ep.number,
-            episodeCount: media.episodes
-          })
+          // Built-ins (SubsPlease/Erai/Nyaa) don't index adult — skip for speed.
+          adult
+            ? Promise.resolve({ results: [] as ProviderResult[], errors: [] })
+            : searchAllProviders({
+                anilistId: media.id,
+                title: displayTitle(media),
+                titles,
+                episode: ep.number,
+                episodeCount: media.episodes
+              })
         ])
 
         const merged = [...extOut.results, ...builtInOut.results]
@@ -540,7 +597,25 @@ function AnimeDetail() {
         const torrents = sorted.filter((r) => r.torrentUrl).length
         const http = sorted.filter((r) => r.httpUrl).length
         if (!sorted.length) {
-          setStatus('No sources found for this episode.')
+          const errs = [...extOut.errors, ...builtInOut.errors]
+          const tls = errs.some((e) => /TLS|SSL|-1200|secure connection/i.test(e.message))
+          if (adult && tls) {
+            setStatus(
+              'Adult index blocked on this network (TLS). Enable Nyaa Sukebei and retry, or use another network/VPN.'
+            )
+          } else if (adult && errs.length) {
+            setStatus(
+              `No adult sources. ${errs[0]!.providerId}: ${errs[0]!.message}`
+            )
+          } else if (errs.length) {
+            setStatus(`No sources found. ${errs[0]!.providerId}: ${errs[0]!.message}`)
+          } else {
+            setStatus(
+              adult
+                ? 'No sources found. Enable Nyaa Sukebei under Extensions → Hentai.'
+                : 'No sources found for this episode.'
+            )
+          }
         } else {
           setStatus(
             `${sorted.length} source(s) · ${http} HTTP · ${torrents} torrent · ${magnets} magnet`
@@ -733,6 +808,12 @@ function AnimeDetail() {
             ? LIST_STATUS_LABELS[listEntry.status] || listEntry.status
             : null
         }
+        continueEpisode={continueEpisode?.number ?? null}
+        onContinueWatching={
+          continueEpisode
+            ? () => void searchSources(continueEpisode)
+            : null
+        }
       />
 
       <Tabs
@@ -770,7 +851,12 @@ function AnimeDetail() {
             </EpisodeList>
           </section>
 
-          <ThemeTracks tracks={themes} loading={themesLoading} />
+          <ThemeTracks
+            tracks={themes}
+            loading={themesLoading}
+            notice={themesNotice}
+            onRetry={() => setThemesReload((n) => n + 1)}
+          />
 
           {sourceMaterials.length > 0 ? (
             <PosterRail title="Source material" dense>
@@ -897,6 +983,12 @@ function AnimeDetail() {
         onSaved={(next) => {
           setListEntry(next)
           setListProgress(next?.progress ?? null)
+          if (!next) {
+            // Local continue rail is cleared in syncDeleteListEntry; mirror on-page CTA.
+            void import('@/lib/watch/continue').then(({ removeContinueWatching }) => {
+              removeContinueWatching(media.id)
+            })
+          }
         }}
       />
     </div>

@@ -118,7 +118,7 @@ export function upsertViewerListCacheEntry(entry: MediaListEntry) {
 }
 
 export function removeViewerListCacheEntry(mediaId: number) {
-  const existing = readListCache()
+  const existing = readListCache({ allowStale: true })
   if (!existing) return
   writeListCache(existing.filter((e) => e.media.id !== mediaId))
 }
@@ -145,15 +145,20 @@ async function authedQuery<T>(
     },
     body: JSON.stringify({ query, variables })
   })
-  if (!res.ok) throw new Error(`AniList HTTP ${res.status}`)
-  const json = (await res.json()) as {
+  const json = (await res.json().catch(() => null)) as {
     data?: T
-    errors?: Array<{ message?: string }>
+    errors?: Array<{ message?: string; status?: number }>
+  } | null
+
+  // AniList returns HTTP 404 + MediaList:null when the entry is not on the list.
+  if (!res.ok) {
+    const msg = json?.errors?.[0]?.message || `AniList HTTP ${res.status}`
+    throw new Error(msg)
   }
-  if (json.errors?.length) {
+  if (json?.errors?.length) {
     throw new Error(json.errors[0]?.message || 'AniList query error')
   }
-  if (!json.data) throw new Error('AniList empty response')
+  if (!json?.data) throw new Error('AniList empty response')
   return json.data
 }
 
@@ -258,6 +263,7 @@ function isMediaListMissingError(message: string): boolean {
   return (
     m.includes('not found') ||
     m.includes('no media list') ||
+    m.includes('http 404') ||
     (m.includes('medialist') && m.includes('null'))
   )
 }
@@ -317,7 +323,10 @@ export async function fetchViewerListEntry(
     )
 
     const raw = data.MediaList
-    if (!raw?.media?.id) return { status: 'missing' }
+    if (!raw?.media?.id) {
+      if (cached) removeViewerListCacheEntry(mediaId)
+      return { status: 'missing' }
+    }
 
     const entry = normalizeEntry({
       id: raw.id,

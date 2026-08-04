@@ -19,6 +19,35 @@ export function transformExtensionSource(source: string): string {
   }
 
   code = code.replace(/^\s*export\s+\{[^}]*\}\s*;?\s*$/gm, '')
+
+  // WKWebView / Capacitor can report navigator.onLine=false even when network
+  // works (Sukebei and others early-return []). Host already routes fetch.
+  code = code.replace(
+    /if\s*\(\s*!navigator\.onLine\s*\)\s*return\s*\[\s*\]\s*;?/g,
+    '/* saizen: ignore navigator.onLine */'
+  )
+
+  // Defensive: genres may be missing despite host defaults.
+  code = code.replace(
+    /!media\.isAdult\s*&&\s*!media\.genres\.includes\(\s*["']Hentai["']\s*\)/g,
+    '!media.isAdult && !(media.genres || []).includes("Hentai")'
+  )
+
+  // Sukebei hardcodes sukebei.nyaa.si (atob). Keep the canonical host in
+  // extension source — saizenFetch fails over to public mirrors on TLS errors.
+  // (Do not rewrite the base URL to a third-party mirror by default.)
+
+  // AniList GraphQL adds __typename:"MediaTitle". Object.values(media.title)
+  // then OR's the literal "MediaTitle" into Nyaa queries → garbage hits.
+  code = code.replace(
+    /\[\s*\.\.\.Object\.values\(\s*media\.title\s*\)\s*,\s*\.\.\.media\.synonyms\s*\]/g,
+    '[media.title?.romaji, media.title?.english, media.title?.native, media.title?.userPreferred, ...(media.synonyms || [])].filter(Boolean)'
+  )
+  code = code.replace(
+    /Object\.values\(\s*media\.title\s*\)/g,
+    '[media.title?.romaji, media.title?.english, media.title?.native, media.title?.userPreferred].filter(Boolean)'
+  )
+
   return code
 }
 

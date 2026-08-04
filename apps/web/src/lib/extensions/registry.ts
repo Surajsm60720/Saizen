@@ -101,6 +101,8 @@ export async function refreshCatalogs(): Promise<ExtensionManifest[]> {
 
 export async function initExtensions(): Promise<LoadedExtension[]> {
   state = readState()
+  // Drop evaluated sources so host-side transforms (onLine / genres) always apply.
+  clearExtensionCache()
   await refreshCatalogs()
   loaded = new Map()
 

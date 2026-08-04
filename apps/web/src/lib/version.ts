@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.0.3'
+export const APP_VERSION = '1.1.0'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,21 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.1.0',
+    date: '2026-08-04',
+    title: 'Continue watching, themes resilience & adult sources',
+    highlights: [
+      'Continue watching EP xx on anime pages — jump straight to the episode you left off',
+      'Opening & Ending rows show song names only (no outbound YouTube / catalog links)',
+      'Deleting a list entry clears continue-watching and refreshes Home rails immediately (no app restart)',
+      'AniList MediaList 404 treated as already removed so local delete still succeeds',
+      'Theme catalogs: AnimeThemes → Jikan → official MAL fallback; correct AniList lookup filter',
+      'Home hydration fixed (React #418) when restoring local rails on Capacitor',
+      'Adult / Sukebei: Nyaa mirror failover after TLS failure (canonical host first); encode + in queries; drop MediaTitle typename noise; title-match filter against junk hits',
+      'Adult searches only query hentai extensions (skip Seadex / built-ins that never index adult)'
+    ]
+  },
   {
     version: '1.0.3',
     date: '2026-08-03',

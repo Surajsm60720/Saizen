@@ -1,82 +1,26 @@
-# Saizen · v1.0.3
+# Saizen · v1.1.0
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
-## Changelog
+## What’s new since v1.0
 
-### v1.0.3 — Typography, themes & airing calendar
+Major changes from **v1.0 → v1.1.0** (patch detail lives in-app under Settings → Changelog):
 
-**Typography**
+- **Player** — native VLC + web chrome redesign; ±seek / next episode; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
+- **Schedule** — week airing calendar in the tab bar (device-local times); My list vs current season
+- **Anime detail** — character / VA / staff rails + detail pages; franchise watch-order Relations; edit list entry (AniList + MAL); **Continue watching EP xx**; OP/ED song names
+- **Accounts & lists** — AniList / MAL Sign in (PKCE, Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
+- **Typography** — Fraunces + DM Sans across the UI
+- **Sources** — Hayase extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
+- **Security** — no client secrets; authenticated loopback streams; HTTPS-only extensions; secret-scanned IPA packaging
 
-- Display font **Fraunces** + UI/body **DM Sans** (replaces Instrument)
-- Shared type roles in CSS: brand, hero title, page title, section, subhead, body, meta — used across Home, anime, rails, settings, schedule
-
-**Schedule**
-
-- Bottom / desktop nav: **Schedule** replaces the Client tab
-- Week calendar strip (Mon–Sun + local dates); airings placed by **device-local** weekday and clock time
-- **My list** (Watching / Rewatching) and **Season** (full current-season airing board) toggle
-- Day agenda timeline with local times; tap a row to open the anime page
-
-**Opening & Ending**
-
-- AnimeThemes clips still open on tap; secondary control opens the AnimeThemes anime page
-
-### v1.0.2 — Cast, relations & list editing
-
-**Anime detail**
-
-- Separate **Characters**, **Voice actors**, and **Staff** rails (cards link to in-app detail pages)
-- New **/app/character** and **/app/staff** pages (AniList bios, appearances, voice roles, crew credits)
-- **Relations** tab: walks AniList prequel/sequel/spin-off links and shows a numbered **watch-order** poster rail (no Mermaid diagram; ordering is local after the franchise fetch)
-- **Edit list entry** sheet (status, score 0–10, progress, rewatched times) when AniList and/or MAL is connected — saves to both providers; Delete supported
-
-**List sync & accounts**
-
-- Watching / list status no longer defaults to **Plan to watch** when a list lookup fails — Save stays blocked until the entry loads (or is confirmed missing)
-- AniList Home rails and list progress use a corrected score field (broken GraphQL selection had emptied rails)
-- After AniList sign-in (and Settings → Refresh list), viewer lists warm so episode marks and Home rails match the account
-- Offline episode completions flush to connected providers when you reconnect
-- MAL sign-in token exchange runs natively (URLSession + PKCE). Register the MAL API app as **iOS** or **other** (public client — no secret); redirect `saizen://mal/callback`
-
-**Fixes**
-
-- Finished titles use AniList’s episode count so franchise/AniZip mappings no longer inflate lists (e.g. K-On)
-- Hentai catalog / Sukebei: safer extension media payload, prefer magnet from infohash, native fetch User-Agent, consistent adult catalog gating
-
-### v1.0.1 — Media player redesign
-
-**Player (native VLC + web)**
-
-- Chrome restyled to match the app (gold accent, glass chips, cinematic scrims)
-- Transport: ±5s / ±10s, play/pause, **Next episode**
-- Speed picker; native **Audio** / **Subs** track sheets; quality chip (current resolution)
-- **Volume** button opens a vertical slider panel (no cramped horizontal slider)
-- Torrent download stats moved into a compact bottom pill (not centered over video)
-- Portrait / landscape layout fixes: volume pinned visible, shorter landscape bar, top bar flush under the safe area
-- AniSkip OP/ED: skip pill while inside an opening/ending; optional **Auto-skip openings & endings** in Settings → Playback (default off)
-- Fixed controls dismissing on every button tap; removed mid-play Sources chip
-- AniSkip client fixed (`episodeLength` required by API); `spawnPlayer` / native contract extended with `skipTimes`, `resolution`, `autoSkipOpEd`, `hasNextEpisode`, and `playerAction` (`nextEpisode`)
-
-**Security hardening (same release)**
-
-- No OAuth client secrets in the app — MAL is a public/installed client (PKCE only)
-- Access tokens live in Keychain (+ session memory); never mirrored to `localStorage`
-- Loopback stream URLs include a per-session access token (`401` without it)
-- `spawnPlayer` allowlists `https://` and `http://127.0.0.1` only
-- Web Inspector (`isInspectable`) gated to Debug builds
-- Extension code URLs must be `https://`
-- MAL OAuth `state` verified fail-closed; refresh failures clear credentials
-- React error boundaries; guarded `localStorage` writes; free-space gate before play
-- Release packaging runs a secret scan (`pnpm package:ipa`) and fails closed on leaks
-
-Full test matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
+Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
 
 ## Status
 
-Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, AniList/MAL sign-in and list sync, plus Schedule (local airing calendar).
+Proven on a physical iPhone for browse → sources → torrent/HTTP stream → VLC playback, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, and adult index mirror failover.
 
 This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
@@ -157,7 +101,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, `1.0.2`, `1.0.3`, …) are for in-app / local sideload builds — do not attach a new IPA for those.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, `1.0.2`, `1.0.3`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.1.0** is the first minor IPA after v1.0.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 
@@ -173,7 +117,7 @@ Apple’s paid program is required for **App Store**, TestFlight, and long-lived
 ```bash
 pnpm sync:ios                 # rebuild web + sync Swift
 # Build/Run once on a device from Xcode (prefer Release when possible)
-pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.0.ipa
+pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.1.0.ipa
 ```
 
 ### IPA security warning (read before uploading a Release)
@@ -193,13 +137,13 @@ pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.0.ipa
 3. Always use `pnpm package:ipa` (or `bash scripts/preflight-release.sh` then `bash scripts/package-ipa.sh`). Do not zip an `.app` by hand for public releases.
 4. Re-scan before upload: `bash scripts/preflight-release.sh` and confirm the packaged IPA has no `*_SECRET` identifiers.
 
-**Last scanned:** `dist/Saizen-v1.0.ipa` (~19 MB) — no `*_SECRET` / `client_secret` identifiers; public Client IDs present (expected); token paths scrub `localStorage` and use Keychain; extension loads require `https://`.
+**Last scanned:** `dist/Saizen-v1.1.0.ipa` (~19 MB, 2026-08-04 Release-iphoneos) — no `*_SECRET` / `client_secret` / `malClientSecret` identifiers; public Client IDs present (expected); token paths scrub `localStorage` and use Keychain; extension loads require `https://`.
 
 Your device build lives under DerivedData, e.g.:
 
 `~/Library/Developer/Xcode/DerivedData/App-…/Build/Products/Debug-iphoneos/App.app`
 
-There is **no `.ipa` until you package one** — Run in Xcode only produces `.app`. Upload `dist/Saizen-v1.0.ipa` as a GitHub Release asset; install with Sideloadly/AltStore (free Apple ID, ~7-day cert).
+There is **no `.ipa` until you package one** — Run in Xcode only produces `.app`. Upload `dist/Saizen-v1.1.0.ipa` as a GitHub Release asset; install with Sideloadly/AltStore (free Apple ID, ~7-day cert).
 
 Expect: no App Store listing, 7-day cert renewals on free IDs, and each installer must trust the certificate on their device.
 
@@ -219,7 +163,7 @@ Download continues in the background while VLC plays from the contiguous head.
 
 ## Providers
 
-Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev). Manage them in-app under **Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL. Extension JS is fetched over **HTTPS only**.
+Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev). Manage them in-app under **Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL. Extension JS is fetched over **HTTPS only**. Adult indexes (Sukebei) may use public Nyaa mirrors when `nyaa.si` TLS is blocked on the device network.
 
 | Built-in | Notes |
 |----------|--------|

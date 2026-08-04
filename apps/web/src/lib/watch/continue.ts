@@ -13,6 +13,9 @@ export interface ContinueEntry {
   updatedAt: number
 }
 
+type ContinueListener = (entries: ContinueEntry[]) => void
+const listeners = new Set<ContinueListener>()
+
 function read(): ContinueEntry[] {
   if (typeof window === 'undefined') return []
   try {
@@ -31,6 +34,22 @@ function write(entries: ContinueEntry[]) {
     localStorage.setItem(KEY, JSON.stringify(entries.slice(0, 24)))
   } catch {
     /* quota / private mode */
+  }
+  const next = entries.slice(0, 24)
+  for (const listener of listeners) {
+    try {
+      listener(next)
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/** Live updates when continue rail changes (delete / playback). */
+export function subscribeContinueWatching(listener: ContinueListener): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
   }
 }
 
@@ -52,6 +71,20 @@ export function mergeContinueWatching(remote: ContinueEntry[]): ContinueEntry[] 
   return merged.slice(0, 24)
 }
 
+/**
+ * Replace the continue rail with remote CURRENT entries only (drops local-only
+ * titles that were deleted from the list).
+ */
+export function replaceContinueWatching(remote: ContinueEntry[]): ContinueEntry[] {
+  if (!getWatchSettings().continueWatchingEnabled) {
+    write([])
+    return []
+  }
+  const sorted = [...remote].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 24)
+  write(sorted)
+  return sorted
+}
+
 export function recordContinueWatching(
   media: Pick<AnimeMedia, 'id' | 'title' | 'coverImage'>,
   episode: number
@@ -66,4 +99,10 @@ export function recordContinueWatching(
   }
   const rest = read().filter((e) => e.anilistId !== media.id)
   write([next, ...rest])
+}
+
+/** Drop a title from the local continue-watching rail (e.g. after list delete). */
+export function removeContinueWatching(anilistId: number) {
+  if (!anilistId) return
+  write(read().filter((e) => e.anilistId !== anilistId))
 }

@@ -19,9 +19,15 @@ import { whenBridgeReady } from '@/lib/native/ready'
 import {
   listContinueWatching,
   mergeContinueWatching,
+  subscribeContinueWatching,
   type ContinueEntry
 } from '@/lib/watch/continue'
-import { readHomeSnapshot, writeHomeSnapshot, isHomeFresh } from '@/lib/home/store'
+import {
+  readHomeSnapshot,
+  writeHomeSnapshot,
+  isHomeFresh,
+  subscribeHomeSnapshot
+} from '@/lib/home/store'
 import {
   PosterCard,
   PosterRail,
@@ -46,23 +52,20 @@ function RailSkeleton() {
 }
 
 export default function HomePage() {
-  const initial = readHomeSnapshot()
-  const [trending, setTrending] = useState<AnimeMedia[]>(() => initial.trending)
-  const [seasonal, setSeasonal] = useState<AnimeMedia[]>(() => initial.seasonal)
-  const [allTime, setAllTime] = useState<AnimeMedia[]>(() => initial.allTime)
-  const [continueWatching, setContinueWatching] = useState<ContinueEntry[]>(
-    () => initial.continueWatching
-  )
+  // Empty first paint — avoids Capacitor hydration mismatch (#418) from localStorage.
+  const [trending, setTrending] = useState<AnimeMedia[]>([])
+  const [seasonal, setSeasonal] = useState<AnimeMedia[]>([])
+  const [allTime, setAllTime] = useState<AnimeMedia[]>([])
+  const [continueWatching, setContinueWatching] = useState<ContinueEntry[]>([])
   const [related, setRelated] = useState<
     Array<{ media: AnimeMedia; relationType: string }>
-  >(() => initial.related)
-  const [genrePicks, setGenrePicks] = useState<AnimeMedia[]>(() => initial.genrePicks)
-  const [topGenres, setTopGenres] = useState<string[]>(() => initial.topGenres)
-  const [anilistOn, setAnilistOn] = useState(() => initial.anilistOn)
+  >([])
+  const [genrePicks, setGenrePicks] = useState<AnimeMedia[]>([])
+  const [topGenres, setTopGenres] = useState<string[]>([])
+  const [anilistOn, setAnilistOn] = useState(false)
   const [listLoading, setListLoading] = useState(false)
   const [error, setError] = useState('')
-  // Only show full-page skeleton when we have nothing to paint
-  const [loading, setLoading] = useState(() => !initial.ready)
+  const [loading, setLoading] = useState(true)
 
   const seasonLabel = useMemo(() => {
     const { season, year } = currentAniSeason()
@@ -70,17 +73,40 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    // Refresh continue rail from local storage without clearing the page
-    setContinueWatching(listContinueWatching())
+    const unsubContinue = subscribeContinueWatching((entries) => {
+      setContinueWatching(entries)
+    })
+    const unsubHome = subscribeHomeSnapshot((snap) => {
+      if (snap.continueWatching) setContinueWatching(snap.continueWatching)
+      if (snap.related) setRelated(snap.related)
+      if (snap.genrePicks) setGenrePicks(snap.genrePicks)
+      if (snap.topGenres) setTopGenres(snap.topGenres)
+    })
+
+    // Hydrate from snapshot after mount (client-only).
+    const initial = readHomeSnapshot()
+    setTrending(initial.trending)
+    setSeasonal(initial.seasonal)
+    setAllTime(initial.allTime)
+    setContinueWatching(initial.continueWatching)
+    setRelated(initial.related)
+    setGenrePicks(initial.genrePicks)
+    setTopGenres(initial.topGenres)
+    setAnilistOn(initial.anilistOn)
+    if (initial.ready) setLoading(false)
 
     // Keep-alive / back-nav: don't refetch if we just loaded Home
     if (isHomeFresh()) {
+      setContinueWatching(listContinueWatching())
       setLoading(false)
-      return
+      return () => {
+        unsubContinue()
+        unsubHome()
+      }
     }
 
     let cancelled = false
-    const hadData = readHomeSnapshot().ready
+    const hadData = initial.ready
 
     void (async () => {
       try {
@@ -112,12 +138,10 @@ export default function HomePage() {
             setListLoading(true)
           }
           try {
-            const entries = await fetchViewerAnimeList([
-              'CURRENT',
-              'REPEATING',
-              'COMPLETED',
-              'PAUSED'
-            ])
+            const entries = await fetchViewerAnimeList(
+              ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED'],
+              { force: true }
+            )
             if (cancelled) return
             const fromList = continueEntriesFromList(entries)
             const cont = mergeContinueWatching(fromList)
@@ -158,6 +182,8 @@ export default function HomePage() {
     })()
     return () => {
       cancelled = true
+      unsubContinue()
+      unsubHome()
     }
   }, [])
 

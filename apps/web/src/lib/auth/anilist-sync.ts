@@ -39,7 +39,15 @@ async function anilistMutation<T>(
   })
 
   if (!res.ok) {
-    throw new Error(`AniList HTTP ${res.status}`)
+    const json = (await res.json().catch(() => null)) as {
+      errors?: Array<{ message?: string }>
+    } | null
+    const msg = json?.errors?.[0]?.message || `AniList HTTP ${res.status}`
+    // Already deleted / missing entry id
+    if (res.status === 404 || /not found/i.test(msg)) {
+      throw new Error(msg)
+    }
+    throw new Error(msg)
   }
   const json = (await res.json()) as {
     data?: T
@@ -148,14 +156,21 @@ export async function saveAniListEntry(opts: AniListEntryInput): Promise<{
 }
 
 export async function deleteAniListEntry(entryId: number): Promise<void> {
-  await anilistMutation(
-    `
+  try {
+    await anilistMutation(
+      `
     mutation ($id: Int) {
       DeleteMediaListEntry(id: $id) {
         deleted
       }
     }
   `,
-    { id: entryId }
-  )
+      { id: entryId }
+    )
+  } catch (e) {
+    const msg = e instanceof Error ? e.message.toLowerCase() : String(e).toLowerCase()
+    // Already removed on AniList — treat as success so local rails can clear.
+    if (msg.includes('not found') || msg.includes('404')) return
+    throw e
+  }
 }

@@ -26,6 +26,9 @@ export type HomeSnapshot = {
 let memory: HomeSnapshot | null = null
 let fetchedAt = 0
 
+type Listener = (snap: HomeSnapshot) => void
+const listeners = new Set<Listener>()
+
 const FRESH_MS = 5 * 60 * 1000
 
 export function markHomeFetched(at = Date.now()) {
@@ -35,6 +38,24 @@ export function markHomeFetched(at = Date.now()) {
 /** True when in-memory rails were fetched recently — skip network on remount. */
 export function isHomeFresh(): boolean {
   return Boolean(memory?.ready && fetchedAt && Date.now() - fetchedAt < FRESH_MS)
+}
+
+/** Subscribe to Home snapshot patches (delete / continue-watching updates). */
+export function subscribeHomeSnapshot(listener: Listener): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+function emitHomeSnapshot(snap: HomeSnapshot) {
+  for (const listener of listeners) {
+    try {
+      listener(snap)
+    } catch {
+      /* ignore subscriber errors */
+    }
+  }
 }
 
 function emptySnapshot(): HomeSnapshot {
@@ -142,5 +163,6 @@ export function writeHomeSnapshot(patch: Partial<HomeSnapshot>): HomeSnapshot {
     /* ignore */
   }
 
+  emitHomeSnapshot(next)
   return next
 }
