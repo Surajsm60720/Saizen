@@ -17,7 +17,8 @@ export function PosterCard({
   format,
   year,
   className,
-  size = 'md'
+  size = 'md',
+  onNavigate
 }: {
   href: string
   image?: string | null
@@ -29,6 +30,8 @@ export function PosterCard({
   year?: number | null
   className?: string
   size?: 'sm' | 'md' | 'lg'
+  /** Fired on click before navigation (e.g. blur search keyboard). */
+  onNavigate?: () => void
 }) {
   const label = shortTitle(title, size === 'sm' ? 22 : 30)
   const meta =
@@ -38,6 +41,7 @@ export function PosterCard({
     <Link
       href={href}
       title={title}
+      onClick={() => onNavigate?.()}
       className={cn(
         'group relative block shrink-0 overflow-hidden rounded-2xl',
         'bg-card/40 ring-1 ring-white/10',

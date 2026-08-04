@@ -3,86 +3,34 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import {
-  Home,
-  Search,
-  Puzzle,
-  CalendarDays,
-  MoreHorizontal
-} from 'lucide-react'
 import { installSaizenBridge } from '@/lib/native/bridge'
 import { refreshNative } from '@/lib/native'
 import { markBridgeReady } from '@/lib/native/ready'
 import { hydrateTokenMirrors, scrubLegacyCredentialSecrets, clearOAuthCredentialOverrides } from '@/lib/auth'
+import { GlassTabBar, GLASS_TAB_ITEMS } from '@/components/saizen/GlassTabBar'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 import HomePage from './page'
+import SearchPage from './app/search/page'
 
-const primaryNav = [
-  { href: '/', label: 'Home', icon: Home, match: (p: string) => p === '/' },
-  {
-    href: '/app/search/',
-    label: 'Search',
-    icon: Search,
-    match: (p: string) => p.startsWith('/app/search')
-  },
-  {
-    href: '/app/schedule/',
-    label: 'Schedule',
-    icon: CalendarDays,
-    match: (p: string) => p.startsWith('/app/schedule')
-  },
-  {
-    href: '/app/extensions/',
-    label: 'Extensions',
-    icon: Puzzle,
-    match: (p: string) => p.startsWith('/app/extensions')
-  },
-  {
-    href: '/app/settings/',
-    label: 'More',
-    icon: MoreHorizontal,
-    match: (p: string) =>
-      p.startsWith('/app/settings') || p.startsWith('/app/changelog')
-  }
-] as const
-
-const desktopNav = [
-  { href: '/', label: 'Home', match: (p: string) => p === '/' },
-  {
-    href: '/app/search/',
-    label: 'Search',
-    match: (p: string) => p.startsWith('/app/search')
-  },
-  {
-    href: '/app/schedule/',
-    label: 'Schedule',
-    match: (p: string) => p.startsWith('/app/schedule')
-  },
-  {
-    href: '/app/extensions/',
-    label: 'Extensions',
-    match: (p: string) => p.startsWith('/app/extensions')
-  },
-  {
-    href: '/app/settings/',
-    label: 'Settings',
-    match: (p: string) => p.startsWith('/app/settings')
-  }
-] as const
-
-const navEase = 'cubic-bezier(0.32, 0.72, 0, 1)'
+const desktopNav = GLASS_TAB_ITEMS.map((item) => ({
+  href: item.href,
+  label: item.label === 'More' ? 'Settings' : item.label,
+  match: item.match
+}))
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isPlayer = pathname.startsWith('/app/player')
   const isHome = pathname === '/'
+  const isSearch = pathname.startsWith('/app/search')
   const isAnime = pathname.startsWith('/app/anime')
   const hideBottomNav = isPlayer || isAnime
   const immersiveHeader = isHome || isAnime
-  const [navCompact, setNavCompact] = useState(false)
   const [headerFaded, setHeaderFaded] = useState(false)
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
   const homeScrollRef = useRef(0)
+  const searchScrollRef = useRef(0)
 
   useEffect(() => {
     void (async () => {
@@ -95,7 +43,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     })()
   }, [])
 
-  // Remember Home scroll while visible; restore when coming back (keep-alive).
+  // Hide bottom nav while the soft keyboard is open (iOS visualViewport shrinks).
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      setKeyboardOpen(overlap > 100)
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
+
+  // Remember Home / Search scroll while visible; restore when coming back (keep-alive).
   useEffect(() => {
     if (!isHome) return
     const onScroll = () => {
@@ -106,36 +71,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [isHome])
 
   useEffect(() => {
+    if (!isSearch) return
+    const onScroll = () => {
+      searchScrollRef.current = window.scrollY
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [isSearch])
+
+  useEffect(() => {
     if (isHome) {
       const y = homeScrollRef.current
+      requestAnimationFrame(() => window.scrollTo(0, y))
+    } else if (isSearch) {
+      const y = searchScrollRef.current
       requestAnimationFrame(() => window.scrollTo(0, y))
     } else {
       window.scrollTo(0, 0)
     }
-  }, [isHome])
+  }, [isHome, isSearch, pathname])
 
   useEffect(() => {
-    if (hideBottomNav) {
-      setNavCompact(false)
-    }
     if (!immersiveHeader) {
       setHeaderFaded(false)
+      return
     }
     let ticking = false
     const onScroll = () => {
       if (ticking) return
       ticking = true
       window.requestAnimationFrame(() => {
-        const y = window.scrollY
-        if (!hideBottomNav) setNavCompact(y > 40)
-        if (immersiveHeader) setHeaderFaded(y > (isAnime ? 90 : 56))
+        setHeaderFaded(window.scrollY > (isAnime ? 90 : 56))
         ticking = false
       })
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [hideBottomNav, pathname, immersiveHeader, isAnime])
+  }, [pathname, immersiveHeader, isAnime])
 
   return (
     <div className="flex min-h-dvh flex-col bg-[#141416] text-foreground select-none">
@@ -216,87 +189,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <HomePage />
         </div>
-        {!isHome ? children : null}
+        {/* Keep Search mounted so results + filters survive anime detail back-nav */}
+        <div
+          className={cn(!isSearch && 'hidden')}
+          aria-hidden={!isSearch}
+          {...(!isSearch ? { inert: true } : {})}
+        >
+          <SearchPage />
+        </div>
+        {!isHome && !isSearch ? children : null}
       </main>
 
       <div
         className={cn(
-          'pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center md:hidden',
-          'transition-[padding,transform,opacity] duration-500',
-          hideBottomNav && 'translate-y-[120%] opacity-0',
-          navCompact
-            ? 'px-3 pb-[max(8px,calc(var(--safe-bottom)*0.45+4px))]'
-            : 'px-0 pb-0'
+          'pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 md:hidden',
+          'pb-[max(10px,calc(var(--safe-bottom)+8px))]',
+          'transition-[transform,opacity] duration-300 ease-out',
+          (hideBottomNav || keyboardOpen) && 'translate-y-[120%] opacity-0'
         )}
-        style={{ transitionTimingFunction: navEase }}
+        aria-hidden={hideBottomNav || keyboardOpen}
       >
-        <nav
-          className={cn(
-            'pointer-events-auto will-change-transform',
-            'transition-[width,max-width,border-radius,background-color,box-shadow,border-color,padding,transform] duration-500',
-            navCompact
-              ? 'mb-0 w-auto max-w-[min(92vw,20.5rem)] scale-100 rounded-full border border-white/14 bg-[#141416]/62 px-1.5 shadow-[0_10px_28px_rgba(0,0,0,0.4)] backdrop-blur-xl'
-              : 'w-full max-w-none scale-100 rounded-none border border-transparent border-t-white/10 bg-[#141416]/72 shadow-none backdrop-blur-xl'
-          )}
-          style={{ transitionTimingFunction: navEase }}
-          aria-label="Primary"
-        >
-          <ul
-            className={cn(
-              'grid grid-cols-5 transition-[height,padding] duration-500',
-              navCompact
-                ? 'h-11 items-center gap-0 px-0.5 py-0'
-                : 'mx-auto h-[4.35rem] max-w-lg pt-1 pb-[max(2px,var(--safe-bottom))]'
-            )}
-            style={{ transitionTimingFunction: navEase }}
-          >
-            {primaryNav.map((item) => {
-              const active = item.match(pathname)
-              const Icon = item.icon
-              return (
-                <li key={item.href} className="min-w-0">
-                  <Link
-                    href={item.href}
-                    draggable={false}
-                    className={cn(
-                      'flex h-full flex-col items-center justify-center bg-transparent transition-all duration-500',
-                      'shadow-none ring-0 outline-none focus-visible:ring-0',
-                      navCompact ? 'gap-0 px-2.5' : 'gap-0.5 pt-0.5',
-                      active
-                        ? 'text-primary'
-                        : 'text-muted-foreground active:text-foreground'
-                    )}
-                    style={{ transitionTimingFunction: navEase }}
-                  >
-                    <Icon
-                      className={cn(
-                        'transition-[transform,filter] duration-500',
-                        navCompact ? 'size-[1.3rem]' : 'size-5',
-                        active && (navCompact ? 'scale-110' : 'scale-105'),
-                        active &&
-                          navCompact &&
-                          'drop-shadow-[0_0_7px_rgba(232,196,120,0.55)]'
-                      )}
-                      strokeWidth={active ? 2.35 : 1.75}
-                    />
-                    <span
-                      className={cn(
-                        'origin-bottom text-[0.65rem] transition-all duration-500',
-                        active && 'font-medium',
-                        navCompact
-                          ? 'pointer-events-none max-h-0 translate-y-1 scale-75 overflow-hidden opacity-0'
-                          : 'max-h-4 translate-y-0 scale-100 opacity-100'
-                      )}
-                      style={{ transitionTimingFunction: navEase }}
-                    >
-                      {item.label}
-                    </span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
+        <GlassTabBar
+          pathname={pathname}
+          hidden={hideBottomNav || keyboardOpen}
+        />
       </div>
 
       <Toaster position="top-center" theme="dark" richColors closeButton />

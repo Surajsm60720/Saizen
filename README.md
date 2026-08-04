@@ -1,4 +1,4 @@
-# Saizen · v1.1.1
+# Saizen · v1.1.2
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
@@ -6,12 +6,13 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 
 ## What’s new since v1.0
 
-Major changes from **v1.0 → v1.1.1** (patch detail lives in-app under Settings → Changelog):
+Major changes from **v1.0 → v1.1.2** (patch detail lives in-app under Settings → Changelog):
 
 - **Player** — native VLC + web chrome redesign; ±seek / next episode; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
 - **Schedule** — week airing calendar in the tab bar (device-local times); My list vs current season
 - **Anime detail** — character / VA / staff rails + detail pages; franchise watch-order Relations; edit list entry (AniList + MAL); **Continue watching EP xx**; OP/ED song names
-- **Search** — Filters sheet (genre dropdown, year, season, format, status, sort, in-my-list); header Filters button; active chips + clear all; filter-only browse + Load more
+- **Search** — Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; no autofocus keyboard on back; keyboard hides the tab bar
+- **Tab bar** — always-floating glass pill (no scroll morph); lighter liquid-glass transparency + blur
 - **Accounts & lists** — AniList / MAL Sign in (PKCE, Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Typography** — Fraunces + DM Sans across the UI
 - **Sources** — Hayase extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure

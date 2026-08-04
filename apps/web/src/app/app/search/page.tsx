@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { SlidersHorizontal, X } from 'lucide-react'
 import {
   searchAnime,
@@ -18,6 +19,7 @@ import {
 } from '@/lib/anilist'
 import { isAnilistConnected } from '@/lib/auth/tokens'
 import { ensureExtensions, hasAdultExtensionsEnabled } from '@/lib/extensions'
+import { readSearchSession, writeSearchSession } from '@/lib/search/session'
 import { PageHeader, PosterCard, PosterGrid, SearchFiltersSheet } from '@/components/saizen'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -79,32 +81,53 @@ function removeChip(filters: AnimeSearchFilters, key: string): AnimeSearchFilter
 }
 
 export default function SearchPage() {
-  const [term, setTerm] = useState('')
-  const [filters, setFilters] = useState<AnimeSearchFilters>(() => ({
-    ...DEFAULT_SEARCH_FILTERS,
-    genres: []
-  }))
+  const pathname = usePathname()
+  const isActive = pathname.startsWith('/app/search')
+  const boot = useRef(readSearchSession())
+  const warmed = useRef(false)
+
+  const [term, setTerm] = useState(boot.current.term)
+  const [filters, setFilters] = useState<AnimeSearchFilters>(boot.current.filters)
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [results, setResults] = useState<AnimeMedia[]>([])
+  const [results, setResults] = useState<AnimeMedia[]>(boot.current.results)
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState('')
-  const [includeAdult, setIncludeAdult] = useState(false)
-  const [anilistOn, setAnilistOn] = useState(false)
-  const [page, setPage] = useState(1)
-  const [hasNextPage, setHasNextPage] = useState(false)
+  const [error, setError] = useState(boot.current.error)
+  const [includeAdult, setIncludeAdult] = useState(boot.current.includeAdult)
+  const [anilistOn, setAnilistOn] = useState(boot.current.anilistOn)
+  const [page, setPage] = useState(boot.current.page)
+  const [hasNextPage, setHasNextPage] = useState(boot.current.hasNextPage)
   const inputRef = useRef<HTMLInputElement>(null)
   const activeCount = countActiveSearchFilters(filters)
   const chips = useMemo(() => chipLabels(filters), [filters])
 
+  // Persist session whenever meaningful state changes (survives keep-alive + remount).
   useEffect(() => {
-    inputRef.current?.focus()
+    writeSearchSession({
+      term,
+      filters,
+      results,
+      page,
+      hasNextPage,
+      error,
+      includeAdult,
+      anilistOn
+    })
+  }, [term, filters, results, page, hasNextPage, error, includeAdult, anilistOn])
+
+  // One-time warm: extensions + list cache. Skip heavy refetch on keep-alive revisits.
+  useEffect(() => {
+    if (warmed.current) return
+    warmed.current = true
     void ensureExtensions().then(() => {
-      setIncludeAdult(hasAdultExtensionsEnabled())
+      const adult = hasAdultExtensionsEnabled()
+      setIncludeAdult(adult)
+      writeSearchSession({ includeAdult: adult })
     })
     void isAnilistConnected().then(async (on) => {
       setAnilistOn(on)
-      if (on) {
+      writeSearchSession({ anilistOn: on })
+      if (on && !peekViewerListCache()?.length) {
         try {
           await fetchViewerAnimeList(
             ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED', 'PLANNING', 'DROPPED'],
@@ -116,6 +139,30 @@ export default function SearchPage() {
       }
     })
   }, [])
+
+  // Dismiss keyboard on leave; never restore focus on return (tap to type).
+  useEffect(() => {
+    inputRef.current?.blur()
+    if (!isActive) setSheetOpen(false)
+  }, [isActive])
+
+  // Dismiss keyboard when scrolling results (stops nav sitting on the keyboard).
+  useEffect(() => {
+    if (!isActive) return
+    let lastY = window.scrollY
+    const onScroll = () => {
+      const y = window.scrollY
+      if (Math.abs(y - lastY) < 12) return
+      lastY = y
+      const el = document.activeElement
+      if (el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+        el.blur()
+      }
+      writeSearchSession({ scrollY: y })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [isActive])
 
   const runSearch = useCallback(
     async (nextTerm: string, nextFilters: AnimeSearchFilters, pageNum = 1, append = false) => {
@@ -159,11 +206,13 @@ export default function SearchPage() {
 
   async function onSubmit(e?: React.FormEvent) {
     e?.preventDefault()
+    inputRef.current?.blur()
     await runSearch(term, filters, 1, false)
   }
 
   function onApplyFilters(next: AnimeSearchFilters) {
     setFilters(next)
+    inputRef.current?.blur()
     void runSearch(term, next, 1, false)
   }
 
@@ -177,6 +226,12 @@ export default function SearchPage() {
     const next = { ...DEFAULT_SEARCH_FILTERS, genres: [] as string[] }
     setFilters(next)
     void runSearch(term, next, 1, false)
+  }
+
+  function openAnime() {
+    // Blur before route change so WKWebView doesn't keep the keyboard up mid-nav.
+    inputRef.current?.blur()
+    writeSearchSession({ scrollY: window.scrollY })
   }
 
   return (
@@ -211,6 +266,8 @@ export default function SearchPage() {
           className="min-h-11"
           placeholder="Romaji / English / Japanese title"
           value={term}
+          enterKeyHint="search"
+          autoFocus={false}
           onChange={(e) => setTerm(e.target.value)}
         />
         <Button type="submit" size="lg" className="min-h-11 px-5" disabled={loading}>
@@ -271,6 +328,7 @@ export default function SearchPage() {
             score={media.averageScore}
             format={media.format}
             year={media.seasonYear}
+            onNavigate={openAnime}
           />
         ))}
       </PosterGrid>

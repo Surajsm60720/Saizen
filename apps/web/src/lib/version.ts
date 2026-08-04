@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.1.1'
+export const APP_VERSION = '1.1.2'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.1.2',
+    date: '2026-08-04',
+    title: 'Search session & glass tab bar',
+    highlights: [
+      'Search stays alive when you open an anime and go back — query, filters, and results are preserved',
+      'Keyboard no longer autofocuses on return to Search; it only opens when you tap the search field',
+      'Bottom tab bar hides while the keyboard is open (no nav sitting on top of it)',
+      'Tab bar is always a floating glass pill — no dock↔compact morph flicker on scroll',
+      'Lighter liquid-glass chrome: lower fill opacity and stronger backdrop blur'
+    ]
+  },
   {
     version: '1.1.1',
     date: '2026-08-04',

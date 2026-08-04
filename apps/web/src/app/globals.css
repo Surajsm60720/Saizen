@@ -277,3 +277,22 @@
     -webkit-touch-callout: default;
   }
 }
+
+/* Floating tab bar — light liquid-glass chrome */
+.saizen-tab-glass {
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(18, 18, 22, 0.18);
+  box-shadow:
+    0 10px 32px rgba(0, 0, 0, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 -0.5px 0 rgba(0, 0, 0, 0.12) inset;
+  -webkit-backdrop-filter: blur(48px) saturate(200%);
+  backdrop-filter: blur(48px) saturate(200%);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .saizen-tab-glass {
+    background: rgba(255, 255, 255, 0.025);
+  }
+}
