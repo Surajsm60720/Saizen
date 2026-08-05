@@ -42,7 +42,10 @@ export const GLASS_TAB_ITEMS: readonly TabItem[] = [
     href: '/app/settings/',
     label: 'More',
     icon: MoreHorizontal,
-    match: (p) => p.startsWith('/app/settings') || p.startsWith('/app/changelog')
+    match: (p) =>
+      p.startsWith('/app/settings') ||
+      p.startsWith('/app/changelog') ||
+      p.startsWith('/app/downloads')
   }
 ] as const
 

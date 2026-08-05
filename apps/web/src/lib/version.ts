@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.1.2'
+export const APP_VERSION = '1.2.0'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,21 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.2.0',
+    date: '2026-08-05',
+    title: 'Offline downloads',
+    highlights: [
+      'Settings → Downloads: folder access, parallel jobs, Wi‑Fi only, storage use',
+      'Download all aired, a range, or picked episodes — auto-selects preferred quality',
+      'Save from the sources sheet (Play + Save); multi-select sources to queue several',
+      'Files land in Show / Season / original release name; play offline from the library',
+      'Lock-screen progress notification; torrents keep running while Saizen is open or locked',
+      'Torrent Save fetches the full episode (not just the stream head) with real % progress',
+      'Download notification updates quietly — no spam banners every few hundred ms',
+      'Library updates live, groups long series, and clears leftover download cache after delete'
+    ]
+  },
   {
     version: '1.1.2',
     date: '2026-08-04',

@@ -49,11 +49,15 @@ export function SettingsRow({
           className
         )}
       >
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">{label}</div>
-          {hint ? <div className="text-xs text-muted-foreground">{hint}</div> : null}
+          {hint ? (
+            <div className="mt-0.5 break-words text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+              {hint}
+            </div>
+          ) : null}
         </div>
-        {children}
+        {children ? <div className="shrink-0">{children}</div> : null}
       </div>
     </>
   )

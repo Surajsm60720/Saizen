@@ -175,10 +175,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           isPlayer
             ? 'max-w-none px-0 py-0'
             : isHome
-              ? 'px-0 pb-24 md:pb-10'
+              ? 'px-0 pb-[calc(5.75rem+var(--safe-bottom))] md:pb-10'
               : isAnime
                 ? 'px-4 pt-0 pb-[calc(1.25rem+var(--safe-bottom))] sm:px-5'
-                : 'px-4 pt-[calc(3.25rem+var(--safe-top))] pb-24 sm:px-5 sm:pt-[calc(3.75rem+var(--safe-top))] md:pb-10'
+                : 'px-4 pt-[calc(3.25rem+var(--safe-top))] pb-[calc(5.75rem+var(--safe-bottom))] sm:px-5 sm:pt-[calc(3.75rem+var(--safe-top))] md:pb-10'
         )}
       >
         {/* Keep Home mounted so back-nav doesn't remount / refetch / flash */}

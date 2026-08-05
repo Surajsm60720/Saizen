@@ -4,7 +4,13 @@ import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
-const Toaster = ({ ...props }: ToasterProps) => {
+/** Clear the status bar / home indicator so toasts stay readable on iOS. */
+const SAFE_TOAST_OFFSET = {
+  top: "calc(var(--safe-top) + 12px)",
+  bottom: "calc(var(--safe-bottom) + 12px)",
+} satisfies NonNullable<ToasterProps["offset"]>
+
+const Toaster = ({ offset, mobileOffset, ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
 
   return (
@@ -42,6 +48,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
         },
       }}
       {...props}
+      offset={offset ?? SAFE_TOAST_OFFSET}
+      mobileOffset={mobileOffset ?? SAFE_TOAST_OFFSET}
     />
   )
 }

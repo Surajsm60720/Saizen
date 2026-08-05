@@ -2,7 +2,7 @@ import Capacitor
 import Foundation
 import UIKit
 
-/// Capacitor plugin: playTorrent / torrentInfo / stop
+/// Capacitor plugin: playback + download library
 @objc(SaizenTorrentPlugin)
 public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
   public let identifier = "SaizenTorrentPlugin"
@@ -11,12 +11,29 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "playTorrent", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "torrentInfo", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "checkAvailableSpace", returnType: CAPPluginReturnPromise)
+    CAPPluginMethod(name: "checkAvailableSpace", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "enqueueDownload", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "downloadQueue", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "pauseDownload", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "resumeDownload", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "cancelDownload", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "library", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "deleteTorrents", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "cachedTorrents", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "updateSettings", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "storageUsage", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "clearCache", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "pickDownloadFolder", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "resetDownloadFolder", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "downloadFolder", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "playLibraryItem", returnType: CAPPluginReturnPromise)
   ]
 
   public override func load() {
-    // Clear leftovers from previous force-quit / crash sessions only when idle.
     SaizenPlayback.purgeIfIdle()
+    DownloadCoordinator.shared.onJobsUpdated = { [weak self] jobs in
+      self?.notifyListeners("downloadProgress", data: ["jobs": jobs])
+    }
   }
 
   @objc func playTorrent(_ call: CAPPluginCall) {
@@ -27,7 +44,6 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
     let mediaId = call.getInt("mediaId") ?? 0
     let episode = call.getInt("episode") ?? 1
 
-    // Abort early if the device is nearly full (S-11).
     let minFree: Int64 = 256 * 1024 * 1024
     if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
        let values = try? docs.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
@@ -57,7 +73,6 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         call.resolve(["files": mapped])
       } catch {
-        // Failed before/during warm — drop session so launch purge can run later.
         SaizenPlayback.stopAndPurge(expecting: nil)
         call.reject(error.localizedDescription)
       }
@@ -86,5 +101,163 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
     } else {
       call.resolve(["bytes": 0])
     }
+  }
+
+  @objc func enqueueDownload(_ call: CAPPluginCall) {
+    do {
+      let id = try DownloadCoordinator.shared.enqueue(options: Self.optionsDict(call))
+      call.resolve(["id": id])
+    } catch {
+      call.reject(error.localizedDescription)
+    }
+  }
+
+  @objc func downloadQueue(_ call: CAPPluginCall) {
+    call.resolve(["jobs": DownloadCoordinator.shared.queueSnapshot()])
+  }
+
+  @objc func pauseDownload(_ call: CAPPluginCall) {
+    guard let id = call.getString("id") else {
+      call.reject("Missing id")
+      return
+    }
+    DownloadCoordinator.shared.pause(id: id)
+    call.resolve()
+  }
+
+  @objc func resumeDownload(_ call: CAPPluginCall) {
+    guard let id = call.getString("id") else {
+      call.reject("Missing id")
+      return
+    }
+    DownloadCoordinator.shared.resume(id: id)
+    call.resolve()
+  }
+
+  @objc func cancelDownload(_ call: CAPPluginCall) {
+    guard let id = call.getString("id") else {
+      call.reject("Missing id")
+      return
+    }
+    DownloadCoordinator.shared.cancel(id: id)
+    call.resolve()
+  }
+
+  @objc func library(_ call: CAPPluginCall) {
+    call.resolve(["entries": DownloadCoordinator.shared.librarySnapshot()])
+  }
+
+  @objc func deleteTorrents(_ call: CAPPluginCall) {
+    let hashes = call.getArray("hashes", String.self) ?? call.getArray("ids", String.self) ?? []
+    let ids = hashes.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    guard !ids.isEmpty else {
+      call.reject("Missing ids — pass non-empty hashes/ids to delete specific library items")
+      return
+    }
+    DownloadCoordinator.shared.deleteLibrary(ids: ids)
+    call.resolve()
+  }
+
+  @objc func cachedTorrents(_ call: CAPPluginCall) {
+    call.resolve(["hashes": [] as [String]])
+  }
+
+  @objc func updateSettings(_ call: CAPPluginCall) {
+    DownloadCoordinator.shared.updateSettings(Self.optionsDict(call))
+    call.resolve()
+  }
+
+  @objc func storageUsage(_ call: CAPPluginCall) {
+    call.resolve(DownloadCoordinator.shared.storageUsage())
+  }
+
+  @objc func clearCache(_ call: CAPPluginCall) {
+    DownloadCoordinator.shared.clearCache()
+    call.resolve()
+  }
+
+  @objc func downloadFolder(_ call: CAPPluginCall) {
+    call.resolve(["path": DownloadCoordinator.shared.folderPath()])
+  }
+
+  @objc func resetDownloadFolder(_ call: CAPPluginCall) {
+    do {
+      let path = try DownloadCoordinator.shared.resetFolder()
+      call.resolve(["path": path])
+    } catch {
+      call.reject(error.localizedDescription)
+    }
+  }
+
+  @objc func pickDownloadFolder(_ call: CAPPluginCall) {
+    guard let vc = bridge?.viewController else {
+      call.reject("No view controller")
+      return
+    }
+    Task {
+      do {
+        let path = try await DownloadCoordinator.shared.pickFolder(from: vc)
+        call.resolve(["path": path])
+      } catch {
+        call.reject(error.localizedDescription)
+      }
+    }
+  }
+
+  @objc func playLibraryItem(_ call: CAPPluginCall) {
+    guard let id = call.getString("id") else {
+      call.reject("Missing id")
+      return
+    }
+    DispatchQueue.main.async {
+      do {
+        try DownloadCoordinator.shared.playLibraryItem(id: id) { url, hint, job in
+          guard let presenter = self.bridge?.viewController else {
+            call.reject("No view controller")
+            return
+          }
+          let title = "\(job.seriesTitle) · Ep \(job.episode)"
+          PlayerRouter.present(
+            from: presenter,
+            url: url,
+            hint: PlayerHint(rawValue: hint) ?? .vlc,
+            title: title,
+            context: PlaybackContext(
+              anilistId: job.mediaId,
+              episode: job.episode,
+              idMal: nil
+            ),
+            onDismiss: nil
+          )
+          call.resolve()
+        }
+      } catch {
+        call.reject(error.localizedDescription)
+      }
+    }
+  }
+
+  private static func optionsDict(_ call: CAPPluginCall) -> [String: Any] {
+    var d: [String: Any] = [:]
+    let keys = [
+      "source", "mediaId", "episode", "seriesTitle", "episodeTitle", "poster",
+      "resolution", "sourceLabel", "seasonLabel", "maxParallelDownloads", "wifiOnly",
+      "preferredQuality", "torrentPersist", "torrentStreamedDownload", "torrentSpeed",
+      "maxConns", "hashes", "ids", "id"
+    ]
+    for key in keys {
+      if let n = call.getInt(key) {
+        d[key] = n
+        continue
+      }
+      if let b = call.getBool(key) {
+        d[key] = b
+        continue
+      }
+      if let s = call.getString(key) {
+        d[key] = s
+      }
+    }
+    return d
   }
 }

@@ -16,7 +16,13 @@ See `packages/shared/src/native.ts` for the TypeScript source of truth.
 | `authAnilist` / `authMAL` | done | ASWebAuthenticationSession → `saizen://` callbacks |
 | `exchangeMalToken` | done | URLSession form POST + Basic auth (public client / PKCE) |
 | `getSecureItem` / `setSecureItem` / `deleteSecureItem` | done | Keychain-backed token storage |
-| `library` / `cachedTorrents` | stub | Phase 5 |
+| `enqueueDownload` / `downloadQueue` / `onDownloadProgress` | done | Offline queue (HTTP background + libtorrent) |
+| `pauseDownload` / `resumeDownload` / `cancelDownload` | done | |
+| `library` / `deleteTorrents` / `playLibraryItem` | done | Persistent offline library. `deleteTorrents` requires a non-empty `hashes`/`ids` list (empty = no-op / reject; no wipe-all). |
+| `storageUsage` / `clearCache` | done | Library vs stream-cache bytes |
+| `pickDownloadFolder` / `resetDownloadFolder` / `downloadFolder` | done | Security-scoped folder access |
+| `updateSettings` | done | Parallel / Wi-Fi / quality |
+| `cachedTorrents` | stub | Returns `[]` |
 
 ## Player hint
 
@@ -26,3 +32,7 @@ See `packages/shared/src/native.ts` for the TypeScript source of truth.
 ## Skip times
 
 `skipTimes` is fetched from AniSkip (`api.aniskip.com`) in JS using MAL id + episode, then passed into `spawnPlayer`. Auto-skip is controlled by watch setting `autoSkipOpEd` (Settings → Playback), not an in-player toggle.
+
+## Downloads
+
+Completed files live under `{chosen folder}/{Show}/{Season}/{original filename}`. Stream cache under `Documents/Saizen/{pieces,torrents,cache}` is still purged after playback. Loopback playback of library items uses a per-session Range token.

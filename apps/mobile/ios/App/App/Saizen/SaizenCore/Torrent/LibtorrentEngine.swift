@@ -47,10 +47,15 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
   private var tickTimer: DispatchSourceTimer?
   private var currentHash = ""
   private var fileName = "stream"
+  private var preferredStoreURL: URL?
   private var metaContinuation: CheckedContinuation<Void, Error>?
   private let stateLock = NSLock()
 
   public init() {}
+
+  deinit {
+    shutdownSession()
+  }
 
   public func play(source: String, mediaId: Int, episode: Int) async throws -> [SaizenTorrentFileInfo] {
     stopAll()
@@ -211,10 +216,11 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
   fileprivate func handleMetadata(name: String, fileSize: Int64, pieceLength: Int) {
     fileName = (name as NSString).lastPathComponent
     do {
-      let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-      let pieceURL = docs
-        .appendingPathComponent("Saizen/pieces", isDirectory: true)
-        .appendingPathComponent("\(UUID().uuidString).part")
+      let pieceURL =
+        preferredStoreURL
+        ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+          .appendingPathComponent("Saizen/pieces", isDirectory: true)
+          .appendingPathComponent("\(UUID().uuidString).part")
       store = try PieceStore(
         fileSize: fileSize,
         pieceLength: max(pieceLength, 16 * 1024),
@@ -253,6 +259,166 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
     }
     timer.resume()
     tickTimer = timer
+  }
+
+  /// Full-file download (no Range server, no head-focus). Caller owns `partialURL`.
+  public func downloadFullFile(
+    source: String,
+    workDir: URL,
+    partialURL: URL,
+    shouldCancel: @escaping () -> Bool,
+    isPaused: @escaping () -> Bool,
+    onProgress: @escaping (_ progress: Double, _ downloaded: Int64, _ total: Int64, _ speed: Int64) -> Void
+  ) async throws -> (fileName: String, fileSize: Int64, hash: String) {
+    shutdownSession()
+    preferredStoreURL = partialURL
+    defer { shutdownSession() }
+
+    if !source.hasPrefix("magnet:"), !Self.isTorrentFileURL(source) {
+      throw NSError(
+        domain: "SaizenTorrent",
+        code: 20,
+        userInfo: [NSLocalizedDescriptionKey: "Not a torrent source"]
+      )
+    }
+
+    try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
+
+    let callbacks = SaizenLTCallbacks(
+      on_log: saizenLtLog,
+      on_metadata: saizenLtMetadata,
+      on_bytes: saizenLtBytes,
+      ctx: Unmanaged.passUnretained(self).toOpaque()
+    )
+
+    guard let created = saizen_lt_create(workDir.path, callbacks) else {
+      throw NSError(
+        domain: "SaizenTorrent",
+        code: 10,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "Libtorrent not linked. Run scripts/build-libtorrent-ios.sh then enable SAIZEN_HAS_LIBTORRENT in Xcode."
+        ]
+      )
+    }
+    session = created
+    saizen_lt_set_full_file_mode(created, true)
+    startTicker()
+
+    if Self.isTorrentFileURL(source) {
+      let local = try await Self.downloadTorrentFile(from: source, into: workDir)
+      try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        stateLock.lock()
+        metaContinuation = cont
+        stateLock.unlock()
+        let add = saizen_lt_add_torrent_file(created, local.path)
+        if add != 0 {
+          stateLock.lock()
+          metaContinuation = nil
+          stateLock.unlock()
+          cont.resume(throwing: NSError(
+            domain: "SaizenTorrent",
+            code: Int(add),
+            userInfo: [NSLocalizedDescriptionKey: "Failed to add torrent file (code \(add))"]
+          ))
+        }
+      }
+    } else {
+      try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        stateLock.lock()
+        metaContinuation = cont
+        stateLock.unlock()
+        let add = saizen_lt_add_magnet(created, source)
+        if add != 0 {
+          stateLock.lock()
+          metaContinuation = nil
+          stateLock.unlock()
+          cont.resume(throwing: NSError(
+            domain: "SaizenTorrent",
+            code: Int(add),
+            userInfo: [NSLocalizedDescriptionKey: "Failed to add magnet (code \(add))"]
+          ))
+          return
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 180) { [weak self] in
+          guard let self else { return }
+          self.stateLock.lock()
+          if let c = self.metaContinuation {
+            self.metaContinuation = nil
+            self.stateLock.unlock()
+            c.resume(throwing: NSError(
+              domain: "SaizenTorrent",
+              code: 11,
+              userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for torrent metadata"]
+            ))
+          } else {
+            self.stateLock.unlock()
+          }
+        }
+      }
+    }
+
+    currentHash = String(source.hashValue)
+    saizen_lt_download_all(created)
+    var pausedApplied = false
+
+    while !Task.isCancelled {
+      if shouldCancel() { throw CancellationError() }
+      if isPaused() {
+        if !pausedApplied {
+          saizen_lt_pause(created)
+          pausedApplied = true
+        }
+        try await Task.sleep(nanoseconds: 400_000_000)
+        continue
+      }
+      if pausedApplied {
+        saizen_lt_resume(created)
+        saizen_lt_download_all(created)
+        pausedApplied = false
+      }
+
+      let total = store?.fileSize ?? 0
+      let downloaded = store?.downloadedBytes ?? 0
+      let progress = total > 0 ? min(1, Double(downloaded) / Double(total)) : 0
+      let speed = saizen_lt_download_rate(created)
+      onProgress(progress, downloaded, total, speed)
+
+      if total > 0, downloaded >= total - 2048 {
+        break
+      }
+      try await Task.sleep(nanoseconds: 400_000_000)
+    }
+
+    store?.closeHandle()
+    let name = fileName.isEmpty ? (partialURL.lastPathComponent) : fileName
+    let size = store?.fileSize ?? 0
+    let hash = currentHash
+    return (name, size, hash)
+  }
+
+  /// Stop session/ticker without wiping global playback cache dirs.
+  public func shutdownSession() {
+    tickTimer?.cancel()
+    tickTimer = nil
+    server.stop()
+    store?.cancelAll()
+    store?.closeHandle()
+    store = nil
+    preferredStoreURL = nil
+    let doomed = session
+    session = nil
+    if let doomed {
+      saizen_lt_destroy(doomed)
+    }
+    stateLock.lock()
+    if let c = metaContinuation {
+      metaContinuation = nil
+      stateLock.unlock()
+      c.resume(throwing: CancellationError())
+    } else {
+      stateLock.unlock()
+    }
   }
 
   public func torrentInfo(hash _: String) async -> [String: Any] {

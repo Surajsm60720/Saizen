@@ -5,11 +5,16 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type {
   AuthResponse,
+  ClientSettings,
+  DownloadJob,
+  EnqueueDownloadOptions,
+  LibraryEntry,
   MalAuthCodeResponse,
   NativePlaybackProgress,
   NativePlayerAction,
   SaizenNative,
   SpawnPlayerOptions,
+  StorageUsage,
   TorrentFile
 } from '@saizen/shared'
 
@@ -22,6 +27,25 @@ interface SaizenTorrentPlugin {
   torrentInfo(options: { hash: string }): Promise<Record<string, unknown>>
   stop(): Promise<void>
   checkAvailableSpace(): Promise<{ bytes: number }>
+  enqueueDownload(o: EnqueueDownloadOptions): Promise<{ id: string }>
+  downloadQueue(): Promise<{ jobs: DownloadJob[] }>
+  pauseDownload(o: { id: string }): Promise<void>
+  resumeDownload(o: { id: string }): Promise<void>
+  cancelDownload(o: { id: string }): Promise<void>
+  library(): Promise<{ entries: LibraryEntry[] }>
+  deleteTorrents(o: { hashes?: string[]; ids?: string[] }): Promise<void>
+  cachedTorrents(): Promise<{ hashes: string[] }>
+  updateSettings(o: Partial<ClientSettings>): Promise<void>
+  storageUsage(): Promise<StorageUsage>
+  clearCache(): Promise<void>
+  pickDownloadFolder(): Promise<{ path: string }>
+  resetDownloadFolder(): Promise<{ path: string }>
+  downloadFolder(): Promise<{ path: string }>
+  playLibraryItem(o: { id: string }): Promise<void>
+  addListener(
+    event: 'downloadProgress',
+    cb: (p: { jobs: DownloadJob[] }) => void
+  ): Promise<{ remove: () => Promise<void> }>
 }
 
 interface SaizenPlayerPlugin {
@@ -126,16 +150,64 @@ export function installSaizenBridge(): void {
       const { bytes } = await SaizenTorrent.checkAvailableSpace()
       return bytes
     },
-    async deleteTorrents(_hashes?: string[]) {
-      await SaizenTorrent.stop()
+    async deleteTorrents(hashes?: string[]) {
+      const ids = (hashes ?? []).map((h) => h.trim()).filter(Boolean)
+      if (!ids.length) return
+      await SaizenTorrent.deleteTorrents({ hashes: ids, ids })
     },
     async cachedTorrents() {
-      return []
+      const { hashes } = await SaizenTorrent.cachedTorrents()
+      return hashes
     },
     async library() {
-      return []
+      const { entries } = await SaizenTorrent.library()
+      return entries
     },
-    async updateSettings() {},
+    async updateSettings(settings) {
+      await SaizenTorrent.updateSettings(settings)
+    },
+    async enqueueDownload(options) {
+      return SaizenTorrent.enqueueDownload(options)
+    },
+    async downloadQueue() {
+      const { jobs } = await SaizenTorrent.downloadQueue()
+      return jobs
+    },
+    async onDownloadProgress(cb) {
+      const handle = await SaizenTorrent.addListener('downloadProgress', (p) => {
+        cb(p.jobs ?? [])
+      })
+      return () => {
+        void handle.remove()
+      }
+    },
+    async pauseDownload(id) {
+      await SaizenTorrent.pauseDownload({ id })
+    },
+    async resumeDownload(id) {
+      await SaizenTorrent.resumeDownload({ id })
+    },
+    async cancelDownload(id) {
+      await SaizenTorrent.cancelDownload({ id })
+    },
+    async playLibraryItem(id) {
+      await SaizenTorrent.playLibraryItem({ id })
+    },
+    async storageUsage() {
+      return SaizenTorrent.storageUsage()
+    },
+    async clearCache() {
+      await SaizenTorrent.clearCache()
+    },
+    async pickDownloadFolder() {
+      return SaizenTorrent.pickDownloadFolder()
+    },
+    async resetDownloadFolder() {
+      return SaizenTorrent.resetDownloadFolder()
+    },
+    async downloadFolder() {
+      return SaizenTorrent.downloadFolder()
+    },
     async openURL(url) {
       window.open(url, '_blank')
     },

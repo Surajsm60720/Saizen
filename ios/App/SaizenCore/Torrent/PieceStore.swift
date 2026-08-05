@@ -126,50 +126,54 @@ public final class PieceStore: @unchecked Sendable {
     return data
   }
 
+  /// NSLock.lock is `@available(*, noasync)` — keep all lock traffic in sync helpers.
+  private func readIfAvailable(_ range: Range<Int64>) throws -> Data? {
+    lock.lock()
+    defer { lock.unlock() }
+    guard isAvailableLocked(range: range) else { return nil }
+    return try readLocked(range: range)
+  }
+
+  private func enqueueWaiter(id: UUID, range: Range<Int64>, continuation: CheckedContinuation<Data, Error>) {
+    lock.lock()
+    if isAvailableLocked(range: range) {
+      do {
+        let slice = try readLocked(range: range)
+        lock.unlock()
+        continuation.resume(returning: slice)
+      } catch {
+        lock.unlock()
+        continuation.resume(throwing: error)
+      }
+      return
+    }
+    waiters[id] = Waiter(range: range, continuation: continuation)
+    lock.unlock()
+  }
+
+  private func takeWaiter(_ id: UUID) -> Waiter? {
+    lock.lock()
+    defer { lock.unlock() }
+    return waiters.removeValue(forKey: id)
+  }
+
   /// Returns bytes immediately if present; otherwise suspends until written, cancelled, or timed out.
   public func read(range: Range<Int64>, timeout: TimeInterval = 120) async throws -> Data {
     guard range.lowerBound >= 0, range.upperBound <= fileSize, range.lowerBound < range.upperBound else {
       throw PieceStoreError.outOfBounds
     }
 
-    lock.lock()
-    if isAvailableLocked(range: range) {
-      do {
-        let slice = try readLocked(range: range)
-        lock.unlock()
-        return slice
-      } catch {
-        lock.unlock()
-        throw error
-      }
+    if let slice = try readIfAvailable(range) {
+      return slice
     }
-    lock.unlock()
 
     return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
       let id = UUID()
-      lock.lock()
-      if isAvailableLocked(range: range) {
-        do {
-          let slice = try readLocked(range: range)
-          lock.unlock()
-          cont.resume(returning: slice)
-        } catch {
-          lock.unlock()
-          cont.resume(throwing: error)
-        }
-        return
-      }
-      waiters[id] = Waiter(range: range, continuation: cont)
-      lock.unlock()
+      enqueueWaiter(id: id, range: range, continuation: cont)
 
       DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
         guard let self else { return }
-        self.lock.lock()
-        guard let waiter = self.waiters.removeValue(forKey: id) else {
-          self.lock.unlock()
-          return
-        }
-        self.lock.unlock()
+        guard let waiter = self.takeWaiter(id) else { return }
         waiter.continuation.resume(throwing: PieceStoreError.timedOut)
       }
     }
@@ -185,6 +189,30 @@ public final class PieceStore: @unchecked Sendable {
         w.continuation.resume(throwing: PieceStoreError.cancelled)
       }
     }
+  }
+
+  public func closeHandle() {
+    lock.lock()
+    try? fileHandle?.synchronize()
+    try? fileHandle?.close()
+    fileHandle = nil
+    lock.unlock()
+  }
+
+  public func markFullyAvailable() {
+    lock.lock()
+    defer { lock.unlock() }
+    if fileSize > 0 {
+      downloaded = IndexSet(integersIn: 0 ..< Int(fileSize))
+    }
+  }
+
+  public static func openComplete(url: URL) throws -> PieceStore {
+    let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+    let size = max((attrs[.size] as? NSNumber)?.int64Value ?? 0, 1)
+    let store = try PieceStore(fileSize: size, fileURL: url)
+    store.markFullyAvailable()
+    return store
   }
 
   /// Best-effort cleanup of the backing file (call from stopAll).

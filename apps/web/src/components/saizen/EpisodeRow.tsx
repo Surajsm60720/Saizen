@@ -18,10 +18,16 @@ export type EpisodeItem = {
 export function EpisodeRow({
   episode,
   onSelect,
+  downloaded,
+  selecting,
+  selected,
   className
 }: {
   episode: EpisodeItem
   onSelect: () => void
+  downloaded?: boolean
+  selecting?: boolean
+  selected?: boolean
   className?: string
 }) {
   const unreleased = Boolean(episode.unreleased)
@@ -36,8 +42,10 @@ export function EpisodeRow({
         'group flex w-full items-center gap-3 rounded-2xl border px-2.5 py-2 text-left transition-all duration-200',
         unreleased
           ? 'cursor-not-allowed border-white/5 bg-white/[0.02] opacity-55'
-          : watched
+            : watched
             ? 'border-white/6 bg-white/[0.015] opacity-55 grayscale-[0.35]'
+            : selected
+              ? 'border-primary/40 bg-primary/10'
             : 'border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent hover:border-primary/30 hover:from-primary/10 active:scale-[0.99]',
         className
       )}
@@ -87,6 +95,16 @@ export function EpisodeRow({
           ) : watched ? (
             <Badge variant="outline" className="h-5 text-[0.65rem] text-muted-foreground">
               Watched
+            </Badge>
+          ) : null}
+          {downloaded ? (
+            <Badge variant="secondary" className="h-5 text-[0.65rem]">
+              Downloaded
+            </Badge>
+          ) : null}
+          {selecting && !unreleased ? (
+            <Badge variant={selected ? 'default' : 'outline'} className="h-5 text-[0.65rem]">
+              {selected ? 'Selected' : 'Select'}
             </Badge>
           ) : null}
         </div>

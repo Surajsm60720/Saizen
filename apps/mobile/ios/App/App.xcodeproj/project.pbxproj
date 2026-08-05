@@ -27,6 +27,7 @@
 		CEB26AFB3C7E46CA98F53771 /* Plugins/SaizenTorrent/SaizenTorrentPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D02D61996A24B21A848A951 /* Plugins/SaizenTorrent/SaizenTorrentPlugin.swift */; };
 		E7A1B2C3D4E5F60718293A4B /* Resources/sample-test.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F708192A3B4C /* Resources/sample-test.mp4 */; };
 		A1LT0001ENGINESWIFT01 /* SaizenCore/Torrent/LibtorrentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1LT0002ENGINESWIFT02 /* SaizenCore/Torrent/LibtorrentEngine.swift */; };
+		A1DL0001COORD01 /* SaizenCore/Downloads/DownloadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1DL0002COORD02 /* SaizenCore/Downloads/DownloadCoordinator.swift */; };
 		A1LT0003BRIDGECPP0001 /* SaizenCore/Torrent/LibtorrentBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A1LT0004BRIDGECPP0002 /* SaizenCore/Torrent/LibtorrentBridge.cpp */; };
 		A1LT0006LIBA00000001 /* libtorrent.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A1LT0007LIBA00000002 /* libtorrent.a */; };
 		A1LT0008TRYA00000001 /* libtry_signal.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A1LT0009TRYA00000002 /* libtry_signal.a */; };
@@ -58,6 +59,7 @@
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F708192A3B4C /* Resources/sample-test.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/sample-test.mp4"; sourceTree = "<group>"; };
 		A1LT0002ENGINESWIFT02 /* SaizenCore/Torrent/LibtorrentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Torrent/LibtorrentEngine.swift; sourceTree = "<group>"; };
+		A1DL0002COORD02 /* SaizenCore/Downloads/DownloadCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Downloads/DownloadCoordinator.swift; sourceTree = "<group>"; };
 		A1LT0004BRIDGECPP0002 /* SaizenCore/Torrent/LibtorrentBridge.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SaizenCore/Torrent/LibtorrentBridge.cpp; sourceTree = "<group>"; };
 		A1LT0005BRIDGEH000003 /* SaizenCore/Torrent/LibtorrentBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SaizenCore/Torrent/LibtorrentBridge.h; sourceTree = "<group>"; };
 		A1LT0007LIBA00000002 /* libtorrent.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtorrent.a; path = ../../../../ios/vendor/libtorrent-ios/lib/libtorrent.a; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 				A1LT0002ENGINESWIFT02 /* SaizenCore/Torrent/LibtorrentEngine.swift */,
 				A1LT0004BRIDGECPP0002 /* SaizenCore/Torrent/LibtorrentBridge.cpp */,
 				A1LT0005BRIDGEH000003 /* SaizenCore/Torrent/LibtorrentBridge.h */,
+				A1DL0002COORD02 /* SaizenCore/Downloads/DownloadCoordinator.swift */,
 			);
 			path = Saizen;
 			sourceTree = "<group>";
@@ -284,6 +287,7 @@
 				7ECEA436F8C5433FBC5233CB /* Plugins/SaizenAuth/SaizenAuthPlugin.swift in Sources */,
 				A1LT0001ENGINESWIFT01 /* SaizenCore/Torrent/LibtorrentEngine.swift in Sources */,
 				A1LT0003BRIDGECPP0001 /* SaizenCore/Torrent/LibtorrentBridge.cpp in Sources */,
+				A1DL0001COORD01 /* SaizenCore/Downloads/DownloadCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -442,7 +446,7 @@
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.1.2;
+				MARKETING_VERSION = 1.2.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = app.saizen;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -478,7 +482,7 @@
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.1.2;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.saizen;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

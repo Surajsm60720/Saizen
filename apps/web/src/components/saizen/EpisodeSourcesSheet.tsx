@@ -24,7 +24,10 @@ export function EpisodeSourcesSheet({
   status,
   results,
   playing,
-  onPlay
+  onPlay,
+  onDownload,
+  selectedSources,
+  onToggleSource
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -36,6 +39,9 @@ export function EpisodeSourcesSheet({
   results: ProviderResult[]
   playing: boolean
   onPlay: (result: ProviderResult) => void
+  onDownload?: (result: ProviderResult) => void
+  selectedSources?: Set<string>
+  onToggleSource?: (key: string) => void
 }) {
   // Keep hooks stable; synopsis already on episode from AniZip/Jikan merge
   const [mounted, setMounted] = useState(false)
@@ -121,15 +127,22 @@ export function EpisodeSourcesSheet({
                   </div>
                 ) : results.length > 0 ? (
                   <SourceList>
-                    {results.map((r, i) => (
-                      <SourceRow
-                        key={`${r.providerName}-${r.title}-${i}`}
-                        result={r}
-                        likelyFaster={isLikelyFaster(r, i)}
-                        playing={playing}
-                        onPlay={() => onPlay(r)}
-                      />
-                    ))}
+                    {results.map((r, i) => {
+                      const key = `${r.providerName}-${r.title}-${i}`
+                      return (
+                        <SourceRow
+                          key={key}
+                          result={r}
+                          likelyFaster={isLikelyFaster(r, i)}
+                          playing={playing}
+                          onPlay={() => onPlay(r)}
+                          onDownload={onDownload ? () => onDownload(r) : undefined}
+                          selectable={Boolean(onToggleSource)}
+                          selected={selectedSources?.has(key)}
+                          onToggleSelect={onToggleSource ? () => onToggleSource(key) : undefined}
+                        />
+                      )
+                    })}
                   </SourceList>
                 ) : !searching ? (
                   <p className="text-sm text-muted-foreground">No sources found.</p>

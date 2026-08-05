@@ -296,3 +296,20 @@
     background: rgba(255, 255, 255, 0.025);
   }
 }
+
+/* Keep toast close control inside the banner (Sonner defaults hang it into the status bar). */
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  padding-inline-end: 2.25rem;
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-button] {
+  top: 8px;
+  left: auto;
+  right: 8px;
+  transform: none;
+}
+
+[data-sonner-toaster][dir="rtl"] [data-sonner-toast][data-styled="true"] [data-close-button] {
+  right: auto;
+  left: 8px;
+}

@@ -37,12 +37,21 @@ import { getProbedDurationSec } from '@/lib/watch/episodeMeta'
 import { isEpisodeWatched } from '@/lib/watch/progress'
 import { setActivePlayback } from '@/lib/watch/activePlayback'
 import { getWatchSettings } from '@/lib/watch/settings'
+import { getDownloadSettings } from '@/lib/downloads/settings'
+import { seasonFolderLabel } from '@/lib/downloads/season'
+import {
+  pickSourceForQuality,
+  searchEpisodeSources,
+  sourceUrl
+} from '@/lib/downloads/resolve'
+import { toast } from 'sonner'
 import {
   consumePendingPlayerAction,
   onPlayerAction
 } from '@/lib/watch/playerActions'
 import {
   AnimeHeader,
+  DownloadPickerSheet,
   EpisodeList,
   EpisodeRow,
   EpisodeSourcesSheet,
@@ -57,6 +66,7 @@ import {
   type PersonRailItem
 } from '@/components/saizen'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 function formatBytes(n: number): string {
@@ -113,6 +123,13 @@ function AnimeDetail() {
   const [franchise, setFranchise] = useState<FranchiseGraph | null>(null)
   const [franchiseLoading, setFranchiseLoading] = useState(false)
   const [franchiseLoadedFor, setFranchiseLoadedFor] = useState<number | null>(null)
+  const [downloadOpen, setDownloadOpen] = useState(false)
+  const [selectingEps, setSelectingEps] = useState(false)
+  const [selectedEps, setSelectedEps] = useState<Set<number>>(() => new Set())
+  const [downloadedEps, setDownloadedEps] = useState<Set<number>>(() => new Set())
+  const [downloadedByEp, setDownloadedByEp] = useState<Map<number, string>>(() => new Map())
+  const [downloadBusy, setDownloadBusy] = useState(false)
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(() => new Set())
 
   const LIST_STATUS_LABELS: Record<string, string> = {
     CURRENT: 'Watching',
@@ -187,6 +204,41 @@ function AnimeDetail() {
     })
     return () => {
       cancelled = true
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    const native = getNative()
+    const apply = (entries: Awaited<ReturnType<typeof native.library>>) => {
+      if (cancelled) return
+      const eps = new Set<number>()
+      const byEp = new Map<number, string>()
+      for (const e of entries) {
+        if (e.mediaId === id && (e.status === 'completed' || e.progress >= 1)) {
+          eps.add(e.episode)
+          byEp.set(e.episode, e.id)
+        }
+      }
+      setDownloadedEps(eps)
+      setDownloadedByEp(byEp)
+    }
+    void native.library().then(apply).catch(() => {})
+    let unsub: (() => void) | undefined
+    void (async () => {
+      const ret = await native.onDownloadProgress?.(async () => {
+        try {
+          apply(await native.library())
+        } catch {
+          /* ignore */
+        }
+      })
+      unsub = typeof ret === 'function' ? ret : await ret
+    })()
+    return () => {
+      cancelled = true
+      unsub?.()
     }
   }, [id])
 
@@ -664,6 +716,65 @@ function AnimeDetail() {
     }
   }
 
+  async function enqueueResult(result: ProviderResult, episode: EpisodeItem) {
+    if (!media) return
+    const native = getNative()
+    if (!native.isApp || !native.enqueueDownload) {
+      toast.error('Downloads require the iOS app')
+      return
+    }
+    const source = sourceUrl(result)
+    if (!source) throw new Error('Result has no torrentUrl, magnet, or httpUrl')
+    await native.enqueueDownload({
+      source,
+      mediaId: media.id,
+      episode: episode.number,
+      seriesTitle: displayTitle(media),
+      episodeTitle: episode.title,
+      poster: media.coverImage?.large ?? media.coverImage?.medium ?? undefined,
+      resolution: result.resolution,
+      sourceLabel: result.title,
+      seasonLabel: seasonFolderLabel(media)
+    })
+  }
+
+  async function queueEpisodes(targets: EpisodeItem[]) {
+    if (!media || !targets.length) return
+    const native = getNative()
+    if (!native.isApp || !native.enqueueDownload) {
+      toast.error('Downloads require the iOS app')
+      return
+    }
+    setDownloadBusy(true)
+    const quality = getDownloadSettings().preferredQuality
+    let ok = 0
+    let failed = 0
+    try {
+      for (const ep of targets) {
+        if (downloadedEps.has(ep.number)) continue
+        try {
+          const results = await searchEpisodeSources(media, ep.number)
+          const pick = pickSourceForQuality(results, quality)
+          if (!pick) {
+            failed += 1
+            continue
+          }
+          await enqueueResult(pick, ep)
+          ok += 1
+        } catch {
+          failed += 1
+        }
+      }
+      if (ok) toast.success(`Queued ${ok} episode${ok === 1 ? '' : 's'}`)
+      if (failed) toast.error(`${failed} episode${failed === 1 ? '' : 's'} had no source`)
+      setDownloadOpen(false)
+      setSelectingEps(false)
+      setSelectedEps(new Set())
+    } finally {
+      setDownloadBusy(false)
+    }
+  }
+
   async function playResult(result: ProviderResult) {
     if (!media || !selected) return
     setPlaying(true)
@@ -835,17 +946,61 @@ function AnimeDetail() {
                   Episodes
                 </h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Tap an episode to hunt sources
+                  Tap an episode to hunt sources, or download for offline
                 </p>
               </div>
-              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.7rem] font-medium text-primary ring-1 ring-primary/25">
-                {episodes.length} listed
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.7rem] font-medium text-primary ring-1 ring-primary/25"
+                  onClick={() => {
+                    setSelectingEps((v) => !v)
+                    setSelectedEps(new Set())
+                  }}
+                >
+                  {selectingEps ? 'Cancel select' : 'Select'}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full bg-primary px-2.5 py-1 text-[0.7rem] font-medium text-primary-foreground"
+                  onClick={() => setDownloadOpen(true)}
+                >
+                  Download
+                </button>
+              </div>
             </div>
             <EpisodeList>
               {episodes.map((ep) => (
                 <li key={ep.number}>
-                  <EpisodeRow episode={ep} onSelect={() => void searchSources(ep)} />
+                  <EpisodeRow
+                    episode={ep}
+                    downloaded={downloadedEps.has(ep.number)}
+                    selecting={selectingEps}
+                    selected={selectedEps.has(ep.number)}
+                    onSelect={() => {
+                      if (selectingEps) {
+                        if (ep.unreleased) return
+                        setSelectedEps((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(ep.number)) next.delete(ep.number)
+                          else next.add(ep.number)
+                          return next
+                        })
+                        return
+                      }
+                      if (downloadedEps.has(ep.number) && !ep.unreleased) {
+                        const libId = downloadedByEp.get(ep.number)
+                        const native = getNative()
+                        if (libId && native.playLibraryItem) {
+                          void native.playLibraryItem(libId).catch((e) =>
+                            toast.error(e instanceof Error ? e.message : String(e))
+                          )
+                          return
+                        }
+                      }
+                      void searchSources(ep)
+                    }}
+                  />
                 </li>
               ))}
             </EpisodeList>
@@ -961,7 +1116,10 @@ function AnimeDetail() {
 
       <EpisodeSourcesSheet
         open={sheetOpen}
-        onOpenChange={setSheetOpen}
+        onOpenChange={(open) => {
+          setSheetOpen(open)
+          if (!open) setSelectedSources(new Set())
+        }}
         episode={selected}
         malId={media.idMal}
         durationMin={media.duration}
@@ -970,6 +1128,56 @@ function AnimeDetail() {
         results={results}
         playing={playing}
         onPlay={(r) => void playResult(r)}
+        onDownload={(r) => {
+          if (!selected) return
+          void enqueueResult(r, selected)
+            .then(() => toast.success(`Queued episode ${selected.number}`))
+            .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
+        }}
+        selectedSources={selectedSources}
+        onToggleSource={(key) => {
+          setSelectedSources((prev) => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+          })
+        }}
+      />
+
+      {selected && selectedSources.size > 0 ? (
+        <div className="fixed inset-x-0 bottom-[calc(5.5rem+var(--safe-bottom))] z-40 mx-auto flex max-w-lg justify-center px-4">
+          <Button
+            className="min-h-11 shadow-lg"
+            onClick={() => {
+              const picks = results.filter((r, i) =>
+                selectedSources.has(`${r.providerName}-${r.title}-${i}`)
+              )
+              void (async () => {
+                for (const r of picks) {
+                  try {
+                    await enqueueResult(r, selected)
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : String(e))
+                  }
+                }
+                setSelectedSources(new Set())
+              })()
+            }}
+          >
+            Download {selectedSources.size} source{selectedSources.size === 1 ? '' : 's'}
+          </Button>
+        </div>
+      ) : null}
+
+      <DownloadPickerSheet
+        open={downloadOpen}
+        onOpenChange={setDownloadOpen}
+        episodes={episodes}
+        selectedNumbers={[...selectedEps]}
+        preferredQuality={getDownloadSettings().preferredQuality}
+        busy={downloadBusy}
+        onConfirm={(eps) => void queueEpisodes(eps)}
       />
 
       <ListEditSheet

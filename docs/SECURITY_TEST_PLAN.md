@@ -1,7 +1,8 @@
 # Saizen — Security Findings & Test Plan
 
 Audit date: 2026-08-02 · Version audited: v1.0  
-Remediation pass: 2026-08-02 (see status column)
+Remediation pass: 2026-08-02 (see status column)  
+v1.2.0 download pass: 2026-08-05 (D-01, D-02)
 
 This document lists known security issues and gives reproducible test cases for each.
 Every test is written so it can be run on a personal device with no special tooling
@@ -29,6 +30,8 @@ beyond Xcode, Safari Web Inspector, `curl`, and `unzip`.
 | S-12 | Low | `bytes=-N` suffix ranges mis-parsed | **FIXED** |
 | S-13 | Low | MAL refresh failure returned stale token | **FIXED** |
 | S-14 | Low | Unguarded `localStorage` writes | **FIXED** |
+| D-01 | Medium | Download folder escape via `seriesTitle` / `seasonLabel` `..` | **FIXED** |
+| D-02 | Medium | `deleteTorrents([])` wiped the offline library | **FIXED** |
 
 **Release tooling:** `scripts/preflight-release.sh` + secret-scanning `scripts/package-ipa.sh`. Cursor rule: `.cursor/rules/saizen-security.mdc`.
 
@@ -184,6 +187,40 @@ Refresh failure clears MAL tokens (`clearMalToken`) and returns `null`.
 ## S-14 · Unguarded localStorage writes (LOW) — FIXED
 
 `try/catch` around progress / continue / episode-meta / extension registry writes.
+
+---
+
+## D-01 · Download folder escape (MEDIUM) — FIXED
+
+`sanitize` rejects `.` / `..` / all-dots and path separators. `finalizeFile` and `resolvedFileURL` require the destination to stay under the chosen download root.
+
+### Test D-01
+
+```js
+await window.saizen.enqueueDownload({
+  source: 'https://example.com/ep.mkv',
+  mediaId: 1,
+  episode: 1,
+  seriesTitle: '..',
+  seasonLabel: '..'
+})
+// After complete: file must live under the chosen download folder, not its parent.
+```
+
+---
+
+## D-02 · Empty `deleteTorrents` wiped library (MEDIUM) — FIXED
+
+Empty / missing `hashes`/`ids` is rejected (native) or no-op (JS). Only explicit ids delete.
+
+### Test D-02
+
+```js
+await window.saizen.deleteTorrents([])
+// → no library change
+await window.saizen.deleteTorrents()
+// → no library change
+```
 
 ---
 

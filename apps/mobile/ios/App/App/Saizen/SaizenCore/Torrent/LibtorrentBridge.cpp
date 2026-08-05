@@ -33,6 +33,7 @@ struct SaizenLTSession {
   int piece_length = 0;
   int tick_count = 0;
   bool has_meta = false;
+  bool full_file_mode = false;
   std::atomic<bool> alive{true};
 
   explicit SaizenLTSession(lt::settings_pack pack)
@@ -299,6 +300,47 @@ extern "C" void saizen_lt_focus_head(SaizenLTSession *session, int64_t head_byte
   focus_head_locked(session, head_bytes);
 }
 
+static void download_all_locked(SaizenLTSession *session) {
+  if (!session->handle.is_valid() || !session->has_meta || session->piece_length <= 0) return;
+  auto ti = session->handle.torrent_file();
+  if (!ti) return;
+  int n = ti->num_pieces();
+  if (n <= 0 || session->file_size <= 0) return;
+
+  std::vector<lt::download_priority_t> prios(std::size_t(n), lt::download_priority_t(0));
+  int64_t abs_start = session->file_offset;
+  int64_t abs_end = session->file_offset + session->file_size;
+  int first = int(abs_start / session->piece_length);
+  int last = int((abs_end - 1) / session->piece_length);
+  first = std::max(0, std::min(first, n - 1));
+  last = std::max(0, std::min(last, n - 1));
+
+  for (int p = 0; p < n; ++p) {
+    session->handle.reset_piece_deadline(lt::piece_index_t(p));
+  }
+  for (int p = first; p <= last; ++p) {
+    prios[std::size_t(p)] = lt::download_priority_t(4);
+  }
+  session->handle.prioritize_pieces(prios);
+  session->handle.set_flags(lt::torrent_flags::sequential_download);
+  session->handle.unset_flags(lt::torrent_flags::upload_mode);
+  session->handle.resume();
+  log(session, std::string("download_all pieces=") + std::to_string(first) + ".." + std::to_string(last)
+    + " bytes=" + std::to_string(session->file_size));
+}
+
+extern "C" void saizen_lt_set_full_file_mode(SaizenLTSession *session, bool enabled) {
+  if (!session) return;
+  std::lock_guard<std::mutex> lock(session->mu);
+  session->full_file_mode = enabled;
+}
+
+extern "C" void saizen_lt_download_all(SaizenLTSession *session) {
+  if (!session) return;
+  std::lock_guard<std::mutex> lock(session->mu);
+  download_all_locked(session);
+}
+
 static void handle_metadata(SaizenLTSession *s) {
   if (s->has_meta) return;
   auto ti = s->handle.torrent_file();
@@ -315,9 +357,10 @@ static void handle_metadata(SaizenLTSession *s) {
   s->piece_length = ti->piece_length();
   s->has_meta = true;
 
-  // Select video file at low default priority — piece-level focus_head raises the window.
+  // Select video file. Streaming keeps file prio low and raises a head window;
+  // offline download wants the whole file.
   std::vector<lt::download_priority_t> prios(std::size_t(nfiles), lt::download_priority_t(0));
-  prios[std::size_t(s->file_index)] = lt::download_priority_t(1);
+  prios[std::size_t(s->file_index)] = lt::download_priority_t(s->full_file_mode ? 4 : 1);
   s->handle.prioritize_files(prios);
   s->handle.set_flags(lt::torrent_flags::sequential_download);
 
@@ -327,8 +370,11 @@ static void handle_metadata(SaizenLTSession *s) {
     s->cb.on_metadata(name.c_str(), s->file_size, s->piece_length, ti->num_pieces(), s->cb.ctx);
   }
 
-  // Head only at metadata time — do NOT prioritize tail yet (it stole bandwidth from head).
-  focus_head_locked(s, std::min<int64_t>(s->file_size, 4 * 1024 * 1024));
+  if (s->full_file_mode) {
+    download_all_locked(s);
+  } else {
+    focus_head_locked(s, std::min<int64_t>(s->file_size, 4 * 1024 * 1024));
+  }
 }
 
 extern "C" void saizen_lt_tick(SaizenLTSession *session) {
@@ -466,6 +512,18 @@ extern "C" int64_t saizen_lt_download_rate(SaizenLTSession *session) {
   return session->handle.status().download_payload_rate;
 }
 
+extern "C" void saizen_lt_pause(SaizenLTSession *session) {
+  if (!session) return;
+  std::lock_guard<std::mutex> lock(session->mu);
+  if (session->handle.is_valid()) session->handle.pause();
+}
+
+extern "C" void saizen_lt_resume(SaizenLTSession *session) {
+  if (!session) return;
+  std::lock_guard<std::mutex> lock(session->mu);
+  if (session->handle.is_valid()) session->handle.resume();
+}
+
 #else
 
 // Stubs when libtorrent is not linked — keep linker happy if file is compiled without flag.
@@ -478,10 +536,14 @@ extern "C" int saizen_lt_add_magnet(SaizenLTSession *, const char *) { return -1
 extern "C" int saizen_lt_add_torrent_file(SaizenLTSession *, const char *) { return -100; }
 extern "C" void saizen_lt_prioritize_bytes(SaizenLTSession *, int64_t, int64_t) {}
 extern "C" void saizen_lt_focus_head(SaizenLTSession *, int64_t) {}
+extern "C" void saizen_lt_set_full_file_mode(SaizenLTSession *, bool) {}
+extern "C" void saizen_lt_download_all(SaizenLTSession *) {}
 extern "C" void saizen_lt_tick(SaizenLTSession *) {}
 extern "C" double saizen_lt_progress(SaizenLTSession *) { return 0; }
 extern "C" int64_t saizen_lt_downloaded(SaizenLTSession *) { return 0; }
 extern "C" int saizen_lt_num_peers(SaizenLTSession *) { return 0; }
 extern "C" int64_t saizen_lt_download_rate(SaizenLTSession *) { return 0; }
+extern "C" void saizen_lt_pause(SaizenLTSession *) {}
+extern "C" void saizen_lt_resume(SaizenLTSession *) {}
 
 #endif

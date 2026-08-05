@@ -1,22 +1,21 @@
-# Saizen · v1.1.2
+# Saizen · v1.2.0
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
-## What’s new since v1.0
+## Features
 
-Major changes from **v1.0 → v1.1.2** (patch detail lives in-app under Settings → Changelog):
-
-- **Player** — native VLC + web chrome redesign; ±seek / next episode; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
-- **Schedule** — week airing calendar in the tab bar (device-local times); My list vs current season
-- **Anime detail** — character / VA / staff rails + detail pages; franchise watch-order Relations; edit list entry (AniList + MAL); **Continue watching EP xx**; OP/ED song names
-- **Search** — Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; no autofocus keyboard on back; keyboard hides the tab bar
-- **Tab bar** — always-floating glass pill (no scroll morph); lighter liquid-glass transparency + blur
+- **Browse & Home** — Discover rails, continue watching, and list-backed shelves after AniList / MAL sign-in
+- **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar
+- **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names
+- **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
+- **Player** — Native VLC + in-app chrome; ±seek / next episode; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
+- **Downloads** — Settings → Downloads: pick a folder, queue episodes (all / range / selected), lock-screen progress, offline library playback
 - **Accounts & lists** — AniList / MAL Sign in (PKCE, Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
-- **Typography** — Fraunces + DM Sans across the UI
-- **Sources** — Hayase extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
-- **Security** — no client secrets; authenticated loopback streams; HTTPS-only extensions; secret-scanned IPA packaging
+- **Sources** — Hayase-compatible extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
+- **UI** — Floating glass tab bar; Fraunces + DM Sans type
+- **Security** — No client secrets; authenticated loopback streams; HTTPS-only extensions; secret-scanned IPA packaging
 
 Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
 
@@ -119,7 +118,7 @@ Apple’s paid program is required for **App Store**, TestFlight, and long-lived
 ```bash
 pnpm sync:ios                 # rebuild web + sync Swift
 # Build/Run once on a device from Xcode (prefer Release when possible)
-pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.1.0.ipa
+pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.2.0.ipa
 ```
 
 ### IPA security warning (read before uploading a Release)

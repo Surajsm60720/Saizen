@@ -8,12 +8,20 @@ export function SourceRow({
   likelyFaster,
   playing,
   onPlay,
+  onDownload,
+  selectable,
+  selected,
+  onToggleSelect,
   className
 }: {
   result: ProviderResult
   likelyFaster?: boolean
   playing?: boolean
   onPlay: () => void
+  onDownload?: () => void
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
   className?: string
 }) {
   return (
@@ -38,6 +46,28 @@ export function SourceRow({
           ) : null}
         </div>
       </div>
+      {selectable ? (
+        <button
+          type="button"
+          aria-pressed={selected}
+          onClick={onToggleSelect}
+          className={cn(
+            'size-6 shrink-0 rounded-md border',
+            selected ? 'border-primary bg-primary/80' : 'border-border/70 bg-background'
+          )}
+        />
+      ) : null}
+      {onDownload ? (
+        <Button
+          size="lg"
+          variant="outline"
+          className="min-h-11 shrink-0 px-3"
+          disabled={playing}
+          onClick={onDownload}
+        >
+          Save
+        </Button>
+      ) : null}
       <Button
         size="lg"
         className="min-h-11 shrink-0 px-4"

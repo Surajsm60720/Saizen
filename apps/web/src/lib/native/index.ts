@@ -1,8 +1,11 @@
 import type {
   ClientSettings,
+  DownloadJob,
+  EnqueueDownloadOptions,
   LibraryEntry,
   SaizenNative,
   SpawnPlayerOptions,
+  StorageUsage,
   TorrentFile,
   TorrentInfo
 } from '@saizen/shared'
@@ -79,9 +82,34 @@ const webFallback: SaizenNative = {
   async cachedTorrents() {
     return []
   },
-  async updateSettings(_settings: ClientSettings) {},
+  async updateSettings(_settings: Partial<ClientSettings>) {},
   async checkAvailableSpace() {
     return 10 * 1024 * 1024 * 1024
+  },
+  async enqueueDownload(_options: EnqueueDownloadOptions) {
+    throw new Error('Downloads require the iOS app')
+  },
+  async downloadQueue(): Promise<DownloadJob[]> {
+    return []
+  },
+  async pauseDownload() {},
+  async resumeDownload() {},
+  async cancelDownload() {},
+  async playLibraryItem() {
+    throw new Error('Downloads require the iOS app')
+  },
+  async storageUsage(): Promise<StorageUsage> {
+    return { libraryBytes: 0, cacheBytes: 0, freeBytes: 0 }
+  },
+  async clearCache() {},
+  async pickDownloadFolder() {
+    throw new Error('Folder picker requires the iOS app')
+  },
+  async resetDownloadFolder() {
+    return { path: '' }
+  },
+  async downloadFolder() {
+    return { path: '' }
   }
 }
 

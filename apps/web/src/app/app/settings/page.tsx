@@ -14,6 +14,11 @@ import {
   type WatchSettings
 } from '@/lib/watch/settings'
 import {
+  getDownloadSettings,
+  setDownloadSettings
+} from '@/lib/downloads/settings'
+import type { DownloadQuality } from '@saizen/shared'
+import {
   connectAnilist,
   connectMal,
   disconnectAnilist,
@@ -39,6 +44,7 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState<'anilist' | 'mal' | 'refresh' | null>(null)
   const isApp = typeof window !== 'undefined' ? getNative().isApp : false
   const [creds, setCreds] = useState(() => getOAuthCredentials())
+  const [quality, setQuality] = useState<DownloadQuality>('1080p')
   const canAnilist = Boolean(creds.anilistClientId)
   const canMal = Boolean(creds.malClientId)
 
@@ -46,6 +52,7 @@ export default function SettingsPage() {
     clearOAuthCredentialOverrides()
     setCreds(getOAuthCredentials())
     setSettings(getWatchSettings())
+    setQuality(getDownloadSettings().preferredQuality)
     void Promise.all([isAnilistConnected(), isMalConnected()]).then(([a, m]) => {
       setAnilistOn(a)
       setMalOn(m)
@@ -140,8 +147,23 @@ export default function SettingsPage() {
           <SettingsRow label="Early open" hint="Launch player as soon as a stream URL exists" showSeparator>
             <Switch defaultChecked aria-label="Early open" />
           </SettingsRow>
-          <SettingsRow label="Default quality" hint="When multiple sources match" showSeparator>
-            <Badge variant="secondary">1080p</Badge>
+          <SettingsRow label="Default quality" hint="Play ranking + download auto-pick" showSeparator>
+            <select
+              value={quality}
+              onChange={(e) => {
+                const q = e.target.value as DownloadQuality
+                setQuality(q)
+                setDownloadSettings({ preferredQuality: q })
+              }}
+              className="rounded-lg border border-border/60 bg-background px-2 py-1 text-sm"
+              aria-label="Default quality"
+            >
+              {(['2160p', '1080p', '720p', '480p'] as const).map((q) => (
+                <option key={q} value={q}>
+                  {q}
+                </option>
+              ))}
+            </select>
           </SettingsRow>
         </SettingsGroup>
 
@@ -262,8 +284,18 @@ export default function SettingsPage() {
 
         <SettingsGroup title="More">
           <Link
-            href="/app/extensions/"
+            href="/app/downloads/"
             className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
+          >
+            <div>
+              <div className="text-sm font-medium">Downloads</div>
+              <div className="text-xs text-muted-foreground">Offline library, folder & storage</div>
+            </div>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </Link>
+          <Link
+            href="/app/extensions/"
+            className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
           >
             <div>
               <div className="text-sm font-medium">Extensions</div>

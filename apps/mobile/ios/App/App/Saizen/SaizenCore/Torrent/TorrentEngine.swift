@@ -20,7 +20,7 @@ public protocol TorrentEngine: AnyObject {
   func stopAll()
 }
 
-/// Disk layout under Documents/Saizen — pieces, torrents meta, progressive cache.
+/// Disk layout under Documents/Saizen — pieces, torrents meta, progressive cache, library.
 public enum SaizenStorage {
   public static var root: URL {
     let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -30,8 +30,14 @@ public enum SaizenStorage {
   public static var piecesDir: URL { root.appendingPathComponent("pieces", isDirectory: true) }
   public static var torrentsDir: URL { root.appendingPathComponent("torrents", isDirectory: true) }
   public static var cacheDir: URL { root.appendingPathComponent("cache", isDirectory: true) }
+  public static var libraryDir: URL { root.appendingPathComponent("library", isDirectory: true) }
+  public static var downloadsWorkDir: URL { root.appendingPathComponent("downloads-work", isDirectory: true) }
+  public static var defaultDownloadsDir: URL {
+    root.appendingPathComponent("Downloads", isDirectory: true)
+  }
+  public static var manifestURL: URL { libraryDir.appendingPathComponent("manifest.json") }
 
-  /// Delete leftover playback files (piece stores, .torrent metas, HTTP cache).
+  /// Delete leftover playback files only — never touch library / in-progress downloads.
   public static func purgePlaybackData() {
     let fm = FileManager.default
     for dir in [piecesDir, torrentsDir, cacheDir] {
@@ -46,6 +52,22 @@ public enum SaizenStorage {
         NSLog("[Saizen] purge failed for %@: %@", dir.path, error.localizedDescription)
       }
     }
+  }
+
+  public static func directorySize(_ dir: URL) -> Int64 {
+    let fm = FileManager.default
+    guard let enumerator = fm.enumerator(
+      at: dir,
+      includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ) else { return 0 }
+    var total: Int64 = 0
+    for case let url as URL in enumerator {
+      let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
+      if values?.isDirectory == true { continue }
+      total += Int64(values?.fileSize ?? 0)
+    }
+    return total
   }
 }
 

@@ -52,6 +52,12 @@ void saizen_lt_prioritize_bytes(SaizenLTSession *session, int64_t start, int64_t
 /// Streaming kickoff: clear piece priorities, then only download the file head.
 void saizen_lt_focus_head(SaizenLTSession *session, int64_t head_bytes);
 
+/// Offline download: skip head-focus on metadata and fetch the whole video file.
+void saizen_lt_set_full_file_mode(SaizenLTSession *session, bool enabled);
+
+/// Prioritize every piece of the selected video file (undoes focus_head).
+void saizen_lt_download_all(SaizenLTSession *session);
+
 /// Pump alerts (call often from a timer / background loop).
 void saizen_lt_tick(SaizenLTSession *session);
 
@@ -61,6 +67,9 @@ int64_t saizen_lt_downloaded(SaizenLTSession *session);
 int saizen_lt_num_peers(SaizenLTSession *session);
 /// Download payload rate in bytes/sec.
 int64_t saizen_lt_download_rate(SaizenLTSession *session);
+
+void saizen_lt_pause(SaizenLTSession *session);
+void saizen_lt_resume(SaizenLTSession *session);
 
 #ifdef __cplusplus
 }

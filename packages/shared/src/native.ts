@@ -1,4 +1,13 @@
-import type { ClientSettings, LibraryEntry, PlayerHint, TorrentFile, TorrentInfo } from './torrent'
+import type {
+  ClientSettings,
+  DownloadJob,
+  EnqueueDownloadOptions,
+  LibraryEntry,
+  PlayerHint,
+  StorageUsage,
+  TorrentFile,
+  TorrentInfo
+} from './torrent'
 
 export interface AuthResponse {
   access_token: string
@@ -104,8 +113,21 @@ export interface SaizenNative {
   library(): Promise<LibraryEntry[]>
   deleteTorrents(hashes?: string[]): Promise<void>
   cachedTorrents(): Promise<string[]>
-  updateSettings(settings: ClientSettings): Promise<void>
+  updateSettings(settings: Partial<ClientSettings>): Promise<void>
   checkAvailableSpace(): Promise<number>
+
+  enqueueDownload?(options: EnqueueDownloadOptions): Promise<{ id: string }>
+  downloadQueue?(): Promise<DownloadJob[]>
+  onDownloadProgress?(cb: (jobs: DownloadJob[]) => void): Promise<() => void> | (() => void)
+  pauseDownload?(id: string): Promise<void>
+  resumeDownload?(id: string): Promise<void>
+  cancelDownload?(id: string): Promise<void>
+  playLibraryItem?(id: string): Promise<void>
+  storageUsage?(): Promise<StorageUsage>
+  clearCache?(): Promise<void>
+  pickDownloadFolder?(): Promise<{ path: string }>
+  resetDownloadFolder?(): Promise<{ path: string }>
+  downloadFolder?(): Promise<{ path: string }>
 
   setMediaSession?(title: string, description: string, image: string): Promise<void>
 }
@@ -116,4 +138,13 @@ declare global {
   }
 }
 
-export type { ClientSettings, LibraryEntry, PlayerHint, TorrentFile, TorrentInfo }
+export type {
+  ClientSettings,
+  DownloadJob,
+  EnqueueDownloadOptions,
+  LibraryEntry,
+  PlayerHint,
+  StorageUsage,
+  TorrentFile,
+  TorrentInfo
+}
