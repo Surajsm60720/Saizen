@@ -16,7 +16,7 @@ export default function Error({
       <button
         type="button"
         onClick={() => reset()}
-        className="rounded-xl bg-[#e8c478] px-4 py-2 text-sm font-semibold text-[#141416]"
+        className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
       >
         Try again
       </button>

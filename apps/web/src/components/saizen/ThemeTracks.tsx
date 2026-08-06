@@ -1,3 +1,7 @@
+'use client'
+
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { AnimeThemeTrack } from '@/lib/animethemes'
 
@@ -60,7 +64,7 @@ export function ThemeTracks({
         title="Opening & Ending"
         subtitle={
           notice ||
-          `${tracks.length} theme${tracks.length === 1 ? '' : 's'}`
+          'Tap a theme to copy — search it on Spotify or YouTube'
         }
       />
       <ul className="flex flex-col gap-2">
@@ -93,12 +97,63 @@ function SectionHead({ title, subtitle }: { title: string; subtitle: string }) {
   )
 }
 
+function themeCopyText(track: AnimeThemeTrack): string {
+  const title = track.title.trim()
+  const artists = track.artists.map((a) => a.trim()).filter(Boolean)
+  if (title && artists.length) return `${title} — ${artists.join(', ')}`
+  return title || artists.join(', ')
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    try {
+      const area = document.createElement('textarea')
+      area.value = text
+      area.setAttribute('readonly', '')
+      area.style.position = 'fixed'
+      area.style.left = '-9999px'
+      document.body.appendChild(area)
+      area.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(area)
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
 function ThemeRow({ track }: { track: AnimeThemeTrack }) {
   const label = `${track.kind}${track.sequence != null ? track.sequence : ''}`
   const artistLine = track.artists.length ? track.artists.join(', ') : null
+  const [copied, setCopied] = useState(false)
+
+  async function onCopy() {
+    const text = themeCopyText(track)
+    if (!text) {
+      toast.error('Nothing to copy for this theme')
+      return
+    }
+    const ok = await copyToClipboard(text)
+    if (!ok) {
+      toast.error('Could not copy — try again')
+      return
+    }
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1400)
+    toast.success('Copied — paste into Spotify or YouTube')
+  }
 
   return (
-    <div className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent px-3 py-2.5">
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent px-3 py-2.5 text-left transition-colors active:bg-white/[0.07]"
+      aria-label={`Copy ${label} ${track.title}`}
+    >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 font-heading text-xs font-semibold tracking-wide text-primary ring-1 ring-primary/25">
         {label}
       </span>
@@ -108,6 +163,9 @@ function ThemeRow({ track }: { track: AnimeThemeTrack }) {
           <div className="text-meta mt-0.5 truncate">{artistLine}</div>
         ) : null}
       </div>
-    </div>
+      <span className="shrink-0 text-[0.7rem] font-medium text-muted-foreground">
+        {copied ? 'Copied' : 'Copy'}
+      </span>
+    </button>
   )
 }

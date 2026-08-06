@@ -18,6 +18,10 @@ type LastStream = {
   sourceLabel?: string
   skipTimes?: SkipTimes | null
   autoSkipOpEd?: boolean
+  gestureSeekEnabled?: boolean
+  doubleTapSeekSec?: number
+  tripleTapSeekSec?: number
+  autoplayNext?: boolean
   hasNextEpisode?: boolean
 }
 
@@ -37,7 +41,11 @@ export default function PlayerPage() {
       const settings = getWatchSettings()
       setStream({
         ...data,
-        autoSkipOpEd: data.autoSkipOpEd ?? settings.autoSkipOpEd
+        autoSkipOpEd: data.autoSkipOpEd ?? settings.autoSkipOpEd,
+        gestureSeekEnabled: data.gestureSeekEnabled ?? settings.gestureSeekEnabled,
+        doubleTapSeekSec: data.doubleTapSeekSec ?? settings.doubleTapSeekSec,
+        tripleTapSeekSec: data.tripleTapSeekSec ?? settings.tripleTapSeekSec,
+        autoplayNext: data.autoplayNext ?? settings.autoplayNext
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -64,7 +72,7 @@ export default function PlayerPage() {
     : 'Player'
 
   return (
-    <div className="-mx-4 min-h-[70vh] bg-[#141416] sm:-mx-5">
+    <div className="-mx-4 min-h-[70vh] bg-background sm:-mx-5">
       {error ? (
         <div className="space-y-3 px-4 py-6 sm:px-5">
           <p className="text-sm text-destructive">{error}</p>
@@ -88,6 +96,10 @@ export default function PlayerPage() {
           sourceLabel={stream.sourceLabel}
           skipTimes={stream.skipTimes}
           autoSkipOpEd={stream.autoSkipOpEd}
+          gestureSeekEnabled={stream.gestureSeekEnabled}
+          doubleTapSeekSec={stream.doubleTapSeekSec}
+          tripleTapSeekSec={stream.tripleTapSeekSec}
+          autoplayNext={stream.autoplayNext}
           hasNextEpisode={stream.hasNextEpisode}
           onBack={() => {
             if (stream.anilistId) router.push(`/app/anime/?id=${stream.anilistId}`)

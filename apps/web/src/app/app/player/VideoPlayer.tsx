@@ -24,7 +24,6 @@ import { cn } from '@/lib/utils'
 import getNative from '@/lib/native'
 import { recordProbedDuration } from '@/lib/watch/episodeMeta'
 import { updateWatchProgress } from '@/lib/watch/progress'
-import { dispatchPlayerAction } from '@/lib/watch/playerActions'
 
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2]
 
@@ -83,6 +82,10 @@ export function VideoPlayer({
   skipTimes,
   autoSkipOpEd,
   hasNextEpisode,
+  gestureSeekEnabled = true,
+  doubleTapSeekSec = 10,
+  tripleTapSeekSec = 30,
+  autoplayNext = false,
   onBack,
   onNextEpisode
 }: {
@@ -97,6 +100,10 @@ export function VideoPlayer({
   skipTimes?: SkipTimes | null
   autoSkipOpEd?: boolean
   hasNextEpisode?: boolean
+  gestureSeekEnabled?: boolean
+  doubleTapSeekSec?: number
+  tripleTapSeekSec?: number
+  autoplayNext?: boolean
   onBack?: () => void
   onNextEpisode?: () => void
 }) {
@@ -106,8 +113,15 @@ export function VideoPlayer({
   const lastPersist = useRef(0)
   const didAutoSkipOp = useRef(false)
   const didAutoSkipEd = useRef(false)
+  const tapRef = useRef<{
+    count: number
+    side: 'l' | 'r'
+    timer: ReturnType<typeof setTimeout> | null
+  }>({ count: 0, side: 'l', timer: null })
+  const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [playing, setPlaying] = useState(false)
+  const [seekFlash, setSeekFlash] = useState<{ side: 'l' | 'r'; sec: number } | null>(null)
   const [current, setCurrent] = useState(0)
   const [duration, setDuration] = useState(0)
   const [buffered, setBuffered] = useState(0)
@@ -241,6 +255,18 @@ export function VideoPlayer({
     const onErr = () => {
       setError(v.error?.message || 'Playback failed')
     }
+    const onEnded = () => {
+      if (!autoplayNext) return
+      const nextOk =
+        hasNextEpisode ??
+        (typeof episode === 'number' &&
+          typeof totalEpisodes === 'number' &&
+          episode > 0 &&
+          episode < totalEpisodes)
+      if (!nextOk) return
+      // Parent (goAnime) owns the single nextEpisode dispatch — avoid double-fire.
+      onNextEpisode?.()
+    }
     const onFs = () => setFs(Boolean(document.fullscreenElement))
 
     v.addEventListener('play', onPlay)
@@ -251,6 +277,7 @@ export function VideoPlayer({
     v.addEventListener('progress', onProgress)
     v.addEventListener('volumechange', onVol)
     v.addEventListener('error', onErr)
+    v.addEventListener('ended', onEnded)
     document.addEventListener('fullscreenchange', onFs)
 
     return () => {
@@ -263,6 +290,7 @@ export function VideoPlayer({
       v.removeEventListener('progress', onProgress)
       v.removeEventListener('volumechange', onVol)
       v.removeEventListener('error', onErr)
+      v.removeEventListener('ended', onEnded)
       document.removeEventListener('fullscreenchange', onFs)
     }
   }, [
@@ -273,7 +301,10 @@ export function VideoPlayer({
     anilistId,
     episode,
     idMal,
-    totalEpisodes
+    totalEpisodes,
+    autoplayNext,
+    hasNextEpisode,
+    onNextEpisode
   ])
 
   useEffect(() => {
@@ -358,11 +389,47 @@ export function VideoPlayer({
     else v.pause()
   }
 
-  function seekBy(delta: number) {
+  function flashSeek(side: 'l' | 'r', sec: number) {
+    setSeekFlash({ side, sec })
+    if (seekFlashTimer.current) clearTimeout(seekFlashTimer.current)
+    seekFlashTimer.current = setTimeout(() => setSeekFlash(null), 700)
+  }
+
+  function seekBy(delta: number, flash?: 'l' | 'r') {
     const v = videoRef.current
     if (!v) return
     v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + delta))
+    if (flash) flashSeek(flash, delta)
     showChrome()
+  }
+
+  function handleSurfaceTap(e: React.MouseEvent | React.PointerEvent) {
+    e.stopPropagation()
+    if (!gestureSeekEnabled) {
+      togglePlay()
+      return
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const side: 'l' | 'r' = e.clientX < rect.left + rect.width / 2 ? 'l' : 'r'
+    const t = tapRef.current
+    if (t.timer) clearTimeout(t.timer)
+    if (t.side !== side) t.count = 0
+    t.side = side
+    t.count += 1
+    t.timer = setTimeout(() => {
+      const n = t.count
+      t.count = 0
+      t.timer = null
+      if (n >= 3 && tripleTapSeekSec > 0) {
+        const sec = tripleTapSeekSec
+        seekBy(side === 'l' ? -sec : sec, side)
+      } else if (n >= 2) {
+        const sec = doubleTapSeekSec
+        seekBy(side === 'l' ? -sec : sec, side)
+      } else {
+        togglePlay()
+      }
+    }, 280)
   }
 
   function setPlaybackRate(next: number) {
@@ -385,13 +452,7 @@ export function VideoPlayer({
   }
 
   function handleNext() {
-    if (anilistId && episode) {
-      dispatchPlayerAction({
-        action: 'nextEpisode',
-        anilistId,
-        episode
-      })
-    }
+    // Parent owns dispatchPlayerAction — calling both caused duplicate nextEpisode.
     onNextEpisode?.()
   }
 
@@ -427,10 +488,7 @@ export function VideoPlayer({
         autoPlay
         playsInline
         preload="auto"
-        onClick={(e) => {
-          e.stopPropagation()
-          togglePlay()
-        }}
+        onClick={handleSurfaceTap}
       />
 
       {/* Top chrome */}
@@ -478,11 +536,22 @@ export function VideoPlayer({
         </div>
       ) : null}
 
+      {seekFlash ? (
+        <div
+          className={cn(
+            'pointer-events-none absolute top-1/2 z-20 -translate-y-1/2 rounded-full bg-player-accent px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_8px_24px_rgba(0,0,0,0.35)]',
+            seekFlash.side === 'l' ? 'left-8' : 'right-8'
+          )}
+        >
+          {seekFlash.sec > 0 ? `+${seekFlash.sec}s` : `${seekFlash.sec}s`}
+        </div>
+      ) : null}
+
       {skipKind ? (
         <button
           type="button"
           data-skip-pill
-          className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full bg-player-accent px-5 py-2.5 text-sm font-semibold text-[#1a1510] shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:brightness-110"
+          className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full bg-player-accent px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:brightness-110"
           onClick={(e) => {
             e.stopPropagation()
             handleSkipSegment()
@@ -663,7 +732,7 @@ export function VideoPlayer({
               {volumeOpen ? (
                 <div
                   data-player-bar
-                  className="absolute right-0 bottom-[calc(100%+10px)] z-30 flex w-14 flex-col items-center gap-2 rounded-2xl bg-[#141416]/95 px-2 py-3 ring-1 ring-white/15 backdrop-blur-xl"
+                  className="absolute right-0 bottom-[calc(100%+10px)] z-30 flex w-14 flex-col items-center gap-2 rounded-2xl bg-background/95 px-2 py-3 ring-1 ring-white/15 backdrop-blur-xl"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <span className="text-[11px] font-medium text-white/80 tabular-nums">

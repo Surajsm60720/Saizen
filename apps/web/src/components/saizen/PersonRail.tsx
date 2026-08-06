@@ -36,7 +36,7 @@ export function PersonRail({
           <p className="text-meta mt-0.5">{subtitle}</p>
         ) : null}
       </div>
-      <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:px-5">
+      <div className="scrollbar-hide -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:px-5">
         <ul className="flex gap-3">
           {people.map((p) => {
             const card = (
@@ -66,7 +66,7 @@ export function PersonRail({
                     <img
                       src={p.overlayImage}
                       alt=""
-                      className="absolute right-1 bottom-1 size-8 rounded-full object-cover ring-2 ring-[#141416]"
+                      className="absolute right-1 bottom-1 size-8 rounded-full object-cover ring-2 ring-background"
                     />
                   ) : null}
                 </div>

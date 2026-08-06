@@ -4,8 +4,8 @@ const config: CapacitorConfig = {
   appId: 'app.saizen',
   appName: 'Saizen',
   webDir: '../web/out',
-  // Match cinematic charcoal so WKWebView rubber-band never flashes pure black
-  backgroundColor: '#141416',
+  // Match deep-black chrome so WKWebView rubber-band never flashes another fill
+  backgroundColor: '#050505',
   server: {
     androidScheme: 'https',
     // https scheme so absolute /_next assets resolve (capacitor:// often blanks WKWebView)
@@ -18,7 +18,7 @@ const config: CapacitorConfig = {
     // Safe areas handled in CSS via env(safe-area-inset-*)
     contentInset: 'never',
     allowsLinkPreview: false,
-    backgroundColor: '#141416',
+    backgroundColor: '#050505',
     scrollEnabled: true
   },
   plugins: {

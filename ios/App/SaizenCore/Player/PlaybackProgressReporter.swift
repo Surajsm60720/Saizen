@@ -79,6 +79,10 @@ public struct PlayerSessionOptions {
   public let totalEpisodes: Int?
   public let hasNextEpisode: Bool
   public let autoSkipOpEd: Bool
+  public let gestureSeekEnabled: Bool
+  public let doubleTapSeekSec: Int
+  public let tripleTapSeekSec: Int
+  public let autoplayNext: Bool
   public let op: SkipInterval?
   public let ed: SkipInterval?
 
@@ -88,6 +92,10 @@ public struct PlayerSessionOptions {
     totalEpisodes: nil,
     hasNextEpisode: false,
     autoSkipOpEd: false,
+    gestureSeekEnabled: true,
+    doubleTapSeekSec: 10,
+    tripleTapSeekSec: 30,
+    autoplayNext: false,
     op: nil,
     ed: nil
   )
@@ -98,6 +106,10 @@ public struct PlayerSessionOptions {
     totalEpisodes: Int?,
     hasNextEpisode: Bool,
     autoSkipOpEd: Bool,
+    gestureSeekEnabled: Bool = true,
+    doubleTapSeekSec: Int = 10,
+    tripleTapSeekSec: Int = 30,
+    autoplayNext: Bool = false,
     op: SkipInterval?,
     ed: SkipInterval?
   ) {
@@ -106,6 +118,10 @@ public struct PlayerSessionOptions {
     self.totalEpisodes = totalEpisodes
     self.hasNextEpisode = hasNextEpisode
     self.autoSkipOpEd = autoSkipOpEd
+    self.gestureSeekEnabled = gestureSeekEnabled
+    self.doubleTapSeekSec = min(30, max(5, doubleTapSeekSec))
+    self.tripleTapSeekSec = tripleTapSeekSec <= 0 ? 0 : min(90, max(10, tripleTapSeekSec))
+    self.autoplayNext = autoplayNext
     self.op = op
     self.ed = ed
   }

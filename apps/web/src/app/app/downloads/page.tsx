@@ -1,12 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { toast } from 'sonner'
 import { PageHeader, SettingsGroup, SettingsRow } from '@/components/saizen'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { ChevronDown, ChevronLeft } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import getNative from '@/lib/native'
 import { cn } from '@/lib/utils'
 import {
@@ -128,12 +127,6 @@ export default function DownloadsPage() {
         title="Downloads"
         dense
         description="Save on Wi‑Fi, then watch later — even without a connection."
-        action={
-          <Link href="/app/settings/" className="inline-flex min-h-9 items-center gap-1 text-sm text-muted-foreground">
-            <ChevronLeft className="size-4" />
-            Settings
-          </Link>
-        }
       />
 
       {!native.isApp ? (

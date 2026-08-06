@@ -612,4 +612,8 @@ public final class HybridTorrentEngine: TorrentEngine {
     libtorrent.stopAll()
     active = nil
   }
+
+  public func applyTransferLimits() {
+    libtorrent.applyStoredTransferLimits()
+  }
 }

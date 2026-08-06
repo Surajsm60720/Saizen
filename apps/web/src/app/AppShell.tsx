@@ -8,8 +8,11 @@ import { refreshNative } from '@/lib/native'
 import { markBridgeReady } from '@/lib/native/ready'
 import { hydrateTokenMirrors, scrubLegacyCredentialSecrets, clearOAuthCredentialOverrides } from '@/lib/auth'
 import { GlassTabBar, GLASS_TAB_ITEMS } from '@/components/saizen/GlassTabBar'
+import { PaneErrorBoundary } from '@/components/saizen/PaneErrorBoundary'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
+import { applyAppearance } from '@/lib/theme/appearance'
+import { setDownloadSettings } from '@/lib/downloads/settings'
 import HomePage from './page'
 import SearchPage from './app/search/page'
 
@@ -33,6 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const searchScrollRef = useRef(0)
 
   useEffect(() => {
+    applyAppearance()
     void (async () => {
       await installSaizenBridge()
       refreshNative()
@@ -40,6 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       clearOAuthCredentialOverrides()
       await hydrateTokenMirrors()
       markBridgeReady()
+      setDownloadSettings({})
     })()
   }, [])
 
@@ -111,14 +116,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname, immersiveHeader, isAnime])
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[#141416] text-foreground select-none">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground select-none">
       {!isPlayer ? (
         <header
           className={cn(
             'fixed inset-x-0 top-0 z-40 pt-[var(--safe-top)] transition-opacity duration-300',
             immersiveHeader
               ? 'bg-transparent'
-              : 'border-b border-white/8 bg-[#141416]/50 backdrop-blur-xl supports-backdrop-filter:bg-[#141416]/35',
+              : 'border-b border-white/8 bg-background/50 backdrop-blur-xl supports-backdrop-filter:bg-background/35',
             immersiveHeader && headerFaded && 'pointer-events-none'
           )}
         >
@@ -126,7 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div
               aria-hidden
               className={cn(
-                'pointer-events-none absolute inset-x-0 top-0 h-[calc(3.25rem+var(--safe-top))] bg-gradient-to-b from-[#141416]/55 via-[#141416]/20 to-transparent transition-opacity duration-300',
+                'pointer-events-none absolute inset-x-0 top-0 h-[calc(3.25rem+var(--safe-top))] bg-gradient-to-b from-background/55 via-background/20 to-transparent transition-opacity duration-300',
                 headerFaded ? 'opacity-0' : 'opacity-100'
               )}
             />
@@ -187,7 +192,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-hidden={!isHome}
           {...(!isHome ? { inert: true } : {})}
         >
-          <HomePage />
+          <PaneErrorBoundary name="Home">
+            <HomePage />
+          </PaneErrorBoundary>
         </div>
         {/* Keep Search mounted so results + filters survive anime detail back-nav */}
         <div
@@ -195,7 +202,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-hidden={!isSearch}
           {...(!isSearch ? { inert: true } : {})}
         >
-          <SearchPage />
+          <PaneErrorBoundary name="Search">
+            <SearchPage />
+          </PaneErrorBoundary>
         </div>
         {!isHome && !isSearch ? children : null}
       </main>

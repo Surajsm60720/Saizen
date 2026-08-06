@@ -13,8 +13,16 @@ export type SearchSession = {
   scrollY: number
 }
 
+export type PendingSearchPreset = {
+  filters: Partial<AnimeSearchFilters>
+  term?: string
+}
+
 /** Survives route unmounts so Search doesn't wipe results on back-nav. */
 let memory: SearchSession | null = null
+
+/** One-shot handoff from Home "View more" → Search. */
+let pendingPreset: PendingSearchPreset | null = null
 
 function emptySession(): SearchSession {
   return {
@@ -56,4 +64,37 @@ export function writeSearchSession(patch: Partial<SearchSession>): SearchSession
 
 export function clearSearchSession(): void {
   memory = null
+}
+
+export function setPendingSearchPreset(preset: PendingSearchPreset): void {
+  pendingPreset = {
+    filters: {
+      ...preset.filters,
+      genres: preset.filters.genres ? [...preset.filters.genres] : undefined
+    },
+    term: preset.term
+  }
+}
+
+export function consumePendingSearchPreset(): PendingSearchPreset | null {
+  const next = pendingPreset
+  pendingPreset = null
+  if (!next) return null
+  return {
+    filters: {
+      ...next.filters,
+      genres: next.filters.genres ? [...next.filters.genres] : undefined
+    },
+    term: next.term
+  }
+}
+
+export function mergeSearchFilters(
+  partial: Partial<AnimeSearchFilters>
+): AnimeSearchFilters {
+  return {
+    ...DEFAULT_SEARCH_FILTERS,
+    ...partial,
+    genres: [...(partial.genres ?? [])]
+  }
 }

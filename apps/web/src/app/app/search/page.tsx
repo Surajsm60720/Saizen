@@ -19,7 +19,7 @@ import {
 } from '@/lib/anilist'
 import { isAnilistConnected } from '@/lib/auth/tokens'
 import { ensureExtensions, hasAdultExtensionsEnabled } from '@/lib/extensions'
-import { readSearchSession, writeSearchSession } from '@/lib/search/session'
+import { readSearchSession, writeSearchSession, consumePendingSearchPreset, mergeSearchFilters } from '@/lib/search/session'
 import { PageHeader, PosterCard, PosterGrid, SearchFiltersSheet } from '@/components/saizen'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -203,6 +203,30 @@ export default function SearchPage() {
     },
     [includeAdult]
   )
+
+  // Home "View more" (and keep-alive revisits): apply one-shot filter preset.
+  useEffect(() => {
+    if (!isActive) return
+    const preset = consumePendingSearchPreset()
+    if (!preset) return
+    const nextFilters = mergeSearchFilters(preset.filters)
+    const nextTerm = preset.term ?? ''
+    setTerm(nextTerm)
+    setFilters(nextFilters)
+    setResults([])
+    setPage(1)
+    setHasNextPage(false)
+    setError('')
+    writeSearchSession({
+      term: nextTerm,
+      filters: nextFilters,
+      results: [],
+      page: 1,
+      hasNextPage: false,
+      error: ''
+    })
+    void runSearch(nextTerm, nextFilters, 1, false)
+  }, [isActive, runSearch])
 
   async function onSubmit(e?: React.FormEvent) {
     e?.preventDefault()

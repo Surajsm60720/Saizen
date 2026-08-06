@@ -54,6 +54,10 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
       totalEpisodes: total,
       hasNextEpisode: hasNext,
       autoSkipOpEd: call.getBool("autoSkipOpEd") ?? false,
+      gestureSeekEnabled: call.getBool("gestureSeekEnabled") ?? true,
+      doubleTapSeekSec: call.getInt("doubleTapSeekSec") ?? 10,
+      tripleTapSeekSec: call.getInt("tripleTapSeekSec") ?? 30,
+      autoplayNext: call.getBool("autoplayNext") ?? false,
       op: op,
       ed: ed
     )

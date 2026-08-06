@@ -21,7 +21,7 @@ public struct SaizenDownloadSettings: Codable {
     torrentPersist: false,
     torrentStreamedDownload: false,
     torrentSpeed: 0,
-    maxConns: 200
+    maxConns: 100
   )
 }
 
@@ -124,12 +124,29 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     }
     if let v = patch["torrentPersist"] as? Bool { manifest.settings.torrentPersist = v }
     if let v = patch["torrentStreamedDownload"] as? Bool { manifest.settings.torrentStreamedDownload = v }
-    if let n = patch["torrentSpeed"] as? Int { manifest.settings.torrentSpeed = n }
-    if let n = patch["maxConns"] as? Int { manifest.settings.maxConns = n }
+    if let n = patch["torrentSpeed"] as? Int {
+      manifest.settings.torrentSpeed = min(100, max(0, n))
+    }
+    if let n = patch["torrentSpeed"] as? Double {
+      manifest.settings.torrentSpeed = min(100, max(0, Int(n.rounded())))
+    }
+    if let n = patch["maxConns"] as? Int {
+      manifest.settings.maxConns = min(300, max(20, n))
+    }
+    if let n = patch["maxConns"] as? Double {
+      manifest.settings.maxConns = min(300, max(20, Int(n.rounded())))
+    }
     let wifiOnly = manifest.settings.wifiOnly
+    let speed = manifest.settings.torrentSpeed
+    let conns = manifest.settings.maxConns
+    let running = Array(engines.values)
     lock.unlock()
     bgSession.configuration.allowsCellularAccess = !wifiOnly
     persist()
+    for engine in running {
+      engine.applyTransferLimits(downloadMbps: speed, maxConns: conns)
+    }
+    SaizenPlayback.engine.applyTransferLimits()
     pumpQueue()
   }
 
@@ -164,7 +181,16 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
   }
 
   public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-    folderPickContinuation?.resume(returning: urls[0])
+    guard let url = urls.first else {
+      folderPickContinuation?.resume(throwing: NSError(
+        domain: "SaizenDownloads",
+        code: 2,
+        userInfo: [NSLocalizedDescriptionKey: "No folder was selected"]
+      ))
+      folderPickContinuation = nil
+      return
+    }
+    folderPickContinuation?.resume(returning: url)
     folderPickContinuation = nil
   }
 

@@ -53,6 +53,20 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
 
   public init() {}
 
+  public func applyStoredTransferLimits() {
+    let settings = DownloadCoordinator.shared.currentSettings()
+    applyTransferLimits(downloadMbps: settings.torrentSpeed, maxConns: settings.maxConns)
+  }
+
+  public func applyTransferLimits(downloadMbps: Int, maxConns: Int) {
+    guard let session else { return }
+    let mbps = min(100, max(0, downloadMbps))
+    let conns = min(300, max(20, maxConns))
+    let down = mbps > 0 ? Int64(mbps) * 1_000_000 / 8 : 0
+    saizen_lt_set_rate_limits(session, down, 0)
+    saizen_lt_set_max_connections(session, Int32(conns))
+  }
+
   deinit {
     shutdownSession()
   }
@@ -85,6 +99,7 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
       )
     }
     session = created
+    applyStoredTransferLimits()
     startTicker()
 
     if Self.isTorrentFileURL(source) {
@@ -216,11 +231,25 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
   fileprivate func handleMetadata(name: String, fileSize: Int64, pieceLength: Int) {
     fileName = (name as NSString).lastPathComponent
     do {
-      let pieceURL =
+      let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+      guard let pieceURL =
         preferredStoreURL
-        ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)!.first!
+        ?? docs?
           .appendingPathComponent("Saizen/pieces", isDirectory: true)
           .appendingPathComponent("\(UUID().uuidString).part")
+      else {
+        store = nil
+        stateLock.lock()
+        let cont = metaContinuation
+        metaContinuation = nil
+        stateLock.unlock()
+        cont?.resume(throwing: NSError(
+          domain: "SaizenTorrent",
+          code: 15,
+          userInfo: [NSLocalizedDescriptionKey: "No writable documents directory"]
+        ))
+        return
+      }
       store = try PieceStore(
         fileSize: fileSize,
         pieceLength: max(pieceLength, 16 * 1024),
@@ -303,6 +332,7 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
     }
     session = created
     saizen_lt_set_full_file_mode(created, true)
+    applyStoredTransferLimits()
     startTicker()
 
     if Self.isTorrentFileURL(source) {

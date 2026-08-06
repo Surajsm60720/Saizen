@@ -50,6 +50,13 @@ import {
   onPlayerAction
 } from '@/lib/watch/playerActions'
 import {
+  cacheFranchiseGraph,
+  getAnimeSession,
+  peekFranchiseGraph,
+  setAnimeSession,
+  type AnimeDetailTab
+} from '@/lib/anime/session'
+import {
   AnimeHeader,
   DownloadPickerSheet,
   EpisodeList,
@@ -119,7 +126,14 @@ function AnimeDetail() {
   const [listEntry, setListEntry] = useState<ListEditValues | null>(null)
   const [listConnected, setListConnected] = useState(false)
   const [listSheetOpen, setListSheetOpen] = useState(false)
-  const [detailTab, setDetailTab] = useState('overview')
+  const [detailTab, setDetailTab] = useState<AnimeDetailTab>(
+    () => getAnimeSession(id)?.tab ?? 'overview'
+  )
+  const [sessionId, setSessionId] = useState(id)
+  if (sessionId !== id) {
+    setSessionId(id)
+    setDetailTab(getAnimeSession(id)?.tab ?? 'overview')
+  }
   const [franchise, setFranchise] = useState<FranchiseGraph | null>(null)
   const [franchiseLoading, setFranchiseLoading] = useState(false)
   const [franchiseLoadedFor, setFranchiseLoadedFor] = useState<number | null>(null)
@@ -162,10 +176,10 @@ function AnimeDetail() {
       setListProgress(null)
       setListEntry(null)
       setListSheetOpen(false)
-      setFranchise(null)
-      setFranchiseLoadedFor(null)
+      const cachedFranchise = peekFranchiseGraph(id)
+      setFranchise(cachedFranchise)
+      setFranchiseLoadedFor(cachedFranchise ? id : null)
       setFranchiseLoading(false)
-      setDetailTab('overview')
       try {
         // Don't block detail on extension catalog warm-up
         void ensureExtensions()
@@ -196,6 +210,28 @@ function AnimeDetail() {
       cancelled = true
     }
   }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    setAnimeSession(id, { tab: detailTab })
+  }, [id, detailTab])
+
+  useEffect(() => {
+    if (!id) return
+    const onScroll = () => setAnimeSession(id, { scrollY: window.scrollY })
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      onScroll()
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (!id || loading) return
+    const y = getAnimeSession(id)?.scrollY ?? 0
+    const frame = window.requestAnimationFrame(() => window.scrollTo(0, y))
+    return () => window.cancelAnimationFrame(frame)
+  }, [id, loading])
 
   useEffect(() => {
     let cancelled = false
@@ -372,6 +408,7 @@ function AnimeDetail() {
       .then((g) => {
         if (cancelled) return
         setFranchise(g)
+        cacheFranchiseGraph(media.id, g)
         setFranchiseLoadedFor(media.id)
       })
       .catch(() => {
@@ -833,6 +870,10 @@ function AnimeDetail() {
         totalEpisodes,
         hasNextEpisode,
         autoSkipOpEd: watch.autoSkipOpEd,
+        gestureSeekEnabled: watch.gestureSeekEnabled,
+        doubleTapSeekSec: watch.doubleTapSeekSec,
+        tripleTapSeekSec: watch.tripleTapSeekSec,
+        autoplayNext: watch.autoplayNext,
         skipTimes: skipTimes ?? undefined
       })
 
@@ -850,6 +891,10 @@ function AnimeDetail() {
             sourceLabel: result.title,
             skipTimes,
             autoSkipOpEd: watch.autoSkipOpEd,
+            gestureSeekEnabled: watch.gestureSeekEnabled,
+            doubleTapSeekSec: watch.doubleTapSeekSec,
+            tripleTapSeekSec: watch.tripleTapSeekSec,
+            autoplayNext: watch.autoplayNext,
             hasNextEpisode,
             playerHint: file.playerHint
           })
@@ -929,7 +974,11 @@ function AnimeDetail() {
 
       <Tabs
         value={detailTab}
-        onValueChange={setDetailTab}
+        onValueChange={(next) => {
+          const tab = next === 'franchise' ? 'franchise' : 'overview'
+          setDetailTab(tab)
+          if (id) setAnimeSession(id, { tab })
+        }}
         className="gap-5"
       >
         <TabsList variant="line" className="w-full max-w-md">

@@ -71,6 +71,12 @@ int64_t saizen_lt_download_rate(SaizenLTSession *session);
 void saizen_lt_pause(SaizenLTSession *session);
 void saizen_lt_resume(SaizenLTSession *session);
 
+/// Rate limits in bytes/sec. 0 = unlimited.
+void saizen_lt_set_rate_limits(SaizenLTSession *session, int64_t down_bps, int64_t up_bps);
+
+/// Global connection / peer cap.
+void saizen_lt_set_max_connections(SaizenLTSession *session, int max_conns);
+
 #ifdef __cplusplus
 }
 #endif

@@ -85,9 +85,9 @@ export function AnimeHeader({
           <div className="size-full bg-zinc-900" />
         )}
         {/* Lighter wash so banner art stays visible behind the poster */}
-        <div className="absolute inset-0 bg-[#141416]/28" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#141416] via-[#141416]/55 to-[#141416]/15" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#141416]/70 via-[#141416]/25 to-transparent" />
+        <div className="absolute inset-0 bg-background/28" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/55 to-background/15" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background/70 via-background/25 to-transparent" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_85%,rgba(232,196,120,0.1),transparent_55%)]" />
       </div>
 

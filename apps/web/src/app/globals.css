@@ -7,40 +7,40 @@
 /* Cinematic media — near-black charcoal, accent only on actions */
 :root {
   --radius: 0.7rem;
-  --background: oklch(0.12 0.005 260);
-  --foreground: oklch(0.96 0.005 95);
-  --card: oklch(0.17 0.006 260);
-  --card-foreground: oklch(0.96 0.005 95);
-  --popover: oklch(0.17 0.006 260);
-  --popover-foreground: oklch(0.96 0.005 95);
-  --primary: oklch(0.78 0.09 75);
-  --primary-foreground: oklch(0.14 0.01 75);
-  --secondary: oklch(0.22 0.006 260);
-  --secondary-foreground: oklch(0.96 0.005 95);
-  --muted: oklch(0.2 0.006 260);
-  --muted-foreground: oklch(0.68 0.01 260);
-  --accent: oklch(0.22 0.006 260);
-  --accent-foreground: oklch(0.96 0.005 95);
+  --background: oklch(0.05 0 0);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.12 0 0);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.12 0 0);
+  --popover-foreground: oklch(0.97 0 0);
+  --primary: #e8c478;
+  --primary-foreground: #141416;
+  --secondary: oklch(0.16 0 0);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.16 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.16 0 0);
+  --accent-foreground: oklch(0.97 0 0);
   --destructive: oklch(0.65 0.18 25);
-  --border: oklch(0.28 0.008 260);
-  --input: oklch(0.28 0.008 260);
-  --ring: oklch(0.78 0.09 75);
-  --chart-1: oklch(0.78 0.09 75);
+  --border: oklch(0.22 0 0);
+  --input: oklch(0.22 0 0);
+  --ring: #e8c478;
+  --chart-1: #e8c478;
   --chart-2: oklch(0.7 0.08 200);
   --chart-3: oklch(0.7 0.1 145);
   --chart-4: oklch(0.72 0.1 40);
   --chart-5: oklch(0.65 0.16 25);
-  --sidebar: oklch(0.14 0.005 260);
-  --sidebar-foreground: oklch(0.96 0.005 95);
-  --sidebar-primary: oklch(0.78 0.09 75);
-  --sidebar-primary-foreground: oklch(0.14 0.01 75);
-  --sidebar-accent: oklch(0.22 0.006 260);
-  --sidebar-accent-foreground: oklch(0.96 0.005 95);
-  --sidebar-border: oklch(0.28 0.008 260);
-  --sidebar-ring: oklch(0.78 0.09 75);
+  --sidebar: oklch(0.08 0 0);
+  --sidebar-foreground: oklch(0.97 0 0);
+  --sidebar-primary: #e8c478;
+  --sidebar-primary-foreground: #141416;
+  --sidebar-accent: oklch(0.16 0 0);
+  --sidebar-accent-foreground: oklch(0.97 0 0);
+  --sidebar-border: oklch(0.22 0 0);
+  --sidebar-ring: #e8c478;
 
   --ok: oklch(0.72 0.14 155);
-  --player-accent: oklch(0.78 0.09 75);
+  --player-accent: #e8c478;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
@@ -50,39 +50,39 @@
 }
 
 .dark {
-  --background: oklch(0.12 0.005 260);
-  --foreground: oklch(0.96 0.005 95);
-  --card: oklch(0.17 0.006 260);
-  --card-foreground: oklch(0.96 0.005 95);
-  --popover: oklch(0.17 0.006 260);
-  --popover-foreground: oklch(0.96 0.005 95);
-  --primary: oklch(0.78 0.09 75);
-  --primary-foreground: oklch(0.14 0.01 75);
-  --secondary: oklch(0.22 0.006 260);
-  --secondary-foreground: oklch(0.96 0.005 95);
-  --muted: oklch(0.2 0.006 260);
-  --muted-foreground: oklch(0.68 0.01 260);
-  --accent: oklch(0.22 0.006 260);
-  --accent-foreground: oklch(0.96 0.005 95);
+  --background: oklch(0.05 0 0);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.12 0 0);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.12 0 0);
+  --popover-foreground: oklch(0.97 0 0);
+  --primary: #e8c478;
+  --primary-foreground: #141416;
+  --secondary: oklch(0.16 0 0);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.16 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.16 0 0);
+  --accent-foreground: oklch(0.97 0 0);
   --destructive: oklch(0.65 0.18 25);
-  --border: oklch(0.28 0.008 260 / 70%);
-  --input: oklch(0.28 0.008 260 / 80%);
-  --ring: oklch(0.78 0.09 75);
-  --chart-1: oklch(0.78 0.09 75);
+  --border: oklch(0.22 0 0 / 70%);
+  --input: oklch(0.22 0 0 / 80%);
+  --ring: #e8c478;
+  --chart-1: #e8c478;
   --chart-2: oklch(0.7 0.08 200);
   --chart-3: oklch(0.7 0.1 145);
   --chart-4: oklch(0.72 0.1 40);
   --chart-5: oklch(0.65 0.16 25);
-  --sidebar: oklch(0.14 0.005 260);
-  --sidebar-foreground: oklch(0.96 0.005 95);
-  --sidebar-primary: oklch(0.78 0.09 75);
-  --sidebar-primary-foreground: oklch(0.14 0.01 75);
-  --sidebar-accent: oklch(0.22 0.006 260);
-  --sidebar-accent-foreground: oklch(0.96 0.005 95);
-  --sidebar-border: oklch(0.28 0.008 260 / 70%);
-  --sidebar-ring: oklch(0.78 0.09 75);
+  --sidebar: oklch(0.08 0 0);
+  --sidebar-foreground: oklch(0.97 0 0);
+  --sidebar-primary: #e8c478;
+  --sidebar-primary-foreground: #141416;
+  --sidebar-accent: oklch(0.16 0 0);
+  --sidebar-accent-foreground: oklch(0.97 0 0);
+  --sidebar-border: oklch(0.22 0 0 / 70%);
+  --sidebar-ring: #e8c478;
   --ok: oklch(0.72 0.14 155);
-  --player-accent: oklch(0.78 0.09 75);
+  --player-accent: #e8c478;
 }
 
 @theme inline {
@@ -174,6 +174,17 @@
   color: var(--muted-foreground);
 }
 
+/* Hide scrollbar chrome; scrolling still works (WKWebView / iOS). */
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
 @media (min-width: 640px) {
   .text-brand {
     font-size: 1.5rem;
@@ -193,13 +204,21 @@
   * {
     @apply border-border outline-ring/50;
     box-sizing: border-box;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   html {
-    @apply font-sans;
+    @apply font-sans scrollbar-hide;
     color-scheme: dark;
-    background: #141416;
-    background-color: #141416;
+    background: var(--background);
+    background-color: var(--background);
     overscroll-behavior-y: none;
     overscroll-behavior-x: none;
     overflow-x: hidden;
@@ -211,14 +230,14 @@
     padding: 0;
     min-height: 100%;
     min-height: 100dvh;
-    background: #141416;
-    background-color: #141416;
+    background: var(--background);
+    background-color: var(--background);
   }
 
   body {
-    @apply text-foreground font-sans antialiased;
-    background: #141416;
-    background-color: #141416;
+    @apply text-foreground font-sans antialiased scrollbar-hide;
+    background: var(--background);
+    background-color: var(--background);
     overscroll-behavior-y: none;
     overscroll-behavior-x: none;
     overflow-x: hidden;
@@ -231,7 +250,7 @@
 
   #__next,
   [data-overlay-container] {
-    background: #141416;
+    background: var(--background);
   }
 
   /* Fill behind WKWebView bounce / safe areas */
@@ -240,7 +259,7 @@
     position: fixed;
     inset: -50vmax;
     z-index: -1;
-    background: #141416;
+    background: var(--background);
     pointer-events: none;
   }
 

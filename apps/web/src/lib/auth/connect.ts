@@ -1,4 +1,5 @@
-import getNative from '@/lib/native'
+import { refreshNative } from '@/lib/native'
+import { whenBridgeReady } from '@/lib/native/ready'
 import {
   clearViewerListCache,
   fetchViewerAnimeList
@@ -33,7 +34,8 @@ export async function connectAnilist(): Promise<void> {
     )
   }
 
-  const native = getNative()
+  await whenBridgeReady()
+  const native = refreshNative()
   if (!native.isApp) {
     throw new Error('AniList login requires the iOS app')
   }
@@ -80,7 +82,8 @@ export async function connectMal(): Promise<void> {
     )
   }
 
-  const native = getNative()
+  await whenBridgeReady()
+  const native = refreshNative()
   if (!native.isApp) {
     throw new Error('MyAnimeList login requires the iOS app')
   }

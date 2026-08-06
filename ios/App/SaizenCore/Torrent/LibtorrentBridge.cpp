@@ -524,6 +524,24 @@ extern "C" void saizen_lt_resume(SaizenLTSession *session) {
   if (session->handle.is_valid()) session->handle.resume();
 }
 
+extern "C" void saizen_lt_set_rate_limits(SaizenLTSession *session, int64_t down_bps, int64_t up_bps) {
+  if (!session) return;
+  lt::settings_pack pack;
+  pack.set_int(lt::settings_pack::download_rate_limit, down_bps > 0 ? int(down_bps) : 0);
+  pack.set_int(lt::settings_pack::upload_rate_limit, up_bps > 0 ? int(up_bps) : 0);
+  session->ses.apply_settings(pack);
+}
+
+extern "C" void saizen_lt_set_max_connections(SaizenLTSession *session, int max_conns) {
+  if (!session) return;
+  int n = max_conns;
+  if (n < 20) n = 20;
+  if (n > 300) n = 300;
+  lt::settings_pack pack;
+  pack.set_int(lt::settings_pack::connections_limit, n);
+  session->ses.apply_settings(pack);
+}
+
 #else
 
 // Stubs when libtorrent is not linked — keep linker happy if file is compiled without flag.
@@ -545,5 +563,7 @@ extern "C" int saizen_lt_num_peers(SaizenLTSession *) { return 0; }
 extern "C" int64_t saizen_lt_download_rate(SaizenLTSession *) { return 0; }
 extern "C" void saizen_lt_pause(SaizenLTSession *) {}
 extern "C" void saizen_lt_resume(SaizenLTSession *) {}
+extern "C" void saizen_lt_set_rate_limits(SaizenLTSession *, int64_t, int64_t) {}
+extern "C" void saizen_lt_set_max_connections(SaizenLTSession *, int) {}
 
 #endif

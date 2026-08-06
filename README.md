@@ -1,4 +1,4 @@
-# Saizen · v1.2.0
+# Saizen · v1.3.0
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
@@ -6,15 +6,16 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 
 ## Features
 
-- **Browse & Home** — Discover rails, continue watching, and list-backed shelves after AniList / MAL sign-in
+- **Browse & Home** — Discover rails with View more → Search filters, continue watching, and list-backed shelves after AniList / MAL sign-in
 - **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar
-- **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names
+- **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names (tap to copy)
 - **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
-- **Player** — Native VLC + in-app chrome; ±seek / next episode; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
+- **Player** — Native VLC + in-app chrome; ±seek / next episode; double/triple-tap seek; autoplay-next sources sheet; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
 - **Downloads** — Settings → Downloads: pick a folder, queue episodes (all / range / selected), lock-screen progress, offline library playback
+- **Transfers** — Settings: torrent download Mbps cap + max peers (applied live to libtorrent)
 - **Accounts & lists** — AniList / MAL Sign in (PKCE, Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Sources** — Hayase-compatible extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
-- **UI** — Floating glass tab bar; Fraunces + DM Sans type
+- **UI** — Floating glass tab bar (Home / Search / Schedule / More); Fraunces + DM Sans type; Settings → Appearance (wheel, hex, live preview)
 - **Security** — No client secrets; authenticated loopback streams; HTTPS-only extensions; secret-scanned IPA packaging
 
 Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
@@ -118,7 +119,7 @@ Apple’s paid program is required for **App Store**, TestFlight, and long-lived
 ```bash
 pnpm sync:ios                 # rebuild web + sync Swift
 # Build/Run once on a device from Xcode (prefer Release when possible)
-pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.2.0.ipa
+pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.0.ipa
 ```
 
 ### IPA security warning (read before uploading a Release)
@@ -164,7 +165,7 @@ Download continues in the background while VLC plays from the contiguous head.
 
 ## Providers
 
-Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev). Manage them in-app under **Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL. Extension JS is fetched over **HTTPS only**. Adult indexes (Sukebei) may use public Nyaa mirrors when `nyaa.si` TLS is blocked on the device network.
+Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev). Manage them in-app under **Settings → Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL. Extension JS is fetched over **HTTPS only**. Adult indexes (Sukebei) may use public Nyaa mirrors when `nyaa.si` TLS is blocked on the device network.
 
 | Built-in | Notes |
 |----------|--------|

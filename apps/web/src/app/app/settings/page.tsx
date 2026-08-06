@@ -15,9 +15,11 @@ import {
 } from '@/lib/watch/settings'
 import {
   getDownloadSettings,
-  setDownloadSettings
+  setDownloadSettings,
+  type DownloadUiSettings
 } from '@/lib/downloads/settings'
 import type { DownloadQuality } from '@saizen/shared'
+import { getAppearance, resolveAccentHex } from '@/lib/theme/appearance'
 import {
   connectAnilist,
   connectMal,
@@ -31,18 +33,22 @@ import {
 import { clearViewerListCache, fetchViewerAnimeList } from '@/lib/anilist'
 import { flushPendingListSync } from '@/lib/watch/progress'
 import getNative from '@/lib/native'
+import { whenBridgeReady } from '@/lib/native/ready'
 import { APP_VERSION_LABEL } from '@/lib/version'
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<WatchSettings>(() => ({
-    markWatchedAtPercent: 90,
-    continueWatchingEnabled: true,
-    autoSkipOpEd: false
-  }))
+  const [settings, setSettings] = useState<WatchSettings>(() => getWatchSettings())
+  const [accentHex, setAccentHex] = useState(() => resolveAccentHex(getAppearance()))
+  const [transfers, setTransfers] = useState<Pick<DownloadUiSettings, 'torrentSpeed' | 'maxConns'>>(
+    () => {
+      const d = getDownloadSettings()
+      return { torrentSpeed: d.torrentSpeed, maxConns: d.maxConns }
+    }
+  )
   const [anilistOn, setAnilistOn] = useState(false)
   const [malOn, setMalOn] = useState(false)
   const [busy, setBusy] = useState<'anilist' | 'mal' | 'refresh' | null>(null)
-  const isApp = typeof window !== 'undefined' ? getNative().isApp : false
+  const [isApp, setIsApp] = useState(false)
   const [creds, setCreds] = useState(() => getOAuthCredentials())
   const [quality, setQuality] = useState<DownloadQuality>('1080p')
   const canAnilist = Boolean(creds.anilistClientId)
@@ -52,7 +58,13 @@ export default function SettingsPage() {
     clearOAuthCredentialOverrides()
     setCreds(getOAuthCredentials())
     setSettings(getWatchSettings())
-    setQuality(getDownloadSettings().preferredQuality)
+    setAccentHex(resolveAccentHex(getAppearance()))
+    const d = getDownloadSettings()
+    setQuality(d.preferredQuality)
+    setTransfers({ torrentSpeed: d.torrentSpeed, maxConns: d.maxConns })
+    void whenBridgeReady().then(() => {
+      setIsApp(getNative().isApp)
+    })
     void Promise.all([isAnilistConnected(), isMalConnected()]).then(([a, m]) => {
       setAnilistOn(a)
       setMalOn(m)
@@ -130,6 +142,28 @@ export default function SettingsPage() {
       />
 
       <div className="space-y-5">
+        <SettingsGroup title="Appearance" description="Deep black chrome and accent color.">
+          <Link
+            href="/app/appearance/"
+            className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Color customization</div>
+              <div className="text-xs text-muted-foreground">
+                Presets, color wheel, saturation, brightness, contrast
+              </div>
+            </div>
+            <span className="flex shrink-0 items-center gap-2">
+              <span
+                className="size-6 rounded-md ring-1 ring-border"
+                style={{ background: accentHex }}
+                aria-hidden
+              />
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </span>
+          </Link>
+        </SettingsGroup>
+
         <SettingsGroup title="Playback" description="Defaults for the native and web players.">
           <SettingsRow
             label="Auto-skip openings & endings"
@@ -141,11 +175,61 @@ export default function SettingsPage() {
               aria-label="Auto-skip openings and endings"
             />
           </SettingsRow>
-          <SettingsRow label="Prefer VLC for MKV / HEVC" hint="Recommended on iOS" showSeparator>
-            <Switch defaultChecked aria-label="Prefer VLC" />
+          <SettingsRow
+            label="Gesture seek"
+            hint="Double / triple tap left or right on the video"
+            showSeparator
+          >
+            <Switch
+              checked={settings.gestureSeekEnabled}
+              onCheckedChange={(v) => patch({ gestureSeekEnabled: v })}
+              aria-label="Gesture seek"
+            />
           </SettingsRow>
-          <SettingsRow label="Early open" hint="Launch player as soon as a stream URL exists" showSeparator>
-            <Switch defaultChecked aria-label="Early open" />
+          <SettingsRow
+            label="Double-tap seek"
+            hint={`${settings.doubleTapSeekSec}s`}
+            showSeparator
+          >
+            <input
+              type="range"
+              min={5}
+              max={30}
+              step={1}
+              value={settings.doubleTapSeekSec}
+              onChange={(e) => patch({ doubleTapSeekSec: Number(e.target.value) })}
+              disabled={!settings.gestureSeekEnabled}
+              className="w-28 accent-[var(--primary)] disabled:opacity-40"
+              aria-label="Double-tap seek seconds"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Triple-tap seek"
+            hint={settings.tripleTapSeekSec === 0 ? 'Off' : `${settings.tripleTapSeekSec}s`}
+            showSeparator
+          >
+            <input
+              type="range"
+              min={0}
+              max={90}
+              step={10}
+              value={settings.tripleTapSeekSec}
+              onChange={(e) => patch({ tripleTapSeekSec: Number(e.target.value) })}
+              disabled={!settings.gestureSeekEnabled}
+              className="w-28 accent-[var(--primary)] disabled:opacity-40"
+              aria-label="Triple-tap seek seconds"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Autoplay next"
+            hint="When an episode ends, open the next episode’s sources"
+            showSeparator
+          >
+            <Switch
+              checked={settings.autoplayNext}
+              onCheckedChange={(v) => patch({ autoplayNext: v })}
+              aria-label="Autoplay next episode sources"
+            />
           </SettingsRow>
           <SettingsRow label="Default quality" hint="Play ranking + download auto-pick" showSeparator>
             <select
@@ -200,6 +284,51 @@ export default function SettingsPage() {
                 {settings.markWatchedAtPercent}%
               </span>
             </div>
+          </SettingsRow>
+        </SettingsGroup>
+
+        <SettingsGroup
+          title="Transfers"
+          description="Live torrent download cap and peer limit. Upload stays unlimited."
+        >
+          <SettingsRow
+            label="Download speed"
+            hint={transfers.torrentSpeed === 0 ? 'Unlimited' : `${transfers.torrentSpeed} Mbps`}
+          >
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={transfers.torrentSpeed}
+              onChange={(e) => {
+                const torrentSpeed = Number(e.target.value)
+                setTransfers((prev) => ({ ...prev, torrentSpeed }))
+                setDownloadSettings({ torrentSpeed })
+              }}
+              className="w-28 accent-[var(--primary)]"
+              aria-label="Torrent download speed in megabits per second"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Max peers"
+            hint={`${transfers.maxConns} connections`}
+            showSeparator
+          >
+            <input
+              type="range"
+              min={20}
+              max={300}
+              step={10}
+              value={transfers.maxConns}
+              onChange={(e) => {
+                const maxConns = Number(e.target.value)
+                setTransfers((prev) => ({ ...prev, maxConns }))
+                setDownloadSettings({ maxConns })
+              }}
+              className="w-28 accent-[var(--primary)]"
+              aria-label="Maximum torrent connections"
+            />
           </SettingsRow>
         </SettingsGroup>
 
@@ -264,24 +393,6 @@ export default function SettingsPage() {
           </SettingsRow>
         </SettingsGroup>
 
-        <SettingsGroup title="About">
-          <SettingsRow label="Version" hint="Saizen for iOS">
-            <Badge variant="secondary">{APP_VERSION_LABEL}</Badge>
-          </SettingsRow>
-          <Link
-            href="/app/changelog/"
-            className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
-          >
-            <div>
-              <div className="text-sm font-medium">Changelog</div>
-              <div className="text-xs text-muted-foreground">
-                What’s new in {APP_VERSION_LABEL}
-              </div>
-            </div>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-        </SettingsGroup>
-
         <SettingsGroup title="More">
           <Link
             href="/app/downloads/"
@@ -300,6 +411,24 @@ export default function SettingsPage() {
             <div>
               <div className="text-sm font-medium">Extensions</div>
               <div className="text-xs text-muted-foreground">Torrent catalogs</div>
+            </div>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </Link>
+        </SettingsGroup>
+
+        <SettingsGroup title="About">
+          <SettingsRow label="Version" hint="Saizen for iOS">
+            <Badge variant="secondary">{APP_VERSION_LABEL}</Badge>
+          </SettingsRow>
+          <Link
+            href="/app/changelog/"
+            className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
+          >
+            <div>
+              <div className="text-sm font-medium">Changelog</div>
+              <div className="text-xs text-muted-foreground">
+                What’s new in {APP_VERSION_LABEL}
+              </div>
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>

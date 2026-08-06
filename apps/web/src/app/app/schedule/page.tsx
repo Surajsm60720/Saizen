@@ -287,7 +287,7 @@ export default function SchedulePage() {
                   </time>
                   <span
                     aria-hidden
-                    className="mt-2.5 size-2 shrink-0 rounded-full bg-primary ring-4 ring-[#141416] transition-transform group-hover:scale-125"
+                    className="mt-2.5 size-2 shrink-0 rounded-full bg-primary ring-4 ring-background transition-transform group-hover:scale-125"
                   />
                   <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-white/8 bg-white/[0.03] transition-colors group-hover:border-primary/35 group-hover:bg-primary/[0.06]">
                     <div className="flex gap-3 p-2.5">

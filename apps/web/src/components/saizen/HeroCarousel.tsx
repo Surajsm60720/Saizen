@@ -25,6 +25,14 @@ export function HeroCarousel({
   const [index, setIndex] = useState(0)
 
   useEffect(() => {
+    if (slides.length === 0) {
+      setIndex(0)
+      return
+    }
+    setIndex((i) => Math.min(i, slides.length - 1))
+  }, [slides.length])
+
+  useEffect(() => {
     if (slides.length <= 1) return
     const id = window.setInterval(() => {
       setIndex((i) => (i + 1) % slides.length)
@@ -32,7 +40,7 @@ export function HeroCarousel({
     return () => window.clearInterval(id)
   }, [slides.length, intervalMs])
 
-  const featured = slides[index]
+  const featured = slides[index] ?? slides[0]
   if (!featured) return null
 
   const name = shortTitle(displayTitle(featured))
@@ -61,14 +69,14 @@ export function HeroCarousel({
                   className="size-full object-cover object-[center_20%]"
                 />
               ) : (
-                <div className="size-full bg-[#141416]" />
+                <div className="size-full bg-background" />
               )}
             </div>
           )
         })}
 
         {/* Only bottom fade into page content — no top black band */}
-        <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-[#141416] via-[#141416]/50 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-background via-background/50 to-transparent" />
 
         {/* Spacer keeps copy clear of the translucent header */}
         <div

@@ -67,10 +67,14 @@ export default function HomePage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
+  const seasonInfo = useMemo(() => currentAniSeason(), [])
   const seasonLabel = useMemo(() => {
-    const { season, year } = currentAniSeason()
+    const { season, year } = seasonInfo
     return `${season.charAt(0)}${season.slice(1).toLowerCase()} ${year}`
-  }, [])
+  }, [seasonInfo])
+
+  const genreRailTitle =
+    topGenres.length > 0 ? `For you · ${topGenres.slice(0, 2).join(' · ')}` : 'For your genres'
 
   useEffect(() => {
     const unsubContinue = subscribeContinueWatching((entries) => {
@@ -199,13 +203,10 @@ export default function HomePage() {
     })
   }, [trending, seasonal, continueWatching])
 
-  const genreRailTitle =
-    topGenres.length > 0 ? `For you · ${topGenres.slice(0, 2).join(' · ')}` : 'For your genres'
-
   return (
     <div>
       {loading ? (
-        <div className="relative h-[min(48vh,420px)] min-h-[300px] overflow-hidden bg-[#141416]">
+        <div className="relative h-[min(48vh,420px)] min-h-[300px] overflow-hidden bg-background">
           <div
             className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-4 pb-5 sm:px-5"
             style={{ paddingTop: 'calc(var(--safe-top) + 4.75rem)' }}
@@ -247,7 +248,15 @@ export default function HomePage() {
               />
             )}
 
-            <PosterRail title={`Popular · ${seasonLabel}`}>
+            <PosterRail
+              title={`Popular · ${seasonLabel}`}
+              viewMoreHref="/app/search/"
+              viewMorePreset={{
+                season: seasonInfo.season,
+                seasonYear: seasonInfo.year,
+                sort: 'POPULARITY_DESC'
+              }}
+            >
               {seasonal.map((media) => (
                 <PosterCard
                   key={media.id}
@@ -262,7 +271,11 @@ export default function HomePage() {
               ))}
             </PosterRail>
 
-            <PosterRail title="Trending now">
+            <PosterRail
+              title="Trending now"
+              viewMoreHref="/app/search/"
+              viewMorePreset={{ sort: 'TRENDING_DESC' }}
+            >
               {trending.map((media) => (
                 <PosterCard
                   key={media.id}
@@ -310,7 +323,16 @@ export default function HomePage() {
             {listLoading && genrePicks.length === 0 ? (
               <RailSkeleton />
             ) : genrePicks.length > 0 ? (
-              <PosterRail title={genreRailTitle} dense>
+              <PosterRail
+                title={genreRailTitle}
+                dense
+                viewMoreHref="/app/search/"
+                viewMorePreset={{
+                  genres: topGenres,
+                  sort: 'POPULARITY_DESC',
+                  listMembership: 'out'
+                }}
+              >
                 {genrePicks.map((media) => (
                   <PosterCard
                     key={media.id}
@@ -337,7 +359,11 @@ export default function HomePage() {
               />
             )}
 
-            <PosterRail title="Popular of all time">
+            <PosterRail
+              title="Popular of all time"
+              viewMoreHref="/app/search/"
+              viewMorePreset={{ sort: 'SCORE_DESC' }}
+            >
               {allTime.map((media) => (
                 <PosterCard
                   key={media.id}

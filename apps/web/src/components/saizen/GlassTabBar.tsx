@@ -4,7 +4,6 @@ import Link from 'next/link'
 import {
   Home,
   Search,
-  Puzzle,
   CalendarDays,
   MoreHorizontal,
   type LucideIcon
@@ -33,19 +32,15 @@ export const GLASS_TAB_ITEMS: readonly TabItem[] = [
     match: (p) => p.startsWith('/app/schedule')
   },
   {
-    href: '/app/extensions/',
-    label: 'Extensions',
-    icon: Puzzle,
-    match: (p) => p.startsWith('/app/extensions')
-  },
-  {
     href: '/app/settings/',
     label: 'More',
     icon: MoreHorizontal,
     match: (p) =>
       p.startsWith('/app/settings') ||
+      p.startsWith('/app/appearance') ||
       p.startsWith('/app/changelog') ||
-      p.startsWith('/app/downloads')
+      p.startsWith('/app/downloads') ||
+      p.startsWith('/app/extensions')
   }
 ] as const
 
@@ -64,7 +59,7 @@ export function GlassTabBar({
       )}
       aria-label="Primary"
     >
-      <ul className="grid h-[3.85rem] grid-cols-5 items-center gap-0.5 px-1.5">
+      <ul className="grid h-[3.85rem] grid-cols-4 items-center gap-0.5 px-1.5">
         {GLASS_TAB_ITEMS.map((item) => {
           const active = item.match(pathname)
           const Icon = item.icon

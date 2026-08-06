@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.2.0'
+export const APP_VERSION = '1.3.0'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,24 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.3.0',
+    date: '2026-08-05',
+    title: 'Settings power-user controls',
+    highlights: [
+      'Settings → Appearance: color wheel plus saturation / brightness / contrast on deep black',
+      'Appearance: enter a hex code, live UI preview, and Downloads / Extensions above About',
+      'Home rails: View more opens Search with matching season / trending / genre / score filters',
+      'Scrollbars hidden in the Capacitor WebView; Downloads no longer shows a Settings back link',
+      'Player: double / triple tap seek on left and right (web + VLC)',
+      'Autoplay next opens the next episode’s source sheet when an episode ends',
+      'Transfers: torrent download speed cap (Mbps) and max peers, applied live',
+      'Extensions live under Settings (removed from the tab bar)',
+      'Relations tab and scroll are remembered when you open another title and go back',
+      'Tap an opening or ending to copy the song for Spotify / YouTube search',
+      'Hardened daily-use paths: folder picker crash guard, next-episode single fire, Home/Search error isolation'
+    ]
+  },
   {
     version: '1.2.0',
     date: '2026-08-05',

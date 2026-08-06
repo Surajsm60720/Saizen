@@ -47,6 +47,10 @@ export interface SpawnPlayerOptions {
   hasNextEpisode?: boolean
   /** From watch settings — when true, seek past OP/ED once on enter */
   autoSkipOpEd?: boolean
+  gestureSeekEnabled?: boolean
+  doubleTapSeekSec?: number
+  tripleTapSeekSec?: number
+  autoplayNext?: boolean
   skipTimes?: SkipTimes
 }
 

@@ -121,6 +121,23 @@ public final class PlayerRouter {
       }
     }
 
+    if context.isValid {
+      vc.endObserver = NotificationCenter.default.addObserver(
+        forName: .AVPlayerItemDidPlayToEndTime,
+        object: item,
+        queue: .main
+      ) { [weak vc] _ in
+        guard let vc, let ctx = vc.playbackContext else { return }
+        guard ctx.options.autoplayNext, ctx.options.hasNextEpisode, ctx.isValid else { return }
+        PlaybackProgressReporter.shared.emitPlayerAction(
+          "nextEpisode",
+          anilistId: ctx.anilistId,
+          episode: ctx.episode
+        )
+        vc.dismiss(animated: true)
+      }
+    }
+
     presenter.present(vc, animated: true)
   }
 
@@ -145,6 +162,7 @@ final class DismissAwareAVPlayerViewController: AVPlayerViewController {
   var onDismiss: (() -> Void)?
   var playbackContext: PlaybackContext?
   var timeObserver: Any?
+  var endObserver: NSObjectProtocol?
   private var didNotify = false
   private var hasAppeared = false
 
@@ -164,6 +182,9 @@ final class DismissAwareAVPlayerViewController: AVPlayerViewController {
     if let timeObserver, let player {
       player.removeTimeObserver(timeObserver)
     }
+    if let endObserver {
+      NotificationCenter.default.removeObserver(endObserver)
+    }
   }
 
   private func notifyDismiss() {
@@ -172,6 +193,10 @@ final class DismissAwareAVPlayerViewController: AVPlayerViewController {
     if let timeObserver, let player {
       player.removeTimeObserver(timeObserver)
       self.timeObserver = nil
+    }
+    if let endObserver {
+      NotificationCenter.default.removeObserver(endObserver)
+      self.endObserver = nil
     }
     onDismiss?()
   }
@@ -232,8 +257,13 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
   private let bufferingLabel = UILabel()
   private let torrentStatsLabel = UILabel()
   private let skipSegmentButton = UIButton(type: .system)
+  private let seekFlashLabel = UILabel()
   private var statsTimer: Timer?
   private var isTorrentStream = false
+  private var didHandleEnded = false
+  private var seekFlashWorkItem: DispatchWorkItem?
+  private var seekFlashLeading: NSLayoutConstraint?
+  private var seekFlashTrailing: NSLayoutConstraint?
 
   private var hideChromeWorkItem: DispatchWorkItem?
   private var isSeeking = false
@@ -336,8 +366,40 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
 
     // Only the video surface toggles chrome — never steal button/slider taps.
     let videoTap = UITapGestureRecognizer(target: self, action: #selector(toggleChrome))
+    videoTap.numberOfTapsRequired = 1
     videoHost.isUserInteractionEnabled = true
     videoHost.addGestureRecognizer(videoTap)
+
+    if playbackContext.options.gestureSeekEnabled {
+      let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleSeekTap(_:)))
+      doubleTap.numberOfTapsRequired = 2
+      videoHost.addGestureRecognizer(doubleTap)
+      if playbackContext.options.tripleTapSeekSec > 0 {
+        let tripleTap = UITapGestureRecognizer(target: self, action: #selector(handleSeekTap(_:)))
+        tripleTap.numberOfTapsRequired = 3
+        doubleTap.require(toFail: tripleTap)
+        videoHost.addGestureRecognizer(tripleTap)
+      }
+      videoTap.require(toFail: doubleTap)
+    }
+
+    seekFlashLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+    seekFlashLabel.textColor = UIColor(red: 0.12, green: 0.1, blue: 0.07, alpha: 1)
+    seekFlashLabel.backgroundColor = accent
+    seekFlashLabel.textAlignment = .center
+    seekFlashLabel.layer.cornerRadius = 16
+    seekFlashLabel.clipsToBounds = true
+    seekFlashLabel.isHidden = true
+    seekFlashLabel.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(seekFlashLabel)
+    NSLayoutConstraint.activate([
+      seekFlashLabel.centerYAnchor.constraint(equalTo: videoHost.centerYAnchor),
+      seekFlashLabel.heightAnchor.constraint(equalToConstant: 36),
+      seekFlashLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
+    ])
+    seekFlashLeading = seekFlashLabel.leadingAnchor.constraint(equalTo: videoHost.leadingAnchor, constant: 28)
+    seekFlashTrailing = seekFlashLabel.trailingAnchor.constraint(equalTo: videoHost.trailingAnchor, constant: -28)
+    seekFlashLeading?.isActive = true
 
     styleChromeBars()
 
@@ -986,6 +1048,37 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
   @objc private func skipForward5() { seekBy(seconds: 5) }
   @objc private func skipForward10() { seekBy(seconds: 10) }
 
+  @objc private func handleSeekTap(_ gr: UITapGestureRecognizer) {
+    guard playbackContext.options.gestureSeekEnabled else { return }
+    let x = gr.location(in: videoHost).x
+    let left = x < videoHost.bounds.width / 2
+    let taps = gr.numberOfTapsRequired
+    let sec: Int32
+    if taps >= 3 {
+      let triple = playbackContext.options.tripleTapSeekSec
+      guard triple > 0 else { return }
+      sec = Int32(triple)
+    } else {
+      sec = Int32(playbackContext.options.doubleTapSeekSec)
+    }
+    let delta = left ? -sec : sec
+    seekBy(seconds: delta)
+    flashSeek(seconds: delta, left: left)
+  }
+
+  private func flashSeek(seconds: Int32, left: Bool) {
+    seekFlashLabel.text = seconds < 0 ? "\(seconds)s" : "+\(seconds)s"
+    seekFlashLeading?.isActive = left
+    seekFlashTrailing?.isActive = !left
+    seekFlashLabel.isHidden = false
+    seekFlashWorkItem?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      self?.seekFlashLabel.isHidden = true
+    }
+    seekFlashWorkItem = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
+  }
+
   private func seekBy(seconds: Int32) {
     let current = mediaPlayer.time.intValue
     let length = mediaPlayer.media?.length.intValue ?? 0
@@ -1294,7 +1387,20 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
         }
       }
       self.refreshTrackButtons()
+      if state == .ended {
+        self.handlePlaybackEnded()
+      }
     }
+  }
+
+  private func handlePlaybackEnded() {
+    guard !didHandleEnded else { return }
+    didHandleEnded = true
+    guard playbackContext.options.autoplayNext,
+          playbackContext.options.hasNextEpisode,
+          playbackContext.isValid
+    else { return }
+    emitActionAndClose("nextEpisode")
   }
 
   func mediaPlayerTimeChanged(_ aNotification: Notification) {
