@@ -65,7 +65,7 @@ export function EpisodeSourcesSheet({
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader className="shrink-0 border-b border-border/50 pb-3">
-          <SheetTitle className="font-heading pr-10 text-xl tracking-tight">
+          <SheetTitle className="text-page-title pr-10">
             {episode ? `Episode ${episode.number}` : 'Episode'}
           </SheetTitle>
           <SheetDescription className="line-clamp-2 text-foreground/90">

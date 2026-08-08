@@ -9,6 +9,7 @@ import {
   type AppearanceState
 } from '@/lib/theme/appearance'
 import { cn } from '@/lib/utils'
+import { hapticPress } from '@/lib/haptics'
 
 function wheelPoint(hue: number, saturation: number, size: number) {
   const radius = (size / 2) * (saturation / 100)
@@ -115,9 +116,12 @@ export function AccentPicker({
               type="button"
               onClick={() => {
                 const next = appearanceFromHex(swatch.hex, value.contrast)
-                if (next) onChange(next)
+                if (next) {
+                  hapticPress('selection')
+                  onChange(next)
+                }
               }}
-              className="flex size-8 items-center justify-center rounded-full"
+              className="flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 motion-reduce:active:scale-100"
               aria-pressed={active}
               aria-label={swatch.label}
             >
@@ -192,7 +196,7 @@ export function AccentPicker({
               }
             }}
             className={cn(
-              'h-9 w-full rounded-lg border bg-background px-3 font-mono text-sm tracking-wide outline-none',
+              'h-11 w-full rounded-lg border bg-background px-3 font-mono text-base tracking-wide outline-none',
               'focus-visible:ring-2 focus-visible:ring-ring',
               hexInvalid ? 'border-destructive/70 text-destructive' : 'border-border'
             )}

@@ -239,7 +239,7 @@ export default function SettingsPage() {
                 setQuality(q)
                 setDownloadSettings({ preferredQuality: q })
               }}
-              className="rounded-lg border border-border/60 bg-background px-2 py-1 text-sm"
+              className="h-11 rounded-lg border border-border/60 bg-background px-2.5 py-1 text-base"
               aria-label="Default quality"
             >
               {(['2160p', '1080p', '720p', '480p'] as const).map((q) => (

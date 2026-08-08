@@ -1,6 +1,9 @@
+'use client'
+
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { hapticPress } from '@/lib/haptics'
 import type { ProviderResult } from '@/lib/providers'
 
 export function SourceRow({
@@ -50,9 +53,12 @@ export function SourceRow({
         <button
           type="button"
           aria-pressed={selected}
-          onClick={onToggleSelect}
+          onClick={() => {
+            hapticPress('selection')
+            onToggleSelect?.()
+          }}
           className={cn(
-            'size-6 shrink-0 rounded-md border',
+            'size-6 shrink-0 rounded-md border transition-transform active:scale-90',
             selected ? 'border-primary bg-primary/80' : 'border-border/70 bg-background'
           )}
         />
@@ -63,6 +69,7 @@ export function SourceRow({
           variant="outline"
           className="min-h-11 shrink-0 px-3"
           disabled={playing}
+          haptic="selection"
           onClick={onDownload}
         >
           Save
@@ -72,6 +79,7 @@ export function SourceRow({
         size="lg"
         className="min-h-11 shrink-0 px-4"
         disabled={playing}
+        haptic="medium"
         onClick={onPlay}
       >
         Play

@@ -1,6 +1,9 @@
+'use client'
+
 import { Check, ChevronRight, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { hapticPress } from '@/lib/haptics'
 
 export type EpisodeItem = {
   number: number
@@ -36,17 +39,22 @@ export function EpisodeRow({
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => {
+        if (!unreleased) hapticPress(selecting ? 'selection' : 'light')
+        onSelect()
+      }}
       disabled={unreleased}
       className={cn(
-        'group flex w-full items-center gap-3 rounded-2xl border px-2.5 py-2 text-left transition-all duration-200',
+        'group flex w-full items-center gap-3 rounded-2xl border px-2.5 py-2 text-left',
+        'transition-[transform,border-color,background-color,opacity] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
+        'saizen-press',
         unreleased
           ? 'cursor-not-allowed border-white/5 bg-white/[0.02] opacity-55'
             : watched
             ? 'border-white/6 bg-white/[0.015] opacity-55 grayscale-[0.35]'
             : selected
               ? 'border-primary/40 bg-primary/10'
-            : 'border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent hover:border-primary/30 hover:from-primary/10 active:scale-[0.99]',
+            : 'border-white/10 bg-white/[0.03] active:bg-white/[0.06]',
         className
       )}
     >
@@ -66,7 +74,7 @@ export function EpisodeRow({
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="flex size-full items-center justify-center bg-zinc-900 font-heading text-lg text-white/35">
+          <div className="text-section flex size-full items-center justify-center bg-zinc-900 text-lg text-white/35">
             {String(episode.number).padStart(2, '0')}
           </div>
         )}

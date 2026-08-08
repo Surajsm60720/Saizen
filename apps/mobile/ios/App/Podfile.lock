@@ -4,12 +4,15 @@ PODS:
   - CapacitorApp (7.1.2):
     - Capacitor
   - CapacitorCordova (7.6.8)
+  - CapacitorHaptics (7.0.5):
+    - Capacitor
   - MobileVLCKit (3.6.0)
 
 DEPENDENCIES:
   - "Capacitor (from `../../../../node_modules/.pnpm/@capacitor+ios@7.6.8_@capacitor+core@7.6.8/node_modules/@capacitor/ios`)"
   - "CapacitorApp (from `../../../../node_modules/.pnpm/@capacitor+app@7.1.2_@capacitor+core@7.6.8/node_modules/@capacitor/app`)"
   - "CapacitorCordova (from `../../../../node_modules/.pnpm/@capacitor+ios@7.6.8_@capacitor+core@7.6.8/node_modules/@capacitor/ios`)"
+  - "CapacitorHaptics (from `../../../../node_modules/.pnpm/@capacitor+haptics@7.0.5_@capacitor+core@7.6.8/node_modules/@capacitor/haptics`)"
   - MobileVLCKit (~> 3.6.0)
 
 SPEC REPOS:
@@ -23,13 +26,16 @@ EXTERNAL SOURCES:
     :path: "../../../../node_modules/.pnpm/@capacitor+app@7.1.2_@capacitor+core@7.6.8/node_modules/@capacitor/app"
   CapacitorCordova:
     :path: "../../../../node_modules/.pnpm/@capacitor+ios@7.6.8_@capacitor+core@7.6.8/node_modules/@capacitor/ios"
+  CapacitorHaptics:
+    :path: "../../../../node_modules/.pnpm/@capacitor+haptics@7.0.5_@capacitor+core@7.6.8/node_modules/@capacitor/haptics"
 
 SPEC CHECKSUMS:
   Capacitor: ff6bf01336ac353098378828aff465095a89e459
   CapacitorApp: f01a913211780e0718dae9750442c3e23f96e106
   CapacitorCordova: e61ee8c40101b8cd011d0224261606a290c082cf
+  CapacitorHaptics: 1b145fa83c622e5383a3bac04ea81e2514f0b0f5
   MobileVLCKit: 8fe98ae53b7464f32e4bdf527cc7d53053e4d3a5
 
-PODFILE CHECKSUM: b9bcd6475897824fabe18561d3106b231a5c381b
+PODFILE CHECKSUM: 2e1b9f01aa5d49345d3f79e3ccedae535e1ac04b
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

@@ -8,6 +8,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        SaizenStorage.ensureDirectories()
         window?.backgroundColor = Self.saizenBackground
         // WebView exists after Capacitor finishes launching — configure on next runloop + when active.
         DispatchQueue.main.async { [weak self] in
@@ -72,6 +73,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         webView.scrollView.alwaysBounceVertical = false
         webView.scrollView.alwaysBounceHorizontal = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // Prevent pinch / sticky focus-zoom trapping the UI at >1x scale
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
+        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        if abs(webView.scrollView.zoomScale - 1) > 0.001 {
+            webView.scrollView.setZoomScale(1, animated: false)
+        }
         // Edge swipe ↔ history (SPA pushState entries) — replaces in-app Back buttons
         webView.allowsBackForwardNavigationGestures = true
         #if DEBUG

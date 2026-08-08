@@ -45,8 +45,13 @@
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- Loopback HTTP Range server for VLC / progressive streams -->
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<!--
+		  Still required for BitTorrent HTTP indexes / cleartext source mirrors.
+		  Prefer https when available; per-domain exceptions tracked for a later release (S-09).
+		-->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>

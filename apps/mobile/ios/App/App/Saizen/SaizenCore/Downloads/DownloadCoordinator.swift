@@ -370,11 +370,13 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
       throw NSError(domain: "SaizenDownloads", code: 4, userInfo: [NSLocalizedDescriptionKey: "Download not found"])
     }
     libraryServer?.stop()
-    libraryStore = try PieceStore.openComplete(url: fileURL)
-    libraryServer = HTTPRangeServer()
+    let store = try PieceStore.openComplete(url: fileURL)
+    libraryStore = store
+    let server = HTTPRangeServer()
+    libraryServer = server
     let type = fileURL.pathExtension.lowercased() == "mp4" ? "video/mp4" : "video/x-matroska"
-    try libraryServer?.start(store: libraryStore!, contentType: type)
-    guard let stream = libraryServer?.streamURL() else {
+    try server.start(store: store, contentType: type)
+    guard let stream = server.streamURL() else {
       throw NSError(domain: "SaizenDownloads", code: 5, userInfo: [NSLocalizedDescriptionKey: "No stream URL"])
     }
     let hint = fileURL.pathExtension.lowercased() == "mp4" ? "avplayer" : "vlc"
@@ -428,8 +430,12 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
   }
 
   private func startHttp(_ job: SaizenDownloadRecord) {
-    guard let url = URL(string: job.source) else {
-      fail(id: job.id, message: "Invalid HTTP URL")
+    guard let url = URL(string: job.source),
+          let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https",
+          url.host != nil
+    else {
+      fail(id: job.id, message: "Invalid HTTP(S) URL")
       return
     }
     let task = bgSession.downloadTask(with: url)

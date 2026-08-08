@@ -990,7 +990,6 @@ function AnimeDetail() {
           <section className="space-y-3.5">
             <div className="flex items-end justify-between gap-2">
               <div>
-                <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
                 <h2 className="text-section">
                   Episodes
                 </h2>
@@ -1001,17 +1000,17 @@ function AnimeDetail() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.7rem] font-medium text-primary ring-1 ring-primary/25"
+                  className="rounded-lg px-2.5 py-1.5 text-[0.7rem] font-medium text-muted-foreground ring-1 ring-white/10 active:bg-white/[0.04]"
                   onClick={() => {
                     setSelectingEps((v) => !v)
                     setSelectedEps(new Set())
                   }}
                 >
-                  {selectingEps ? 'Cancel select' : 'Select'}
+                  {selectingEps ? 'Cancel' : 'Select'}
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-primary px-2.5 py-1 text-[0.7rem] font-medium text-primary-foreground"
+                  className="rounded-lg bg-primary px-2.5 py-1.5 text-[0.7rem] font-medium text-primary-foreground"
                   onClick={() => setDownloadOpen(true)}
                 >
                   Download
@@ -1121,7 +1120,6 @@ function AnimeDetail() {
 
         <TabsContent value="franchise" className="space-y-5">
           <div>
-            <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
             <h2 className="text-section">
               Relations
             </h2>

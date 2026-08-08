@@ -40,15 +40,30 @@ export async function connectAnilist(): Promise<void> {
     throw new Error('AniList login requires the iOS app')
   }
 
+  const state = randomVerifier(16)
+  if (typeof sessionStorage === 'undefined') {
+    throw new Error('sessionStorage required for AniList OAuth state')
+  }
+  sessionStorage.setItem('saizen:anilist:state', state)
+
   const url =
     `https://anilist.co/api/v2/oauth/authorize` +
     `?client_id=${encodeURIComponent(anilistClientId)}` +
-    `&response_type=token`
+    `&response_type=token` +
+    `&state=${encodeURIComponent(state)}` +
+    `&redirect_uri=${encodeURIComponent(ANILIST_REDIRECT_URI)}`
 
   const res = await native.authAnilist(url)
   if (!('access_token' in res) || !res.access_token) {
     throw new Error('AniList did not return an access token')
   }
+  const expected = sessionStorage.getItem('saizen:anilist:state')
+  const returnedState = 'state' in res && typeof res.state === 'string' ? res.state : ''
+  if (!expected || !returnedState || returnedState !== expected) {
+    sessionStorage.removeItem('saizen:anilist:state')
+    throw new Error('AniList OAuth state mismatch')
+  }
+  sessionStorage.removeItem('saizen:anilist:state')
   const expiresIn = Number(res.expires_in)
   await setAnilistToken({
     accessToken: res.access_token,

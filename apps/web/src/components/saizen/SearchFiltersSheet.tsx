@@ -30,7 +30,7 @@ import {
 import { cn } from '@/lib/utils'
 
 const fieldClass =
-  'h-10 w-full appearance-none rounded-lg border border-white/10 bg-[#1c1c1e] bg-[length:1rem] bg-[right_0.65rem_center] bg-no-repeat px-3 pr-9 text-sm text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25'
+  'h-11 w-full appearance-none rounded-lg border border-white/10 bg-[#1c1c1e] bg-[length:1rem] bg-[right_0.65rem_center] bg-no-repeat px-3 pr-9 text-base text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25'
 
 const selectChevron = {
   backgroundImage:
@@ -137,7 +137,7 @@ export function SearchFiltersSheet({
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader className="mb-3 text-left">
-          <SheetTitle className="text-section text-[1.2rem]">Filters</SheetTitle>
+          <SheetTitle className="text-page-title">Filters</SheetTitle>
           <SheetDescription className="text-xs text-muted-foreground">
             Narrow results by genre, year, format, status, and more.
           </SheetDescription>

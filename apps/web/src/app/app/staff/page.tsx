@@ -153,7 +153,6 @@ function StaffDetail() {
 
       {stripHtml(staff.description) ? (
         <section className="space-y-2">
-          <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
           <h2 className="text-section text-[1.25rem]">About</h2>
           <p className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap">
             {stripHtml(staff.description)}

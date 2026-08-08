@@ -243,7 +243,7 @@ export default function DownloadsPage() {
             <select
               value={settings.preferredQuality}
               onChange={(e) => patch({ preferredQuality: e.target.value as DownloadQuality })}
-              className="rounded-lg border border-border/60 bg-background px-2 py-1 text-sm"
+              className="h-11 rounded-lg border border-border/60 bg-background px-2.5 py-1 text-base"
               aria-label="Preferred download quality"
             >
               {QUALITIES.map((q) => (

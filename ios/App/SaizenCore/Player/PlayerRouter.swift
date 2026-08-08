@@ -19,7 +19,7 @@ public final class PlayerRouter {
     context: PlaybackContext = PlaybackContext(anilistId: 0, episode: 0, idMal: nil),
     onDismiss: (() -> Void)? = nil
   ) {
-    NSLog("[Saizen] PlayerRouter present hint=%@ url=%@", hint.rawValue, url.absoluteString)
+    NSLog("[Saizen] PlayerRouter present hint=%@ url=%@", hint.rawValue, HTTPRangeServer.redactedURLString(url))
 
     #if canImport(MobileVLCKit)
     let vlcAvailable = true
@@ -357,7 +357,7 @@ final class VLCPlayerViewController: UIViewController, VLCMediaPlayerDelegate {
     mediaPlayer.media = media
     mediaPlayer.audio?.volume = Int32(100)
     mediaPlayer.play()
-    NSLog("[Saizen] VLCMediaPlayer play → %@", url.absoluteString)
+    NSLog("[Saizen] VLCMediaPlayer play → %@", HTTPRangeServer.redactedURLString(url))
   }
 
   private func configureChrome() {

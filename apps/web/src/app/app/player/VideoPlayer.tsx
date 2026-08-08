@@ -511,7 +511,7 @@ export function VideoPlayer({
           <ChevronLeft className="size-5" />
         </Button>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-heading text-base text-white sm:text-lg">{title || 'Saizen'}</p>
+          <p className="text-section truncate text-white sm:text-lg">{title || 'Saizen'}</p>
           {sourceLabel ? (
             <p className="truncate text-xs text-white/55">{sourceLabel}</p>
           ) : null}

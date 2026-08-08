@@ -14,7 +14,7 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     PlaybackProgressReporter.shared.bind(plugin: self)
   }
 
-  /// Only allow loopback stream URLs or remote https media.
+  /// Only allow remote https media, or an *active* authenticated loopback stream.
   private static func isAllowedPlaybackURL(_ url: URL) -> Bool {
     guard let scheme = url.scheme?.lowercased() else { return false }
     if scheme == "https" {
@@ -22,8 +22,9 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     if scheme == "http" {
       let host = (url.host ?? "").lowercased()
-      // Authenticated loopback range server only — never arbitrary LAN hosts.
-      return host == "127.0.0.1" || host == "localhost"
+      guard host == "127.0.0.1" || host == "localhost" else { return false }
+      // Bind to a live HTTPRangeServer session token (not any loopback path).
+      return HTTPRangeServer.isAuthorizedActiveStreamURL(url)
     }
     return false
   }

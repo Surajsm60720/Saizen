@@ -62,7 +62,7 @@ export function DownloadPickerSheet({
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader className="shrink-0 border-b border-border/50 pb-3">
-          <SheetTitle className="font-heading pr-10 text-xl tracking-tight">Download</SheetTitle>
+          <SheetTitle className="text-page-title pr-10">Download</SheetTitle>
           <SheetDescription>
             {preferredQuality} · auto-picks the best matching source per episode
           </SheetDescription>
@@ -103,7 +103,7 @@ export function DownloadPickerSheet({
                   max={maxEp}
                   value={from}
                   onChange={(e) => setFrom(Number(e.target.value) || 1)}
-                  className="mt-1 block w-20 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-sm"
+                  className="mt-1 block h-11 w-24 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-base"
                 />
               </label>
               <label className="text-xs text-muted-foreground">
@@ -114,7 +114,7 @@ export function DownloadPickerSheet({
                   max={maxEp}
                   value={to}
                   onChange={(e) => setTo(Number(e.target.value) || maxEp)}
-                  className="mt-1 block w-20 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-sm"
+                  className="mt-1 block h-11 w-24 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-base"
                 />
               </label>
             </div>

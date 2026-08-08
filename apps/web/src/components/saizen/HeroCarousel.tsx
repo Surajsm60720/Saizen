@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Play } from 'lucide-react'
 import { displayTitle, stripHtml, type AnimeMedia } from '@/lib/anilist'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { hapticPress } from '@/lib/haptics'
 
 function shortTitle(title: string, max = 34) {
   const t = title.trim()
@@ -55,7 +55,7 @@ export function HeroCarousel({
             <div
               key={media.id}
               className={cn(
-                'absolute inset-0 transition-opacity duration-700 ease-out',
+                'absolute inset-0 transition-opacity duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
                 i === index ? 'opacity-100' : 'opacity-0'
               )}
               aria-hidden={i !== index}
@@ -66,7 +66,10 @@ export function HeroCarousel({
                   src={src}
                   alt=""
                   draggable={false}
-                  className="size-full object-cover object-[center_20%]"
+                  className={cn(
+                    'size-full object-cover object-[center_20%] transition-transform duration-[6.5s] ease-out motion-reduce:transition-none',
+                    i === index && 'scale-[1.04]'
+                  )}
                 />
               ) : (
                 <div className="size-full bg-background" />
@@ -87,39 +90,31 @@ export function HeroCarousel({
         >
           <h1
             key={featured.id}
-            className="text-hero-title max-w-[16ch] animate-in fade-in-0 slide-in-from-bottom-2 duration-500 sm:max-w-[20ch]"
+            className="text-hero-title max-w-[16ch] sm:max-w-[20ch]"
             title={displayTitle(featured)}
           >
             {name}
           </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {featured.averageScore ? (
-              <Badge variant="secondary" className="text-[0.7rem]">
-                {featured.averageScore}%
-              </Badge>
-            ) : null}
-            {featured.format ? (
-              <Badge variant="outline" className="text-[0.7rem]">
-                {featured.format}
-              </Badge>
-            ) : null}
-            {featured.genres?.slice(0, 2).map((g) => (
-              <Badge key={g} variant="outline" className="text-[0.7rem]">
-                {g}
-              </Badge>
-            ))}
-          </div>
-          <p className="mt-2 max-w-md text-xs leading-relaxed text-white/70 line-clamp-2 sm:text-sm">
+          <p className="mt-2 text-sm text-white/70">
+            {[
+              featured.averageScore != null ? `${featured.averageScore}%` : null,
+              featured.format,
+              featured.genres?.[0]
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <p className="mt-2 max-w-md text-xs leading-relaxed text-white/65 line-clamp-2 sm:text-sm">
             {stripHtml(featured.description) || 'Pick a title. Stream episode-by-episode.'}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button asChild size="lg" className="min-h-10 gap-2 px-4">
+          <div className="mt-3 flex flex-wrap items-center gap-2 saizen-enter">
+            <Button asChild size="lg" className="min-h-10 gap-2 px-4" haptic="medium">
               <Link href={`/app/anime/?id=${featured.id}`} draggable={false}>
                 <Play className="size-4 fill-current" />
                 Watch now
               </Link>
             </Button>
-            <Button asChild variant="outline" size="lg" className="min-h-10 px-4">
+            <Button asChild variant="outline" size="lg" className="min-h-10 px-4" haptic="selection">
               <Link href="/app/search/" draggable={false}>
                 Browse
               </Link>
@@ -133,10 +128,13 @@ export function HeroCarousel({
                   key={media.id}
                   type="button"
                   aria-label={`Show ${displayTitle(media)}`}
-                  onClick={() => setIndex(i)}
+                  onClick={() => {
+                    hapticPress('selection')
+                    setIndex(i)
+                  }}
                   className={cn(
-                    'h-1 rounded-full transition-all duration-300',
-                    i === index ? 'w-6 bg-primary' : 'w-2 bg-white/30 hover:bg-white/50'
+                    'h-1 rounded-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                    i === index ? 'w-5 bg-primary' : 'w-1.5 bg-white/30'
                   )}
                 />
               ))}

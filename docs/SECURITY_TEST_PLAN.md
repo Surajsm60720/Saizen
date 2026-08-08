@@ -2,7 +2,8 @@
 
 Audit date: 2026-08-02 · Version audited: v1.0  
 Remediation pass: 2026-08-02 (see status column)  
-v1.2.0 download pass: 2026-08-05 (D-01, D-02)
+v1.2.0 download pass: 2026-08-05 (D-01, D-02)  
+v1.3.1 hardening pass: 2026-08-08 (H-01 … H-08)
 
 This document lists known security issues and gives reproducible test cases for each.
 Every test is written so it can be run on a personal device with no special tooling
@@ -17,11 +18,11 @@ beyond Xcode, Safari Web Inspector, `curl`, and `unzip`.
 | ID | Severity | Issue | Status |
 |----|----------|-------|--------|
 | S-01 | Critical | MAL client secret baked into JS bundle / IPA | **FIXED** |
-| S-02 | Critical | Remote extension JS with full privileges | **MITIGATED** (HTTPS-only + tokens no longer in localStorage; full Worker sandbox still TODO) |
+| S-02 | Critical | Remote extension JS with full privileges | **MITIGATED** (HTTPS-only + Keychain allowlist + CSP; full Worker sandbox still TODO) |
 | S-03 | High | OAuth tokens mirrored to plaintext `localStorage` | **FIXED** |
 | S-04 | High | `webView.isInspectable = true` in release builds | **FIXED** |
 | S-05 | High | Loopback stream server had no auth | **FIXED** |
-| S-06 | High | `spawnPlayer` accepted any URL | **FIXED** |
+| S-06 | High | `spawnPlayer` accepted any URL | **FIXED** (+ H-04 token bind) |
 | S-07 | High | libtorrent file-index OOB + tick/destroy race | **FIXED** |
 | S-08 | Medium | MAL OAuth `state` verified only if present | **FIXED** |
 | S-09 | Medium | ATS fully disabled (`NSAllowsArbitraryLoads`) | BY DESIGN / review (HTTP torrent indexes) |
@@ -32,12 +33,18 @@ beyond Xcode, Safari Web Inspector, `curl`, and `unzip`.
 | S-14 | Low | Unguarded `localStorage` writes | **FIXED** |
 | D-01 | Medium | Download folder escape via `seriesTitle` / `seasonLabel` `..` | **FIXED** |
 | D-02 | Medium | `deleteTorrents([])` wiped the offline library | **FIXED** |
+| H-01 | High | Keychain bridge accepted any account key | **FIXED** (v1.3.1 — `anilist`/`mal` only) |
+| H-02 | High | OAuth `ASWebAuthenticationSession` URL not host-locked | **FIXED** (v1.3.1 — anilist.co / myanimelist.net) |
+| H-03 | Medium | AniList OAuth missing `state` | **FIXED** (v1.3.1) |
+| H-04 | Medium | Loopback `spawnPlayer` ignored active stream token | **FIXED** (v1.3.1 — `isAuthorizedActiveStreamURL`) |
+| H-05 | Medium | HTTP download enqueue accepted non-http(s) schemes | **FIXED** (v1.3.1) |
+| H-06 | Low | Stream access token logged via `NSLog` | **FIXED** (v1.3.1 — redacted) |
+| H-07 | Low | `Documents/Saizen` included in iCloud backups | **FIXED** (v1.3.1 — excluded) |
+| H-08 | Low | No CSP on bundled web UI / Auth headers on mirrors | **FIXED** (v1.3.1 — CSP meta + no Auth on mirrors) |
 
 **Release tooling:** `scripts/preflight-release.sh` + secret-scanning `scripts/package-ipa.sh`. Cursor rule: `.cursor/rules/saizen-security.mdc`.
 
-**Action for you:** rotate the previously leaked MAL client secret in the MAL developer console (treat it as compromised). Rebuild with `pnpm sync:ios`, then `pnpm package:ipa`. Delete any older `dist/Saizen-*.ipa`.
-
-**IPA scan (2026-08-02):** `dist/Saizen-v1.0.ipa` — old secret absent; no `*_SECRET` / `client_secret` identifiers; public Client IDs present (expected). See README “IPA security warning”.
+**Still open (future):** Extension Worker/iframe sandbox + code hash pinning (S-02 remainder); ATS per-domain exceptions instead of `NSAllowsArbitraryLoads` (S-09); universal links for OAuth callbacks.
 
 ---
 

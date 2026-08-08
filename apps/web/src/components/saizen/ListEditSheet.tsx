@@ -29,7 +29,7 @@ const STATUSES: Array<{ value: AniListStatus; label: string }> = [
 ]
 
 const fieldClass =
-  'h-10 w-full rounded-lg border border-white/10 bg-[#1c1c1e] px-3 text-sm text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25'
+  'h-11 w-full rounded-lg border border-white/10 bg-[#1c1c1e] px-3 text-base text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25'
 
 export type ListEditValues = {
   entryId: number | null
@@ -250,7 +250,7 @@ export function ListEditSheet({
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader className="shrink-0 border-b border-border/50 px-4 pb-3">
-          <SheetTitle className="font-heading pr-10 text-xl tracking-tight">
+          <SheetTitle className="text-page-title pr-10">
             {isNew ? 'Add to list' : 'Edit list entry'}
           </SheetTitle>
           <SheetDescription>

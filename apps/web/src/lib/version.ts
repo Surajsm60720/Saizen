@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.3.0'
+export const APP_VERSION = '1.3.1'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,19 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.3.1',
+    date: '2026-08-08',
+    title: 'Security hardening & glass nav',
+    highlights: [
+      'Security: Keychain bridge allowlisted to anilist/mal only; OAuth sheets locked to anilist.co / myanimelist.net',
+      'Security: AniList OAuth now uses state (like MAL); loopback playback must match an active stream token',
+      'Security: HTTP downloads require http(s); stream tokens redacted from NSLog; Documents/Saizen excluded from iCloud backup',
+      'Security: CSP meta on the bundled UI; Authorization headers never forwarded to Nyaa/Sukebei mirrors',
+      'UI: Puritan + Quando type; compact Liquid Glass tab bar (icon-only) with drag-to-scrub selection',
+      'UI: Quieter frosted chrome (no border halo); haptics on tab scrub'
+    ]
+  },
   {
     version: '1.3.0',
     date: '2026-08-05',

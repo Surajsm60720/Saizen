@@ -121,9 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header
           className={cn(
             'fixed inset-x-0 top-0 z-40 pt-[var(--safe-top)] transition-opacity duration-300',
-            immersiveHeader
-              ? 'bg-transparent'
-              : 'border-b border-white/8 bg-background/50 backdrop-blur-xl supports-backdrop-filter:bg-background/35',
+            immersiveHeader ? 'bg-transparent' : 'saizen-top-glass',
             immersiveHeader && headerFaded && 'pointer-events-none'
           )}
         >
@@ -131,14 +129,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div
               aria-hidden
               className={cn(
-                'pointer-events-none absolute inset-x-0 top-0 h-[calc(3.25rem+var(--safe-top))] bg-gradient-to-b from-background/55 via-background/20 to-transparent transition-opacity duration-300',
+                'pointer-events-none absolute inset-x-0 top-0 h-[calc(2.75rem+var(--safe-top))] bg-gradient-to-b from-background/55 via-background/20 to-transparent transition-opacity duration-300',
                 headerFaded ? 'opacity-0' : 'opacity-100'
               )}
             />
           ) : null}
           <div
             className={cn(
-              'relative mx-auto flex h-12 w-full max-w-5xl items-center justify-between px-4 transition-all duration-300 sm:h-14 sm:px-5',
+              'relative mx-auto flex h-11 w-full max-w-5xl items-center justify-between px-3.5 transition-all duration-300 sm:h-12 sm:px-5',
               immersiveHeader && headerFaded && 'opacity-0 -translate-y-1'
             )}
           >
@@ -159,10 +157,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     href={item.href}
                     draggable={false}
                     className={cn(
-                      'rounded-lg px-3 py-2 text-sm transition-colors',
+                      'rounded-lg px-3 py-1.5 text-[0.8125rem] transition-[color,background-color,transform] duration-200',
+                      'active:scale-[0.97]',
                       active
-                        ? 'bg-white/10 text-foreground'
-                        : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'
+                        ? 'bg-white/12 font-bold text-foreground'
+                        : 'font-normal text-muted-foreground hover:bg-white/8 hover:text-foreground'
                     )}
                   >
                     {item.label}
@@ -180,10 +179,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           isPlayer
             ? 'max-w-none px-0 py-0'
             : isHome
-              ? 'px-0 pb-[calc(5.75rem+var(--safe-bottom))] md:pb-10'
+              ? 'px-0 pb-[calc(4.5rem+var(--safe-bottom))] md:pb-8'
               : isAnime
-                ? 'px-4 pt-0 pb-[calc(1.25rem+var(--safe-bottom))] sm:px-5'
-                : 'px-4 pt-[calc(3.25rem+var(--safe-top))] pb-[calc(5.75rem+var(--safe-bottom))] sm:px-5 sm:pt-[calc(3.75rem+var(--safe-top))] md:pb-10'
+                ? 'px-3.5 pt-0 pb-[calc(1rem+var(--safe-bottom))] sm:px-5'
+                : 'px-3.5 pt-[calc(2.75rem+var(--safe-top))] pb-[calc(4.5rem+var(--safe-bottom))] sm:px-5 sm:pt-[calc(3.25rem+var(--safe-top))] md:pb-8'
         )}
       >
         {/* Keep Home mounted so back-nav doesn't remount / refetch / flash */}
@@ -212,7 +211,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           'pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 md:hidden',
-          'pb-[max(10px,calc(var(--safe-bottom)+8px))]',
+          'pb-[max(8px,calc(var(--safe-bottom)+4px))]',
           'transition-[transform,opacity] duration-300 ease-out',
           (hideBottomNav || keyboardOpen) && 'translate-y-[120%] opacity-0'
         )}

@@ -6,7 +6,7 @@
 
 /* Cinematic media — near-black charcoal, accent only on actions */
 :root {
-  --radius: 0.7rem;
+  --radius: 0.75rem;
   --background: oklch(0.05 0 0);
   --foreground: oklch(0.97 0 0);
   --card: oklch(0.12 0 0);
@@ -22,8 +22,8 @@
   --accent: oklch(0.16 0 0);
   --accent-foreground: oklch(0.97 0 0);
   --destructive: oklch(0.65 0.18 25);
-  --border: oklch(0.22 0 0);
-  --input: oklch(0.22 0 0);
+  --border: oklch(0.22 0 0 / 55%);
+  --input: oklch(0.22 0 0 / 55%);
   --ring: #e8c478;
   --chart-1: #e8c478;
   --chart-2: oklch(0.7 0.08 200);
@@ -65,8 +65,8 @@
   --accent: oklch(0.16 0 0);
   --accent-foreground: oklch(0.97 0 0);
   --destructive: oklch(0.65 0.18 25);
-  --border: oklch(0.22 0 0 / 70%);
-  --input: oklch(0.22 0 0 / 80%);
+  --border: oklch(0.22 0 0 / 55%);
+  --input: oklch(0.22 0 0 / 55%);
   --ring: #e8c478;
   --chart-1: #e8c478;
   --chart-2: oklch(0.7 0.08 200);
@@ -126,52 +126,68 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  --font-sans: var(--font-sans), "SF Pro Text", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-heading: var(--font-heading), ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-sans), "Puritan", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font-heading), "Quando", Georgia, "Times New Roman", serif;
 }
 
-/* Role-based type scale — Fraunces (heading) + DM Sans (UI/body) */
+/*
+  Puritan (UI 400) + Quando (display 700).
+  Scale from major-second / perfect-fourth pair, phone-capped (SwiftUI density).
+*/
 @utility text-brand {
-  font-family: var(--font-heading), ui-serif, Georgia, serif;
-  font-size: 1.5rem;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
 }
 @utility text-hero-title {
-  font-family: var(--font-heading), ui-serif, Georgia, serif;
-  font-size: 1.85rem;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1.563rem; /* h4 */
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
 }
 @utility text-page-title {
-  font-family: var(--font-heading), ui-serif, Georgia, serif;
-  font-size: 1.5rem;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1.25rem; /* h5 */
+  font-weight: 700;
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 @utility text-section {
-  font-family: var(--font-heading), ui-serif, Georgia, serif;
-  font-size: 1.35rem;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1.0625rem;
+  font-weight: 700;
   line-height: 1.2;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 @utility text-subhead {
   font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  font-weight: 500;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  font-weight: 400;
   color: var(--muted-foreground);
 }
 @utility text-body {
   font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 0.9375rem;
-  line-height: 1.5;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.45;
 }
 @utility text-meta {
   font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 0.75rem;
-  line-height: 1.35;
+  font-size: 0.8rem; /* small */
+  font-weight: 400;
+  line-height: 1.3;
   color: var(--muted-foreground);
+}
+@utility text-tab {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.625rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.01em;
 }
 
 /* Hide scrollbar chrome; scrolling still works (WKWebView / iOS). */
@@ -187,16 +203,16 @@
 
 @media (min-width: 640px) {
   .text-brand {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
   }
   .text-hero-title {
-    font-size: 2.25rem;
+    font-size: 1.954rem; /* h3 */
   }
   .text-page-title {
-    font-size: 1.75rem;
+    font-size: 1.563rem; /* h4 */
   }
   .text-section {
-    font-size: 1.5rem;
+    font-size: 1.25rem; /* h5 */
   }
 }
 
@@ -216,12 +232,25 @@
 
   html {
     @apply font-sans scrollbar-hide;
+    font-size: 100%; /* 16px */
     color-scheme: dark;
     background: var(--background);
     background-color: var(--background);
     overscroll-behavior-y: none;
     overscroll-behavior-x: none;
     overflow-x: hidden;
+    /* Kill double-tap zoom on iOS WKWebView; focus zoom still needs ≥16px inputs */
+    touch-action: manipulation;
+  }
+
+  /*
+   * iOS Safari/WKWebView auto-zooms focused form controls under 16px and often
+   * won't zoom back out. Keep every editable control ≥16px regardless of utility class.
+   */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 
   html,
@@ -236,6 +265,8 @@
 
   body {
     @apply text-foreground font-sans antialiased scrollbar-hide;
+    font-family: var(--font-sans), system-ui, sans-serif;
+    font-weight: 400;
     background: var(--background);
     background-color: var(--background);
     overscroll-behavior-y: none;
@@ -246,6 +277,35 @@
     user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    font-family: var(--font-heading), Georgia, serif;
+    font-weight: 700;
+  }
+
+  h1 {
+    font-size: 1.954rem; /* phone-capped; full scale 3.053rem */
+  }
+  h2 {
+    font-size: 1.563rem;
+  }
+  h3 {
+    font-size: 1.25rem;
+  }
+  h4 {
+    font-size: 1.125rem;
+  }
+  h5 {
+    font-size: 1rem;
+  }
+
+  small {
+    font-size: 0.8rem;
   }
 
   #__next,
@@ -297,22 +357,149 @@
   }
 }
 
-/* Floating tab bar — light liquid-glass chrome */
+/* Floating tab bar — subtle frosted glass (matches OLED chrome, no halo rim) */
 .saizen-tab-glass {
   isolation: isolate;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(18, 18, 22, 0.18);
-  box-shadow:
-    0 10px 32px rgba(0, 0, 0, 0.28),
-    0 1px 0 rgba(255, 255, 255, 0.14) inset,
-    0 -0.5px 0 rgba(0, 0, 0, 0.12) inset;
-  -webkit-backdrop-filter: blur(48px) saturate(200%);
-  backdrop-filter: blur(48px) saturate(200%);
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 18, 22, 0.42);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(36px) saturate(160%);
+  backdrop-filter: blur(36px) saturate(160%);
+}
+
+.saizen-tab-glass::before,
+.saizen-tab-glass::after {
+  content: none;
+  display: none;
 }
 
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .saizen-tab-glass {
-    background: rgba(255, 255, 255, 0.025);
+    background: rgba(12, 12, 16, 0.28);
+  }
+}
+
+/* Sliding selection pill — iOS-style matched geometry (transform only) */
+.saizen-tab-indicator {
+  background: rgba(255, 255, 255, 0.1);
+  will-change: transform, width;
+  transition:
+    transform 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    width 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 180ms ease;
+}
+
+/* Finger tracking: 1:1, no lag while dragging */
+.saizen-tab-indicator--dragging {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saizen-tab-indicator {
+    transition: none;
+  }
+}
+
+/* Top app bar — same quiet material language */
+.saizen-top-glass {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(12, 12, 16, 0.45);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  backdrop-filter: blur(28px) saturate(150%);
+  box-shadow: none;
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .saizen-top-glass {
+    background: rgba(8, 8, 12, 0.32);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .saizen-tab-glass,
+  .saizen-top-glass {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(18, 18, 22, 0.94);
+  }
+
+  .saizen-tab-glass::before,
+  .saizen-tab-glass::after {
+    display: none;
+  }
+}
+
+/* Premium micro-motion — transform/opacity only, Apple easing */
+@utility saizen-press {
+  transition-property: transform, opacity;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+@utility saizen-enter {
+  animation: saizen-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility saizen-stagger {
+  & > * {
+    animation: saizen-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  & > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  & > *:nth-child(2) {
+    animation-delay: 40ms;
+  }
+  & > *:nth-child(3) {
+    animation-delay: 80ms;
+  }
+  & > *:nth-child(4) {
+    animation-delay: 120ms;
+  }
+  & > *:nth-child(5) {
+    animation-delay: 160ms;
+  }
+  & > *:nth-child(6) {
+    animation-delay: 200ms;
+  }
+  & > *:nth-child(7) {
+    animation-delay: 240ms;
+  }
+  & > *:nth-child(8) {
+    animation-delay: 280ms;
+  }
+  & > *:nth-child(n + 9) {
+    animation-delay: 300ms;
+  }
+}
+
+@keyframes saizen-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .saizen-press:active {
+    transform: none;
   }
 }
 

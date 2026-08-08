@@ -30,7 +30,6 @@ export function PersonRail({
   return (
     <section className={cn('space-y-3.5', className)}>
       <div>
-        <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
         <h2 className="text-section">{title}</h2>
         {subtitle ? (
           <p className="text-meta mt-0.5">{subtitle}</p>
@@ -42,9 +41,8 @@ export function PersonRail({
             const card = (
               <div
                 className={cn(
-                  'overflow-hidden rounded-2xl bg-card/40 ring-1 ring-white/10',
-                  p.href &&
-                    'transition hover:ring-primary/40 hover:shadow-[0_0_0_1px_rgba(232,196,120,0.25)]'
+                  'overflow-hidden rounded-2xl bg-card ring-1 ring-white/8',
+                  p.href && 'transition-opacity active:opacity-80'
                 )}
               >
                 <div className="relative aspect-[3/4] bg-zinc-900">
@@ -73,7 +71,7 @@ export function PersonRail({
                 <div className="space-y-0.5 p-2">
                   <p className="truncate text-[0.72rem] font-medium leading-tight">{p.name}</p>
                   {p.detail ? (
-                    <p className="truncate text-[0.62rem] text-primary/85">{p.detail}</p>
+                    <p className="truncate text-[0.62rem] text-muted-foreground">{p.detail}</p>
                   ) : null}
                   {p.role ? (
                     <p className="truncate text-[0.58rem] text-muted-foreground capitalize">

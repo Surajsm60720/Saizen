@@ -16,6 +16,9 @@ importers:
       '@capacitor/core':
         specifier: ^7.2.0
         version: 7.6.8
+      '@capacitor/haptics':
+        specifier: ^7.0.5
+        version: 7.0.5(@capacitor/core@7.6.8)
       '@capacitor/ios':
         specifier: ^7.2.0
         version: 7.6.8(@capacitor/core@7.6.8)
@@ -35,6 +38,9 @@ importers:
       '@capacitor/core':
         specifier: ^7.2.0
         version: 7.6.8
+      '@capacitor/haptics':
+        specifier: ^7.0.5
+        version: 7.0.5(@capacitor/core@7.6.8)
       '@saizen/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -261,6 +267,11 @@ packages:
 
   '@capacitor/core@7.6.8':
     resolution: {integrity: sha512-x1xfxvNcTSnj6OoYaAB0n0a0HRvi5f2YjcVnMLxpMhbHDgGDAzzN9z8cnPCYV+SKTvqGF1hezHm82Op32XaAGg==}
+
+  '@capacitor/haptics@7.0.5':
+    resolution: {integrity: sha512-ujXuUkL8UG1YLhuJo/q+jiHr0K5JmclGZHmV1RttmiUBRG1XpC4Fc4gXUJyEX+6IoyfwWhgtPvJFRUB31HYnRQ==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@capacitor/ios@7.6.8':
     resolution: {integrity: sha512-TAM1FdI1Cfl8e/wLBo7x5m61V/J1fMEpyxU2psZzHzsa436k2pwEME6CQoBRYdw6Q6gud0jZSPwOVrNn+MI7Ag==}
@@ -3111,6 +3122,10 @@ snapshots:
   '@capacitor/core@7.6.8':
     dependencies:
       tslib: 2.8.1
+
+  '@capacitor/haptics@7.0.5(@capacitor/core@7.6.8)':
+    dependencies:
+      '@capacitor/core': 7.6.8
 
   '@capacitor/ios@7.6.8(@capacitor/core@7.6.8)':
     dependencies:

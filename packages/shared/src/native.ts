@@ -13,6 +13,8 @@ export interface AuthResponse {
   access_token: string
   expires_in: string
   token_type: 'Bearer'
+  /** OAuth `state` echoed from the authorize request (implicit fragment). */
+  state?: string
 }
 
 export interface MalAuthCodeResponse {

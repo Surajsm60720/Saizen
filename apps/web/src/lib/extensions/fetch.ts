@@ -71,6 +71,10 @@ export async function saizenFetch(
           headers[k] = v
         })
       }
+      const hasAuth = Object.keys(headers).some((k) => k.toLowerCase() === 'authorization')
+      // Never forward Authorization to mirror hosts (token leak footgun).
+      const tryUrls = hasAuth ? [encodeQueryPluses(url)] : urls
+
       let data: string | undefined
       if (init?.body != null) {
         if (typeof init.body === 'string') {
@@ -89,7 +93,7 @@ export async function saizenFetch(
       }
 
       let lastErr: unknown
-      for (const candidate of urls) {
+      for (const candidate of tryUrls) {
         try {
           const res = await CapacitorHttp.request({
             url: candidate,
@@ -119,7 +123,7 @@ export async function saizenFetch(
         } catch (e) {
           lastErr = e
           // Keep trying mirrors; only give up after the last candidate.
-          if (candidate === urls[urls.length - 1]) break
+          if (candidate === tryUrls[tryUrls.length - 1]) break
         }
       }
       if (lastErr) throw lastErr
@@ -128,13 +132,18 @@ export async function saizenFetch(
     // Fall through to window.fetch (web / Capacitor unavailable)
   }
 
+  const webHasAuth =
+    init?.headers != null &&
+    new Headers(init.headers).has('Authorization')
+  const webUrls = webHasAuth ? [encodeQueryPluses(url)] : urls
+
   let lastFetchErr: unknown
-  for (const candidate of urls) {
+  for (const candidate of webUrls) {
     try {
       return await fetch(candidate, init)
     } catch (e) {
       lastFetchErr = e
-      if (candidate === urls[urls.length - 1]) break
+      if (candidate === webUrls[webUrls.length - 1]) break
     }
   }
   if (lastFetchErr) throw lastFetchErr

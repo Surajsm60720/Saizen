@@ -37,6 +37,19 @@ public enum SaizenStorage {
   }
   public static var manifestURL: URL { libraryDir.appendingPathComponent("manifest.json") }
 
+  /// Create Saizen dirs and keep media/work off iCloud / iTunes backups.
+  public static func ensureDirectories() {
+    let fm = FileManager.default
+    let dirs = [root, piecesDir, torrentsDir, cacheDir, libraryDir, downloadsWorkDir, defaultDownloadsDir]
+    for dir in dirs {
+      try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+      var mutable = dir
+      var values = URLResourceValues()
+      values.isExcludedFromBackup = true
+      try? mutable.setResourceValues(values)
+    }
+  }
+
   /// Delete leftover playback files only — never touch library / in-progress downloads.
   public static func purgePlaybackData() {
     let fm = FileManager.default
@@ -249,7 +262,7 @@ public final class ProgressiveHTTPEngine: TorrentEngine {
       "[Saizen] ProgressiveHTTP kickstart open-now size=%lld type=%@ url=%@",
       meta.size,
       meta.contentType,
-      stream.absoluteString
+      HTTPRangeServer.redactedURLString(stream)
     )
 
     // VLC handles incomplete Range streams more reliably than AVPlayer.

@@ -19,6 +19,7 @@ import {
   type LocalAiring
 } from '@/lib/time/airingLocal'
 import { cn } from '@/lib/utils'
+import { hapticPress } from '@/lib/haptics'
 
 type Row = AiringScheduleItem & { local: LocalAiring }
 
@@ -125,13 +126,13 @@ export default function SchedulePage() {
         </button>
       </div>
 
-      {/* Week calendar strip */}
+      {/* Week calendar strip — quiet utility, type + selection only */}
       <div
-        className="mb-5 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02]"
+        className="mb-5 overflow-hidden rounded-2xl border border-white/8 bg-card"
         role="tablist"
         aria-label="Week days"
       >
-        <div className="grid grid-cols-7 divide-x divide-white/[0.06]">
+        <div className="grid grid-cols-7">
           {weekDays.map((day, i) => {
             const active = i === selectedDay
             const count = counts[i]
@@ -142,13 +143,15 @@ export default function SchedulePage() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setSelectedDay(i)}
+                onClick={() => {
+                  hapticPress('selection')
+                  setSelectedDay(i)
+                }}
                 className={cn(
-                  'relative flex min-h-[4.75rem] flex-col items-center justify-center gap-1 px-0.5 py-2.5 transition-colors',
-                  active
-                    ? 'bg-primary/20'
-                    : 'hover:bg-white/[0.04] active:bg-white/[0.06]',
-                  day.isToday && !active && 'bg-white/[0.03]'
+                  'relative flex min-h-[4.75rem] flex-col items-center justify-center gap-1 px-0.5 py-2.5',
+                  'transition-[background-color,transform,color] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                  'active:scale-[0.96] motion-reduce:active:scale-100',
+                  active ? 'bg-primary/15' : 'active:bg-white/[0.04]'
                 )}
               >
                 <span
@@ -161,44 +164,20 @@ export default function SchedulePage() {
                 </span>
                 <span
                   className={cn(
-                    'flex size-8 items-center justify-center rounded-full font-heading text-base tabular-nums leading-none tracking-tight',
-                    active && 'bg-primary text-primary-foreground',
-                    !active && day.isToday && 'ring-1 ring-primary/50 text-primary',
+                    'flex size-8 items-center justify-center font-sans text-base font-semibold tabular-nums leading-none tracking-tight',
+                    active && 'text-primary',
+                    !active && day.isToday && 'text-primary',
                     !active && !day.isToday && 'text-foreground'
                   )}
                 >
                   {day.dateNum}
                 </span>
-                <span className="flex h-1.5 items-center justify-center gap-0.5">
-                  {hasAirings ? (
-                    <>
-                      <span
-                        className={cn(
-                          'size-1 rounded-full',
-                          active ? 'bg-primary' : 'bg-primary/70'
-                        )}
-                      />
-                      {count > 1 ? (
-                        <span
-                          className={cn(
-                            'size-1 rounded-full',
-                            active ? 'bg-primary/70' : 'bg-primary/40'
-                          )}
-                        />
-                      ) : null}
-                      {count > 2 ? (
-                        <span
-                          className={cn(
-                            'size-1 rounded-full',
-                            active ? 'bg-primary/45' : 'bg-primary/25'
-                          )}
-                        />
-                      ) : null}
-                    </>
-                  ) : (
-                    <span className="size-1 rounded-full bg-transparent" />
+                <span
+                  className={cn(
+                    'size-1 rounded-full',
+                    hasAirings ? (active ? 'bg-primary' : 'bg-muted-foreground/50') : 'bg-transparent'
                   )}
-                </span>
+                />
               </button>
             )
           })}
@@ -264,52 +243,40 @@ export default function SchedulePage() {
       ) : null}
 
       {ready && !loading && !error && dayRows.length > 0 ? (
-        <ul className="relative">
-          <span
-            aria-hidden
-            className="absolute top-2 bottom-2 left-[3.25rem] w-px bg-gradient-to-b from-primary/40 via-white/10 to-transparent sm:left-[3.5rem]"
-          />
+        <ul>
           {dayRows.map((row) => {
             const title = displayTitle(row.media)
             const cover =
               row.media.coverImage?.medium || row.media.coverImage?.large || null
             return (
-              <li key={row.id} className="relative">
+              <li key={row.id} className="border-t border-white/[0.06] first:border-t-0">
                 <Link
                   href={`/app/anime?id=${row.media.id}`}
-                  className="group flex items-start gap-3 py-3 pr-1 text-foreground transition-colors first:pt-1"
+                  className="flex items-center gap-3 py-3 text-foreground active:opacity-80"
                 >
                   <time
                     dateTime={new Date(row.airingAt * 1000).toISOString()}
-                    className="text-meta w-14 shrink-0 pt-1 text-right font-medium tabular-nums sm:w-16"
+                    className="text-meta w-14 shrink-0 text-right font-medium tabular-nums sm:w-16"
                   >
                     {row.local.labelTime}
                   </time>
-                  <span
-                    aria-hidden
-                    className="mt-2.5 size-2 shrink-0 rounded-full bg-primary ring-4 ring-background transition-transform group-hover:scale-125"
-                  />
-                  <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-white/8 bg-white/[0.03] transition-colors group-hover:border-primary/35 group-hover:bg-primary/[0.06]">
-                    <div className="flex gap-3 p-2.5">
-                      <div className="h-14 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
-                        {cover ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={cover}
-                            alt=""
-                            className="size-full object-cover"
-                          />
-                        ) : null}
-                      </div>
-                      <div className="min-w-0 flex-1 self-center">
-                        <div className="text-body truncate font-semibold leading-snug">
-                          {title}
-                        </div>
-                        <div className="text-meta mt-0.5">
-                          Episode {row.episode}
-                          {row.media.format ? ` · ${row.media.format}` : ''}
-                        </div>
-                      </div>
+                  <div className="h-14 w-10 shrink-0 overflow-hidden rounded-md bg-muted ring-1 ring-white/8">
+                    {cover ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={cover}
+                        alt=""
+                        className="size-full object-cover"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-body truncate font-medium leading-snug">
+                      {title}
+                    </div>
+                    <div className="text-meta mt-0.5">
+                      Episode {row.episode}
+                      {row.media.format ? ` · ${row.media.format}` : ''}
                     </div>
                   </div>
                 </Link>

@@ -14,10 +14,23 @@ public class SaizenAuthPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "deleteSecureItem", returnType: CAPPluginReturnPromise)
   ]
 
+  /// Keychain accounts the web bridge may touch (S-3.1 / 1.3.1).
+  private static let allowedSecureKeys: Set<String> = ["anilist", "mal"]
+
+  private static func isAllowedOAuthURL(_ url: URL, hosts: Set<String>) -> Bool {
+    guard url.scheme?.lowercased() == "https" else { return false }
+    let host = (url.host ?? "").lowercased()
+    return hosts.contains(host)
+  }
+
   /// Opens AniList OAuth (implicit or code). Parses `#access_token=` or `?code=` from callback.
   @objc func authAnilist(_ call: CAPPluginCall) {
     guard let urlString = call.getString("url"), let url = URL(string: urlString) else {
       call.reject("Missing or invalid url")
+      return
+    }
+    guard Self.isAllowedOAuthURL(url, hosts: ["anilist.co"]) else {
+      call.reject("OAuth URL not allowed (https://anilist.co only)")
       return
     }
     let scheme = call.getString("callbackScheme") ?? "saizen"
@@ -32,7 +45,8 @@ public class SaizenAuthPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve([
               "access_token": token,
               "expires_in": expires,
-              "token_type": "Bearer"
+              "token_type": "Bearer",
+              "state": Self.fragmentValue(callbackURL, key: "state") ?? ""
             ])
           } else if let code = Self.queryValue(callbackURL, key: "code") {
             call.resolve([
@@ -51,6 +65,10 @@ public class SaizenAuthPlugin: CAPPlugin, CAPBridgedPlugin {
   @objc func authMAL(_ call: CAPPluginCall) {
     guard let urlString = call.getString("url"), let url = URL(string: urlString) else {
       call.reject("Missing or invalid url")
+      return
+    }
+    guard Self.isAllowedOAuthURL(url, hosts: ["myanimelist.net"]) else {
+      call.reject("OAuth URL not allowed (https://myanimelist.net only)")
       return
     }
     let scheme = call.getString("callbackScheme") ?? "saizen"
@@ -143,6 +161,10 @@ public class SaizenAuthPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("Missing key")
       return
     }
+    guard Self.allowedSecureKeys.contains(key) else {
+      call.reject("Secure key not allowed")
+      return
+    }
     call.resolve(["value": SaizenKeychain.get(account: key) as Any])
   }
 
@@ -152,6 +174,10 @@ public class SaizenAuthPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("Missing key or value")
       return
     }
+    guard Self.allowedSecureKeys.contains(key) else {
+      call.reject("Secure key not allowed")
+      return
+    }
     let ok = SaizenKeychain.set(value, account: key)
     if ok { call.resolve() } else { call.reject("Keychain write failed") }
   }
@@ -159,6 +185,10 @@ public class SaizenAuthPlugin: CAPPlugin, CAPBridgedPlugin {
   @objc func deleteSecureItem(_ call: CAPPluginCall) {
     guard let key = call.getString("key"), !key.isEmpty else {
       call.reject("Missing key")
+      return
+    }
+    guard Self.allowedSecureKeys.contains(key) else {
+      call.reject("Secure key not allowed")
       return
     }
     SaizenKeychain.delete(account: key)

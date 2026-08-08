@@ -18,6 +18,9 @@ public final class HTTPRangeServer: @unchecked Sendable {
   /// Opaque path segment required on every request.
   public private(set) var accessToken: String = ""
 
+  private static let registryLock = NSLock()
+  private static var activeServers = NSHashTable<HTTPRangeServer>.weakObjects()
+
   private var listener: NWListener?
   private var store: PieceStore?
   private var contentType: String = "application/octet-stream"
@@ -79,9 +82,17 @@ public final class HTTPRangeServer: @unchecked Sendable {
     _ = started.wait(timeout: .now() + 3)
     if let startError { throw ServerError.bindFailed(String(describing: startError)) }
     if port == 0 { throw ServerError.bindFailed("no port assigned") }
+
+    Self.registryLock.lock()
+    Self.activeServers.add(self)
+    Self.registryLock.unlock()
   }
 
   public func stop() {
+    Self.registryLock.lock()
+    Self.activeServers.remove(self)
+    Self.registryLock.unlock()
+
     listener?.cancel()
     listener = nil
     store?.cancelAll()
@@ -102,9 +113,30 @@ public final class HTTPRangeServer: @unchecked Sendable {
 
   /// True if `url` is this server's authenticated loopback stream.
   public func isAuthorizedStreamURL(_ url: URL) -> Bool {
-    guard !accessToken.isEmpty, url.scheme == "http", url.host == "127.0.0.1" else { return false }
+    guard !accessToken.isEmpty, url.scheme?.lowercased() == "http" else { return false }
+    let host = (url.host ?? "").lowercased()
+    guard host == "127.0.0.1" || host == "localhost" else { return false }
     let path = url.path
     return path.contains("/\(accessToken)/") && path.hasSuffix("/stream")
+  }
+
+  /// True if any currently running range server authorizes this loopback stream URL.
+  public static func isAuthorizedActiveStreamURL(_ url: URL) -> Bool {
+    registryLock.lock()
+    let servers = activeServers.allObjects
+    registryLock.unlock()
+    return servers.contains { $0.isAuthorizedStreamURL(url) }
+  }
+
+  /// Log-safe form of a stream URL (hides the per-session access token).
+  public static func redactedURLString(_ url: URL) -> String {
+    var s = url.absoluteString
+    guard let re = try? NSRegularExpression(
+      pattern: #"(https?://(?:127\.0\.0\.1|localhost):\d+/)[A-Fa-f0-9]{16,}(/\d+/stream)"#
+    ) else { return s }
+    let range = NSRange(s.startIndex..<s.endIndex, in: s)
+    s = re.stringByReplacingMatches(in: s, options: [], range: range, withTemplate: "$1***$2")
+    return s
   }
 
   private static func makeAccessToken() -> String {

@@ -1,5 +1,4 @@
-import { Star, Clock, Film, ListVideo, Calendar, Building2, BookOpen, Play, ListPlus } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Star, Play, ListPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -53,21 +52,18 @@ export function AnimeHeader({
   backHref?: string
   className?: string
 }) {
-  const seasonLabel =
+  const chips = [
+    format,
     season || seasonYear != null
       ? [season ? season.charAt(0) + season.slice(1).toLowerCase() : null, seasonYear]
           .filter(Boolean)
           .join(' ')
-      : null
-
-  const chips = [
-    format ? { icon: Film, label: format } : null,
-    seasonLabel ? { icon: Calendar, label: seasonLabel } : null,
-    studio ? { icon: Building2, label: studio } : null,
-    source ? { icon: BookOpen, label: source } : null,
-    episodes != null ? { icon: ListVideo, label: `${episodes} eps` } : null,
-    duration != null ? { icon: Clock, label: `~${duration} min` } : null
-  ].filter(Boolean) as Array<{ icon: typeof Film; label: string }>
+      : null,
+    studio,
+    source,
+    episodes != null ? `${episodes} eps` : null,
+    duration != null ? `~${duration} min` : null
+  ].filter(Boolean) as string[]
 
   const bg = banner || cover || ''
 
@@ -88,7 +84,6 @@ export function AnimeHeader({
         <div className="absolute inset-0 bg-background/28" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/55 to-background/15" />
         <div className="absolute inset-0 bg-gradient-to-r from-background/70 via-background/25 to-transparent" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_85%,rgba(232,196,120,0.1),transparent_55%)]" />
       </div>
 
       <div
@@ -98,18 +93,14 @@ export function AnimeHeader({
         <div className="flex items-end gap-4">
           {cover ? (
             <div className="relative shrink-0">
-              <div
-                aria-hidden
-                className="absolute -inset-2 rounded-2xl bg-primary/15 blur-xl"
-              />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={cover}
                 alt=""
-                className="relative h-44 w-[7.25rem] rounded-xl object-cover shadow-[0_22px_48px_-18px_rgba(0,0,0,0.95)] ring-1 ring-white/18 sm:h-52 sm:w-[8.5rem]"
+                className="relative h-44 w-[7.25rem] rounded-xl object-cover ring-1 ring-white/12 sm:h-52 sm:w-[8.5rem]"
               />
               {score != null ? (
-                <div className="absolute -right-2 -bottom-2 flex items-center gap-1 rounded-full bg-[#1a1a1c] px-2 py-1 text-xs font-semibold text-primary shadow-lg ring-1 ring-primary/40">
+                <div className="absolute -right-2 -bottom-2 flex items-center gap-1 rounded-md bg-[#1a1a1c] px-2 py-1 text-xs font-semibold text-primary ring-1 ring-white/12">
                   <Star className="size-3 fill-current" />
                   {score}%
                 </div>
@@ -119,7 +110,7 @@ export function AnimeHeader({
 
           <div className="min-w-0 flex-1 pb-1">
             {status ? (
-              <p className="mb-1.5 text-[0.68rem] font-medium tracking-[0.2em] text-primary/90 uppercase">
+              <p className="mb-1.5 text-[0.68rem] font-medium tracking-[0.14em] text-muted-foreground uppercase">
                 {status.replaceAll('_', ' ')}
               </p>
             ) : null}
@@ -127,20 +118,9 @@ export function AnimeHeader({
               {title}
             </h1>
             {chips.length || meta ? (
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {chips.map(({ icon: Icon, label }) => (
-                  <span
-                    key={label}
-                    className="inline-flex items-center gap-1 rounded-full bg-[#0c0c0e]/70 px-2.5 py-1 text-[0.7rem] text-white/90 ring-1 ring-white/15"
-                  >
-                    <Icon className="size-3 opacity-80" />
-                    {label}
-                  </span>
-                ))}
-                {!chips.length && meta ? (
-                  <span className="text-sm text-muted-foreground">{meta}</span>
-                ) : null}
-              </div>
+              <p className="mt-2.5 text-sm text-muted-foreground">
+                {chips.length ? chips.join(' · ') : meta}
+              </p>
             ) : null}
             {onContinueWatching || onTrailer || onEditList ? (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -148,11 +128,11 @@ export function AnimeHeader({
                   <Button
                     type="button"
                     size="sm"
-                    className="gap-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    className="h-9 gap-1.5 px-3.5"
                     onClick={onContinueWatching}
                   >
                     <Play className="size-3.5 fill-current" />
-                    Continue watching EP {continueEpisode}
+                    Continue EP {continueEpisode}
                   </Button>
                 ) : null}
                 {onTrailer ? (
@@ -160,7 +140,7 @@ export function AnimeHeader({
                     type="button"
                     size="sm"
                     variant="secondary"
-                    className="gap-1.5 rounded-full bg-[#0c0c0e]/75 text-foreground hover:bg-[#0c0c0e]"
+                    className="h-9 gap-1.5 px-3.5"
                     onClick={onTrailer}
                   >
                     <Play className="size-3.5 fill-current" />
@@ -171,8 +151,8 @@ export function AnimeHeader({
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
-                    className="gap-1.5 rounded-full bg-primary/15 text-primary ring-1 ring-primary/30 hover:bg-primary/25"
+                    variant="outline"
+                    className="h-9 gap-1.5 px-3.5"
                     onClick={onEditList}
                   >
                     <ListPlus className="size-3.5" />
@@ -185,17 +165,9 @@ export function AnimeHeader({
         </div>
 
         {genres?.length ? (
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            {genres.slice(0, 6).map((g) => (
-              <Badge
-                key={g}
-                variant="outline"
-                className="rounded-full border-primary/20 bg-primary/[0.08] text-[0.7rem] text-primary/90"
-              >
-                {g}
-              </Badge>
-            ))}
-          </div>
+          <p className="mt-3 text-meta">
+            {genres.slice(0, 6).join(' · ')}
+          </p>
         ) : null}
 
         {description ? (

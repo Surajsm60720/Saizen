@@ -89,9 +89,7 @@ export function ThemeTracks({
 
 function SectionHead({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div>
-      <div className="mb-1 h-0.5 w-8 rounded-full bg-primary/80" />
-      <h2 className="text-section">{title}</h2>
+    <div>      <h2 className="text-section">{title}</h2>
       <p className="text-meta mt-0.5">{subtitle}</p>
     </div>
   )
@@ -154,7 +152,7 @@ function ThemeRow({ track }: { track: AnimeThemeTrack }) {
       className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent px-3 py-2.5 text-left transition-colors active:bg-white/[0.07]"
       aria-label={`Copy ${label} ${track.title}`}
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 font-heading text-xs font-semibold tracking-wide text-primary ring-1 ring-primary/25">
+      <span className="text-meta flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 font-semibold tracking-wide text-primary">
         {label}
       </span>
       <div className="min-w-0 flex-1">
