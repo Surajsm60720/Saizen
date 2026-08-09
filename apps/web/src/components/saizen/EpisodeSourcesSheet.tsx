@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Sheet,
   SheetContent,
@@ -14,6 +14,11 @@ import { SourceList, SourceRow } from '@/components/saizen/SourceRow'
 import type { EpisodeItem } from '@/components/saizen/EpisodeRow'
 import type { ProviderResult } from '@/lib/providers'
 import { isLikelyFaster } from '@/lib/extensions'
+import { cn } from '@/lib/utils'
+
+const DISMISS_DISTANCE = 110
+const DISMISS_VELOCITY = 0.85
+const OVERLAY_FADE_PX = 280
 
 export function EpisodeSourcesSheet({
   open,
@@ -25,9 +30,7 @@ export function EpisodeSourcesSheet({
   results,
   playing,
   onPlay,
-  onDownload,
-  selectedSources,
-  onToggleSource
+  onDownload
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -40,14 +43,41 @@ export function EpisodeSourcesSheet({
   playing: boolean
   onPlay: (result: ProviderResult) => void
   onDownload?: (result: ProviderResult) => void
-  selectedSources?: Set<string>
-  onToggleSource?: (key: string) => void
 }) {
   // Keep hooks stable; synopsis already on episode from AniZip/Jikan merge
   const [mounted, setMounted] = useState(false)
+  const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  /** True after a swipe-dismiss — keep the sheet parked off-screen so Radix can’t flash it back. */
+  const [gestureExit, setGestureExit] = useState(false)
+  const gestureExitRef = useRef(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{
+    pointerId: number
+    startY: number
+    lastY: number
+    lastT: number
+    active: boolean
+    force: boolean
+  } | null>(null)
+
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (open) {
+      gestureExitRef.current = false
+      setGestureExit(false)
+      setDragY(0)
+      setDragging(false)
+      dragRef.current = null
+      return
+    }
+    // Closing: never snap dragY → 0 (that re-shows the sheet for a frame before exit anim).
+    setDragging(false)
+    dragRef.current = null
+  }, [open])
 
   const title = episode?.title || 'Episode'
   const synopsis = episode?.synopsis || ''
@@ -55,28 +85,155 @@ export function EpisodeSourcesSheet({
     episode?.meta?.match(/\d+\s*min/)?.[0] ||
     (durationMin ? `${durationMin} min` : null)
 
+  const overlayOpacity = gestureExit
+    ? 0
+    : Math.max(0, 1 - dragY / OVERLAY_FADE_PX)
+  const sheetTransform =
+    dragY > 0 || dragging || gestureExit
+      ? `translate3d(0, ${dragY}px, 0)`
+      : undefined
+
+  function beginDrag(e: React.PointerEvent, force = false) {
+    if (e.button !== 0 || gestureExit) return
+    const scrollEl = scrollRef.current
+    if (!force && scrollEl && scrollEl.scrollTop > 2) return
+
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      lastY: e.clientY,
+      lastT: performance.now(),
+      active: false,
+      force
+    }
+    setDragging(false)
+    if (force) {
+      ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    }
+  }
+
+  function moveDrag(e: React.PointerEvent) {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== e.pointerId) return
+
+    const dy = e.clientY - drag.startY
+    const now = performance.now()
+    drag.lastY = e.clientY
+    drag.lastT = now
+
+    if (!drag.active) {
+      if (dy < 10) return
+      if (dy < 0) {
+        dragRef.current = null
+        return
+      }
+      const scrollEl = scrollRef.current
+      if (!drag.force && scrollEl && scrollEl.scrollTop > 2) {
+        dragRef.current = null
+        return
+      }
+      drag.active = true
+      setDragging(true)
+      try {
+        ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+      } catch {
+        /* ignore */
+      }
+    }
+
+    e.preventDefault()
+    setDragY(Math.max(0, dy))
+  }
+
+  function endDrag(e: React.PointerEvent) {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== e.pointerId) return
+    dragRef.current = null
+
+    const dy = Math.max(0, e.clientY - drag.startY)
+    const dt = Math.max(16, performance.now() - drag.lastT)
+    const velocity = (e.clientY - drag.lastY) / dt
+    const shouldClose = drag.active && (dy > DISMISS_DISTANCE || velocity > DISMISS_VELOCITY)
+
+    setDragging(false)
+    if (shouldClose) {
+      // Park fully off-screen and skip Radix’s close slide (avoids the ghost pop-back).
+      const exitY = Math.max(dy, window.innerHeight)
+      gestureExitRef.current = true
+      setGestureExit(true)
+      setDragY(exitY)
+      onOpenChange(false)
+      return
+    }
+    setDragY(0)
+  }
+
   if (!mounted) return null
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !gestureExitRef.current) {
+          // X / overlay dismiss — normal path; clear any residual drag.
+          setDragY(0)
+          setGestureExit(false)
+        }
+        onOpenChange(next)
+      }}
+    >
       <SheetContent
         side="bottom"
-        className="pointer-events-auto flex max-h-[88dvh] flex-col gap-0 overflow-hidden rounded-t-2xl border-border/60 bg-background p-0"
+        overlayClassName={cn(
+          (dragging || gestureExit) && '![animation:none] !duration-0',
+          dragY > 0 && !dragging && !gestureExit && 'duration-200'
+        )}
+        overlayStyle={{
+          opacity: overlayOpacity,
+          transition:
+            dragging || gestureExit
+              ? 'none'
+              : 'opacity 200ms cubic-bezier(0.16, 1, 0.3, 1)'
+        }}
+        className={cn(
+          'pointer-events-auto flex max-h-[88dvh] flex-col gap-0 overflow-hidden rounded-t-2xl border-border/60 bg-background p-0',
+          (dragging || gestureExit) &&
+            '![animation:none] !transition-none data-[side=bottom]:data-open:![animation:none] data-[side=bottom]:data-closed:![animation:none] data-closed:![animation:none] data-closed:!opacity-0',
+          !dragging &&
+            !gestureExit &&
+            'transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
+        )}
+        style={{ transform: sheetTransform }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <SheetHeader className="shrink-0 border-b border-border/50 pb-3">
-          <SheetTitle className="text-page-title pr-10">
-            {episode ? `Episode ${episode.number}` : 'Episode'}
-          </SheetTitle>
-          <SheetDescription className="line-clamp-2 text-foreground/90">
-            {title}
-          </SheetDescription>
-        </SheetHeader>
+        <div
+          className="flex shrink-0 touch-none flex-col"
+          onPointerDown={(e) => beginDrag(e, true)}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          <div className="flex justify-center pb-1 pt-2.5" aria-hidden>
+            <div className="h-1 w-10 rounded-full bg-white/25" />
+          </div>
+          <SheetHeader className="border-b border-border/50 pb-3 pt-1">
+            <SheetTitle className="text-page-title pr-10">
+              {episode ? `Episode ${episode.number}` : 'Episode'}
+            </SheetTitle>
+            <SheetDescription className="line-clamp-2 text-foreground/90">
+              {title}
+            </SheetDescription>
+          </SheetHeader>
+        </div>
 
         {/* Native overflow — Radix ScrollArea often eats touch events on iOS WKWebView */}
         <div
+          ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+var(--safe-bottom))] [-webkit-overflow-scrolling:touch]"
-          data-vaul-no-drag
+          onPointerDown={(e) => beginDrag(e, false)}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
         >
           {episode ? (
             <div className="space-y-4 pt-3">
@@ -137,9 +294,6 @@ export function EpisodeSourcesSheet({
                           playing={playing}
                           onPlay={() => onPlay(r)}
                           onDownload={onDownload ? () => onDownload(r) : undefined}
-                          selectable={Boolean(onToggleSource)}
-                          selected={selectedSources?.has(key)}
-                          onToggleSelect={onToggleSource ? () => onToggleSource(key) : undefined}
                         />
                       )
                     })}

@@ -42,7 +42,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isAnime = pathname.startsWith('/app/anime')
   const keepAliveRoute = isHome || isSearch || isSchedule || isSettings
   const hideBottomNav = isPlayer || isAnime
+  /** Brand/chrome header only on Home + anime — elsewhere it fights page titles / back links. */
   const immersiveHeader = isHome || isAnime
+  /** Wide / landscape: text tab links without the Saizen wordmark chrome. */
+  const showLandscapeNav = !isPlayer && !immersiveHeader
   const [headerFaded, setHeaderFaded] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const routeKeyRef = useRef(
@@ -127,27 +130,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground select-none">
-      {!isPlayer ? (
+      {immersiveHeader ? (
         <header
           className={cn(
-            'fixed inset-x-0 top-0 z-40 pt-[var(--safe-top)] transition-opacity duration-300',
-            immersiveHeader ? 'bg-transparent' : 'saizen-top-glass',
-            immersiveHeader && headerFaded && 'pointer-events-none'
+            'fixed inset-x-0 top-0 z-40 pt-[var(--safe-top)] transition-opacity duration-300 bg-transparent',
+            headerFaded && 'pointer-events-none'
           )}
         >
-          {immersiveHeader ? (
-            <div
-              aria-hidden
-              className={cn(
-                'pointer-events-none absolute inset-x-0 top-0 h-[calc(2.75rem+var(--safe-top))] bg-gradient-to-b from-background/55 via-background/20 to-transparent transition-opacity duration-300',
-                headerFaded ? 'opacity-0' : 'opacity-100'
-              )}
-            />
-          ) : null}
+          <div
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute inset-x-0 top-0 h-[calc(2.75rem+var(--safe-top))] bg-gradient-to-b from-black/70 via-black/35 to-transparent transition-opacity duration-300',
+              headerFaded ? 'opacity-0' : 'opacity-100'
+            )}
+          />
           <div
             className={cn(
               'relative mx-auto flex h-11 w-full max-w-5xl items-center justify-between px-3.5 transition-all duration-300 sm:h-12 sm:px-5',
-              immersiveHeader && headerFaded && 'opacity-0 -translate-y-1'
+              'pl-[max(0.875rem,var(--safe-left))] pr-[max(0.875rem,var(--safe-right))] sm:pl-[max(1.25rem,var(--safe-left))] sm:pr-[max(1.25rem,var(--safe-right))]',
+              headerFaded && 'opacity-0 -translate-y-1'
             )}
           >
             <Link
@@ -156,12 +157,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               scroll={false}
               draggable={false}
               onClick={() => rememberCurrentScroll()}
-              className="text-brand text-foreground transition-opacity hover:opacity-90"
-              tabIndex={immersiveHeader && headerFaded ? -1 : undefined}
+              className="text-brand text-white transition-opacity hover:opacity-95 [text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_0_18px_rgba(0,0,0,0.55)]"
+              tabIndex={headerFaded ? -1 : undefined}
             >
               Saizen
             </Link>
-            <nav className="hidden items-center gap-1 md:flex">
+            <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
               {desktopNav.map((item) => {
                 const active = item.match(pathname)
                 return (
@@ -173,11 +174,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     draggable={false}
                     onClick={() => rememberCurrentScroll()}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-[0.8125rem] transition-[color,background-color,transform] duration-200',
+                      'rounded-lg px-3 py-1.5 text-[0.8125rem] font-medium transition-[color,background-color,transform] duration-200',
+                      'active:scale-[0.97]',
+                      '[text-shadow:0_1px_2px_rgba(0,0,0,0.75)]',
+                      active
+                        ? 'bg-white/18 font-bold text-white'
+                        : 'text-white/90 hover:bg-white/12 hover:text-white'
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+          </div>
+        </header>
+      ) : null}
+
+      {showLandscapeNav ? (
+        <header className="pointer-events-none fixed inset-x-0 top-0 z-40 hidden pt-[var(--safe-top)] md:block">
+          <div className="pointer-events-auto mx-auto flex h-10 w-full max-w-5xl items-center justify-end px-3.5 pl-[max(0.875rem,var(--safe-left))] pr-[max(0.875rem,var(--safe-right))] sm:px-5">
+            <nav className="flex items-center gap-1" aria-label="Primary">
+              {desktopNav.map((item) => {
+                const active = item.match(pathname)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    replace
+                    scroll={false}
+                    draggable={false}
+                    onClick={() => rememberCurrentScroll()}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-[0.8125rem] font-semibold transition-[color,background-color,transform] duration-200',
                       'active:scale-[0.97]',
                       active
-                        ? 'bg-white/12 font-bold text-foreground'
-                        : 'font-normal text-muted-foreground hover:bg-white/8 hover:text-foreground'
+                        ? 'bg-white/12 text-foreground'
+                        : 'text-foreground/80 hover:bg-white/8 hover:text-foreground'
                     )}
                   >
                     {item.label}
@@ -198,7 +231,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ? 'px-0 pb-[calc(4.5rem+var(--safe-bottom))] md:pb-8'
               : isAnime
                 ? 'px-3.5 pt-0 pb-[calc(1rem+var(--safe-bottom))] sm:px-5'
-                : 'px-3.5 pt-[calc(2.75rem+var(--safe-top))] pb-[calc(4.5rem+var(--safe-bottom))] sm:px-5 sm:pt-[calc(3.25rem+var(--safe-top))] md:pb-8'
+                : 'px-3.5 pt-[calc(0.65rem+var(--safe-top))] pb-[calc(4.5rem+var(--safe-bottom))] sm:px-5 md:pt-[calc(2.5rem+var(--safe-top))] md:pb-8'
         )}
       >
         {/* Keep primary tabs mounted so tab switches don't remount / lose scroll */}
@@ -244,6 +277,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           'pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 md:hidden',
+          'pl-[max(0.75rem,var(--safe-left))] pr-[max(0.75rem,var(--safe-right))]',
           'pb-[max(8px,calc(var(--safe-bottom)+4px))]',
           'transition-[transform,opacity] duration-300 ease-out',
           (hideBottomNav || keyboardOpen) && 'translate-y-[120%] opacity-0'

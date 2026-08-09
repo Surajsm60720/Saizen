@@ -1,4 +1,4 @@
-# Saizen · v1.3.2
+# Saizen · v1.3.3
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
@@ -15,7 +15,7 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 - **Transfers** — Settings: torrent download Mbps cap + max peers (applied live to libtorrent)
 - **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Sources** — Hayase-compatible extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
-- **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (wheel, hex, live preview)
+- **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (wheel, hex, live preview); immersive Saizen chrome on Home only; swipe-down to dismiss sources
 - **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only extensions; CSP meta; secret-scanned IPA packaging
 
 Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
@@ -121,7 +121,7 @@ Apple’s paid program is required for **App Store**, TestFlight, and long-lived
 ```bash
 pnpm sync:ios                 # rebuild web + sync Swift
 # Build/Run once on a device from Xcode (prefer Release when possible)
-pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.2.ipa
+pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.3.ipa
 ```
 
 ### IPA security warning (read before uploading a Release)

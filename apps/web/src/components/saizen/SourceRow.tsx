@@ -3,7 +3,6 @@
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { hapticPress } from '@/lib/haptics'
 import type { ProviderResult } from '@/lib/providers'
 
 export function SourceRow({
@@ -12,9 +11,6 @@ export function SourceRow({
   playing,
   onPlay,
   onDownload,
-  selectable,
-  selected,
-  onToggleSelect,
   className
 }: {
   result: ProviderResult
@@ -22,9 +18,6 @@ export function SourceRow({
   playing?: boolean
   onPlay: () => void
   onDownload?: () => void
-  selectable?: boolean
-  selected?: boolean
-  onToggleSelect?: () => void
   className?: string
 }) {
   return (
@@ -49,20 +42,6 @@ export function SourceRow({
           ) : null}
         </div>
       </div>
-      {selectable ? (
-        <button
-          type="button"
-          aria-pressed={selected}
-          onClick={() => {
-            hapticPress('selection')
-            onToggleSelect?.()
-          }}
-          className={cn(
-            'size-6 shrink-0 rounded-md border transition-transform active:scale-90',
-            selected ? 'border-primary bg-primary/80' : 'border-border/70 bg-background'
-          )}
-        />
-      ) : null}
       {onDownload ? (
         <Button
           size="lg"

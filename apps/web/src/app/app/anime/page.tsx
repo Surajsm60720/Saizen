@@ -143,7 +143,6 @@ function AnimeDetail() {
   const [downloadedEps, setDownloadedEps] = useState<Set<number>>(() => new Set())
   const [downloadedByEp, setDownloadedByEp] = useState<Map<number, string>>(() => new Map())
   const [downloadBusy, setDownloadBusy] = useState(false)
-  const [selectedSources, setSelectedSources] = useState<Set<string>>(() => new Set())
 
   const LIST_STATUS_LABELS: Record<string, string> = {
     CURRENT: 'Watching',
@@ -1173,7 +1172,6 @@ function AnimeDetail() {
         open={sheetOpen}
         onOpenChange={(open) => {
           setSheetOpen(open)
-          if (!open) setSelectedSources(new Set())
         }}
         episode={selected}
         malId={media.idMal}
@@ -1189,41 +1187,7 @@ function AnimeDetail() {
             .then(() => toast.success(`Queued episode ${selected.number}`))
             .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
         }}
-        selectedSources={selectedSources}
-        onToggleSource={(key) => {
-          setSelectedSources((prev) => {
-            const next = new Set(prev)
-            if (next.has(key)) next.delete(key)
-            else next.add(key)
-            return next
-          })
-        }}
       />
-
-      {selected && selectedSources.size > 0 ? (
-        <div className="fixed inset-x-0 bottom-[calc(5.5rem+var(--safe-bottom))] z-40 mx-auto flex max-w-lg justify-center px-4">
-          <Button
-            className="min-h-11 shadow-lg"
-            onClick={() => {
-              const picks = results.filter((r, i) =>
-                selectedSources.has(`${r.providerName}-${r.title}-${i}`)
-              )
-              void (async () => {
-                for (const r of picks) {
-                  try {
-                    await enqueueResult(r, selected)
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : String(e))
-                  }
-                }
-                setSelectedSources(new Set())
-              })()
-            }}
-          >
-            Download {selectedSources.size} source{selectedSources.size === 1 ? '' : 's'}
-          </Button>
-        </div>
-      ) : null}
 
       <DownloadPickerSheet
         open={downloadOpen}

@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.3.2'
+export const APP_VERSION = '1.3.3'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.3.3',
+    date: '2026-08-09',
+    title: 'Chrome, landscape & sources dismiss',
+    highlights: [
+      'Search, Schedule, Settings, and nested pages no longer sit under the Saizen glass header — titles and back links stay clear',
+      'Home brand mark stays more readable over light carousel art (stronger scrim + text shadow)',
+      'Landscape: left/right safe-area padding clears the Dynamic Island; wide-layout text tabs use higher-contrast labels',
+      'Sources sheet: swipe down from the handle or top of the list to dismiss (X still works)',
+      'Sources sheet: removed multi-select checkboxes — use Save per source, or episode multi-select for bulk downloads'
+    ]
+  },
   {
     version: '1.3.2',
     date: '2026-08-09',
