@@ -13,8 +13,18 @@ import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 import { applyAppearance } from '@/lib/theme/appearance'
 import { setDownloadSettings } from '@/lib/downloads/settings'
+import {
+  noteScrollY,
+  rememberCurrentScroll,
+  restoreScroll,
+  scrollKey,
+  setScroll,
+  takeLastKnownScroll
+} from '@/lib/nav/scrollMemory'
 import HomePage from './page'
 import SearchPage from './app/search/page'
+import SchedulePage from './app/schedule/page'
+import SettingsPage from './app/settings/page'
 
 const desktopNav = GLASS_TAB_ITEMS.map((item) => ({
   href: item.href,
@@ -27,13 +37,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isPlayer = pathname.startsWith('/app/player')
   const isHome = pathname === '/'
   const isSearch = pathname.startsWith('/app/search')
+  const isSchedule = pathname.startsWith('/app/schedule')
+  const isSettings = pathname.startsWith('/app/settings')
   const isAnime = pathname.startsWith('/app/anime')
+  const keepAliveRoute = isHome || isSearch || isSchedule || isSettings
   const hideBottomNav = isPlayer || isAnime
   const immersiveHeader = isHome || isAnime
   const [headerFaded, setHeaderFaded] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
-  const homeScrollRef = useRef(0)
-  const searchScrollRef = useRef(0)
+  const routeKeyRef = useRef(
+    typeof window !== 'undefined'
+      ? scrollKey(pathname, window.location.search)
+      : scrollKey(pathname)
+  )
 
   useEffect(() => {
     applyAppearance()
@@ -65,36 +81,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Remember Home / Search scroll while visible; restore when coming back (keep-alive).
+  // Track scroll for the active route; on leave, persist last known Y (not a
+  // post-navigation window.scrollY, which Next often resets to 0 first).
   useEffect(() => {
-    if (!isHome) return
+    const key = scrollKey(pathname, window.location.search)
+    routeKeyRef.current = key
+    noteScrollY(window.scrollY)
+
     const onScroll = () => {
-      homeScrollRef.current = window.scrollY
+      const y = window.scrollY
+      noteScrollY(y)
+      setScroll(key, y)
     }
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [isHome])
+    return () => {
+      setScroll(key, takeLastKnownScroll())
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [pathname])
 
   useEffect(() => {
-    if (!isSearch) return
-    const onScroll = () => {
-      searchScrollRef.current = window.scrollY
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [isSearch])
-
-  useEffect(() => {
-    if (isHome) {
-      const y = homeScrollRef.current
-      requestAnimationFrame(() => window.scrollTo(0, y))
-    } else if (isSearch) {
-      const y = searchScrollRef.current
-      requestAnimationFrame(() => window.scrollTo(0, y))
-    } else {
-      window.scrollTo(0, 0)
-    }
-  }, [isHome, isSearch, pathname])
+    const key = scrollKey(pathname, window.location.search)
+    routeKeyRef.current = key
+    restoreScroll(key)
+  }, [pathname])
 
   useEffect(() => {
     if (!immersiveHeader) {
@@ -142,7 +152,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Link
               href="/"
+              replace
+              scroll={false}
               draggable={false}
+              onClick={() => rememberCurrentScroll()}
               className="text-brand text-foreground transition-opacity hover:opacity-90"
               tabIndex={immersiveHeader && headerFaded ? -1 : undefined}
             >
@@ -155,7 +168,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    replace
+                    scroll={false}
                     draggable={false}
+                    onClick={() => rememberCurrentScroll()}
                     className={cn(
                       'rounded-lg px-3 py-1.5 text-[0.8125rem] transition-[color,background-color,transform] duration-200',
                       'active:scale-[0.97]',
@@ -185,7 +201,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 : 'px-3.5 pt-[calc(2.75rem+var(--safe-top))] pb-[calc(4.5rem+var(--safe-bottom))] sm:px-5 sm:pt-[calc(3.25rem+var(--safe-top))] md:pb-8'
         )}
       >
-        {/* Keep Home mounted so back-nav doesn't remount / refetch / flash */}
+        {/* Keep primary tabs mounted so tab switches don't remount / lose scroll */}
         <div
           className={cn(!isHome && 'hidden')}
           aria-hidden={!isHome}
@@ -195,7 +211,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <HomePage />
           </PaneErrorBoundary>
         </div>
-        {/* Keep Search mounted so results + filters survive anime detail back-nav */}
         <div
           className={cn(!isSearch && 'hidden')}
           aria-hidden={!isSearch}
@@ -205,7 +220,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SearchPage />
           </PaneErrorBoundary>
         </div>
-        {!isHome && !isSearch ? children : null}
+        <div
+          className={cn(!isSchedule && 'hidden')}
+          aria-hidden={!isSchedule}
+          {...(!isSchedule ? { inert: true } : {})}
+        >
+          <PaneErrorBoundary name="Schedule">
+            <SchedulePage />
+          </PaneErrorBoundary>
+        </div>
+        <div
+          className={cn(!isSettings && 'hidden')}
+          aria-hidden={!isSettings}
+          {...(!isSettings ? { inert: true } : {})}
+        >
+          <PaneErrorBoundary name="Settings">
+            <SettingsPage />
+          </PaneErrorBoundary>
+        </div>
+        {!keepAliveRoute ? children : null}
       </main>
 
       <div

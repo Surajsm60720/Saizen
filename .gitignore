@@ -23,6 +23,8 @@ apps/mobile/www/
 *.mobileprovision
 Credentials.xcconfig
 **/Secrets.plist
+**/AnilistSecret.local.swift
+!**/AnilistSecret.local.swift.example
 
 # Logs & OS
 *.log

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { hapticPress } from '@/lib/haptics'
+import { rememberCurrentScroll } from '@/lib/nav/scrollMemory'
 import type { ContinueEntry } from '@/lib/watch/continue'
 
 export function ContinueCard({
@@ -15,7 +16,11 @@ export function ContinueCard({
   return (
     <Link
       href={`/app/anime/?id=${entry.anilistId}`}
-      onClick={() => hapticPress('light')}
+      scroll={false}
+      onClick={() => {
+        rememberCurrentScroll()
+        hapticPress('light')
+      }}
       className={cn(
         'group relative block min-w-[15.5rem] overflow-hidden rounded-xl bg-card ring-1 ring-white/8 sm:min-w-[18rem]',
         'saizen-press',

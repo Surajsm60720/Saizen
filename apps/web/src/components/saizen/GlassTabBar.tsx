@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { hapticPress } from '@/lib/haptics'
+import { rememberCurrentScroll } from '@/lib/nav/scrollMemory'
 
 type TabItem = {
   href: string
@@ -173,7 +174,9 @@ export function GlassTabBar({
       scrubIndexRef.current = index
       snapToIndex(index)
       if (!item.match(pathname)) {
-        router.push(item.href)
+        // Lateral tab moves replace history so edge-swipe doesn't hop across tabs.
+        rememberCurrentScroll()
+        router.replace(item.href, { scroll: false })
       }
     },
     [pathname, router, snapToIndex]
@@ -291,6 +294,8 @@ export function GlassTabBar({
             >
               <Link
                 href={item.href}
+                replace
+                scroll={false}
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
                 title={item.label}
@@ -301,6 +306,7 @@ export function GlassTabBar({
                     suppressClickRef.current = false
                     return
                   }
+                  rememberCurrentScroll()
                   setScrubIndex(index)
                   snapToIndex(index)
                 }}

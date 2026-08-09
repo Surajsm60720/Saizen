@@ -1,4 +1,4 @@
-# Saizen · v1.3.1
+# Saizen · v1.3.2
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
 
@@ -13,10 +13,10 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 - **Player** — Native VLC + in-app chrome; ±seek / next episode; double/triple-tap seek; autoplay-next sources sheet; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
 - **Downloads** — Settings → Downloads: pick a folder, queue episodes (all / range / selected), lock-screen progress, offline library playback
 - **Transfers** — Settings: torrent download Mbps cap + max peers (applied live to libtorrent)
-- **Accounts & lists** — AniList / MAL Sign in (PKCE + `state`, Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
+- **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Sources** — Hayase-compatible extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
 - **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (wheel, hex, live preview)
-- **Security** — No client secrets; Keychain key allowlist; OAuth host allowlist; authenticated loopback streams; HTTPS-only extensions; CSP meta; secret-scanned IPA packaging
+- **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only extensions; CSP meta; secret-scanned IPA packaging
 
 Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
 
@@ -49,6 +49,7 @@ See [STRUCTURE.md](./STRUCTURE.md) for the full tree.
 - Physical device recommended (BitTorrent + VLC)
 - Optional: Boost + Xcode CLT to rebuild libtorrent (`scripts/build-libtorrent-ios.sh`)
 - OAuth (once, as the app developer): set **public** Client IDs in `apps/web/.env.local` — see `.env.example`. Users only **Sign in**; they never create API apps. MAL app type must be **iOS** or **other** (PKCE only). **Never** put a client secret in `NEXT_PUBLIC_*`.
+- AniList Authorization Code needs the Client Secret once on your machine: `bash scripts/set-anilist-secret.sh` (writes gitignored `AnilistSecret.local.swift`), then `pnpm sync:ios`. Redirect URL: `saizen://anilist/callback`.
 
 ## Quick start — web UI
 
@@ -66,6 +67,7 @@ Open the local Next.js URL → pick anime → sources → **Test Sample** (bundl
 ```bash
 pnpm install
 # copy apps/web/.env.example → apps/web/.env.local and fill Client IDs (public IDs only)
+# AniList only: bash scripts/set-anilist-secret.sh   # gitignored local secret — not NEXT_PUBLIC
 pnpm sync:ios          # builds web, cap sync, registers plugins, copies Swift
 cd apps/mobile/ios/App
 pod install            # Capacitor + MobileVLCKit
@@ -119,7 +121,7 @@ Apple’s paid program is required for **App Store**, TestFlight, and long-lived
 ```bash
 pnpm sync:ios                 # rebuild web + sync Swift
 # Build/Run once on a device from Xcode (prefer Release when possible)
-pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.1.ipa
+pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.2.ipa
 ```
 
 ### IPA security warning (read before uploading a Release)
@@ -129,15 +131,17 @@ pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.1.ip
 | What you may see in the IPA | OK? |
 |-----------------------------|-----|
 | `NEXT_PUBLIC_ANILIST_CLIENT_ID` / `NEXT_PUBLIC_MAL_CLIENT_ID` (public OAuth Client IDs) | Yes — required for Sign in |
-| Any `*_SECRET`, `client_secret`, or `malClientSecret` | **No — do not ship** |
+| Any `NEXT_PUBLIC_*SECRET`, or MAL `client_secret` | **No — do not ship** |
+| AniList Client Secret baked from `AnilistSecret.local.swift` | **Personal Debug only** — `package-ipa.sh` fails closed if that value appears; strip before a public IPA |
 | OAuth access/refresh tokens | **No — must never be baked in** |
 
 **Rules:**
 
 1. Only public Client IDs go in `apps/web/.env.local`. Register MAL as **iOS** or **other** (public client, PKCE, **no secret**). Web-type MAL apps are not supported.
-2. If a secret was ever present in an older build, **rotate it** in the provider console and rebuild — treat the old value as compromised.
-3. Always use `pnpm package:ipa` (or `bash scripts/preflight-release.sh` then `bash scripts/package-ipa.sh`). Do not zip an `.app` by hand for public releases.
-4. Re-scan before upload: `bash scripts/preflight-release.sh` and confirm the packaged IPA has no `*_SECRET` identifiers.
+2. AniList Client Secret stays in gitignored `AnilistSecret.local.swift` via `scripts/set-anilist-secret.sh` — never Settings UI, never `NEXT_PUBLIC_*`.
+3. If a secret was ever present in an older build or chat/log, **rotate it** in the provider console and rebuild — treat the old value as compromised.
+4. Always use `pnpm package:ipa` (or `bash scripts/preflight-release.sh` then `bash scripts/package-ipa.sh`). Do not zip an `.app` by hand for public releases.
+5. Re-scan before upload: `bash scripts/preflight-release.sh` and confirm the packaged IPA has no unexpected secret identifiers.
 
 **Last scanned:** `dist/Saizen-v1.1.0.ipa` (~19 MB, 2026-08-04 Release-iphoneos) — no `*_SECRET` / `client_secret` / `malClientSecret` identifiers; public Client IDs present (expected); token paths scrub `localStorage` and use Keychain; extension loads require `https://`.
 
@@ -182,6 +186,7 @@ Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.
 | `scripts/sync-swift-into-cap.sh` | Copy `ios/App/*` → Cap `App/Saizen/` |
 | `scripts/build-libtorrent-ios.sh` | Build ios-arm64 libtorrent into `ios/vendor/` |
 | `scripts/register-local-ios-plugins.mjs` | Register local Capacitor plugins |
+| `scripts/set-anilist-secret.sh` | Write gitignored AniList Client Secret for Authorization Code |
 | `scripts/fix-capacitor-html.mjs` | Fix relative asset paths for WKWebView |
 | `scripts/package-ipa.sh` | Secret-scanned zip of DerivedData `App.app` → `dist/Saizen-v*.ipa` |
 | `scripts/preflight-release.sh` | Fail-closed gate: no secrets in env/source/out before release |

@@ -54,7 +54,7 @@ export default function PlayerPage() {
 
   function goAnime(action: 'nextEpisode' | 'changeSource') {
     if (!stream?.anilistId) {
-      router.push('/')
+      router.replace('/')
       return
     }
     dispatchPlayerAction({
@@ -62,7 +62,7 @@ export default function PlayerPage() {
       anilistId: stream.anilistId,
       episode: stream.episode
     })
-    router.push(`/app/anime/?id=${stream.anilistId}`)
+    router.replace(`/app/anime/?id=${stream.anilistId}`, { scroll: false })
   }
 
   const heading = stream
@@ -79,7 +79,7 @@ export default function PlayerPage() {
           <button
             type="button"
             className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            onClick={() => router.push('/')}
+            onClick={() => router.replace('/')}
           >
             ← Home
           </button>
@@ -102,8 +102,11 @@ export default function PlayerPage() {
           autoplayNext={stream.autoplayNext}
           hasNextEpisode={stream.hasNextEpisode}
           onBack={() => {
-            if (stream.anilistId) router.push(`/app/anime/?id=${stream.anilistId}`)
-            else router.push('/')
+            if (stream.anilistId) {
+              router.replace(`/app/anime/?id=${stream.anilistId}`, { scroll: false })
+            } else {
+              router.replace('/')
+            }
           }}
           onNextEpisode={() => goAnime('nextEpisode')}
         />

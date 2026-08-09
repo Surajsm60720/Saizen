@@ -4,6 +4,8 @@ const config: CapacitorConfig = {
   appId: 'app.saizen',
   appName: 'Saizen',
   webDir: '../web/out',
+  // Never print Cap bridge payloads (tokens / Keychain values) to the Xcode console.
+  loggingBehavior: 'none',
   // Match deep-black chrome so WKWebView rubber-band never flashes another fill
   backgroundColor: '#050505',
   server: {

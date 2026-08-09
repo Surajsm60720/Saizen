@@ -22,7 +22,9 @@ export {
   isMalConnected,
   clearAnilistToken,
   clearMalToken,
-  hydrateTokenMirrors
+  hydrateTokenMirrors,
+  subscribeAuthChanged,
+  AUTH_CHANGED_EVENT
 } from './tokens'
 export { syncListProgress } from './sync'
 export type { SyncListOpts } from './sync'

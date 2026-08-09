@@ -35,6 +35,8 @@ import { flushPendingListSync } from '@/lib/watch/progress'
 import getNative from '@/lib/native'
 import { whenBridgeReady } from '@/lib/native/ready'
 import { APP_VERSION_LABEL } from '@/lib/version'
+import { rememberCurrentScroll } from '@/lib/nav/scrollMemory'
+import { subscribeAuthChanged } from '@/lib/auth/tokens'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<WatchSettings>(() => getWatchSettings())
@@ -62,13 +64,17 @@ export default function SettingsPage() {
     const d = getDownloadSettings()
     setQuality(d.preferredQuality)
     setTransfers({ torrentSpeed: d.torrentSpeed, maxConns: d.maxConns })
-    void whenBridgeReady().then(() => {
-      setIsApp(getNative().isApp)
-    })
-    void Promise.all([isAnilistConnected(), isMalConnected()]).then(([a, m]) => {
-      setAnilistOn(a)
-      setMalOn(m)
-    })
+
+    const refreshAuth = () => {
+      void whenBridgeReady().then(async () => {
+        setIsApp(getNative().isApp)
+        const [a, m] = await Promise.all([isAnilistConnected(), isMalConnected()])
+        setAnilistOn(a)
+        setMalOn(m)
+      })
+    }
+    refreshAuth()
+    return subscribeAuthChanged(refreshAuth)
   }, [])
 
   function patch(next: Partial<WatchSettings>) {
@@ -145,6 +151,8 @@ export default function SettingsPage() {
         <SettingsGroup title="Appearance" description="Deep black chrome and accent color.">
           <Link
             href="/app/appearance/"
+            scroll={false}
+            onClick={() => rememberCurrentScroll()}
             className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
           >
             <div className="min-w-0">
@@ -396,6 +404,8 @@ export default function SettingsPage() {
         <SettingsGroup title="More">
           <Link
             href="/app/downloads/"
+            scroll={false}
+            onClick={() => rememberCurrentScroll()}
             className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
           >
             <div>
@@ -406,6 +416,8 @@ export default function SettingsPage() {
           </Link>
           <Link
             href="/app/extensions/"
+            scroll={false}
+            onClick={() => rememberCurrentScroll()}
             className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
           >
             <div>
@@ -422,6 +434,8 @@ export default function SettingsPage() {
           </SettingsRow>
           <Link
             href="/app/changelog/"
+            scroll={false}
+            onClick={() => rememberCurrentScroll()}
             className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
           >
             <div>

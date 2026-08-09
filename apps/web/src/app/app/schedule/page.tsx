@@ -20,6 +20,7 @@ import {
 } from '@/lib/time/airingLocal'
 import { cn } from '@/lib/utils'
 import { hapticPress } from '@/lib/haptics'
+import { rememberCurrentScroll } from '@/lib/nav/scrollMemory'
 
 type Row = AiringScheduleItem & { local: LocalAiring }
 
@@ -251,7 +252,9 @@ export default function SchedulePage() {
             return (
               <li key={row.id} className="border-t border-white/[0.06] first:border-t-0">
                 <Link
-                  href={`/app/anime?id=${row.media.id}`}
+                  href={`/app/anime/?id=${row.media.id}`}
+                  scroll={false}
+                  onClick={() => rememberCurrentScroll()}
                   className="flex items-center gap-3 py-3 text-foreground active:opacity-80"
                 >
                   <time

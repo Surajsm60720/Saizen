@@ -62,7 +62,12 @@ interface SaizenPlayerPlugin {
 }
 
 interface SaizenAuthPlugin {
-  authAnilist(o: { url: string; callbackScheme?: string }): Promise<AuthResponse | MalAuthCodeResponse>
+  authAnilist(o: {
+    url: string
+    callbackScheme?: string
+    clientId?: string
+    redirectUri?: string
+  }): Promise<AuthResponse | MalAuthCodeResponse>
   authMAL(o: { url: string; callbackScheme?: string }): Promise<MalAuthCodeResponse>
   exchangeMalToken(o: {
     clientId: string
@@ -70,8 +75,15 @@ interface SaizenAuthPlugin {
     codeVerifier: string
     redirectUri: string
   }): Promise<{
-    access_token: string
-    refresh_token?: string
+    ok?: boolean
+    expires_in?: number
+    token_type?: string
+  }>
+  refreshMalToken(o: {
+    clientId: string
+    refreshToken: string
+  }): Promise<{
+    ok?: boolean
     expires_in?: number
     token_type?: string
   }>
@@ -117,20 +129,22 @@ export function installSaizenBridge(): void {
         void handle.remove()
       }
     },
-    async onPlayerAction(cb) {
-      const handle = await SaizenPlayer.addListener('playerAction', cb)
-      return () => {
-        void handle.remove()
-      }
-    },
-    async authAnilist(url) {
-      return SaizenAuth.authAnilist({ url, callbackScheme: 'saizen' })
+    async authAnilist(url, options) {
+      return SaizenAuth.authAnilist({
+        url,
+        callbackScheme: 'saizen',
+        clientId: options?.clientId,
+        redirectUri: options?.redirectUri
+      })
     },
     async authMAL(url) {
       return SaizenAuth.authMAL({ url, callbackScheme: 'saizen' })
     },
     async exchangeMalToken(options) {
       return SaizenAuth.exchangeMalToken(options)
+    },
+    async refreshMalToken(options) {
+      return SaizenAuth.refreshMalToken(options)
     },
     async getSecureItem(key) {
       const { value } = await SaizenAuth.getSecureItem({ key })

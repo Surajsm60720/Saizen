@@ -218,10 +218,16 @@ function AnimeDetail() {
 
   useEffect(() => {
     if (!id) return
-    const onScroll = () => setAnimeSession(id, { scrollY: window.scrollY })
+    let lastY = getAnimeSession(id)?.scrollY ?? window.scrollY
+    const onScroll = () => {
+      lastY = window.scrollY
+      setAnimeSession(id, { scrollY: lastY })
+    }
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => {
-      onScroll()
+      // Persist last in-page Y — don't re-read window.scrollY (AppShell may
+      // already have restored another route's position).
+      setAnimeSession(id, { scrollY: lastY })
       window.removeEventListener('scroll', onScroll)
     }
   }, [id])
@@ -229,7 +235,9 @@ function AnimeDetail() {
   useEffect(() => {
     if (!id || loading) return
     const y = getAnimeSession(id)?.scrollY ?? 0
-    const frame = window.requestAnimationFrame(() => window.scrollTo(0, y))
+    const apply = () => window.scrollTo(0, y)
+    apply()
+    const frame = window.requestAnimationFrame(apply)
     return () => window.cancelAnimationFrame(frame)
   }, [id, loading])
 
@@ -900,7 +908,7 @@ function AnimeDetail() {
           })
         )
         setSheetOpen(false)
-        router.push('/app/player/')
+        router.replace('/app/player/')
       }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e))

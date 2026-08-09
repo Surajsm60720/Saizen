@@ -10,10 +10,11 @@ import type {
 } from './torrent'
 
 export interface AuthResponse {
-  access_token: string
+  /** Native wrote the access token to Keychain — never returned over the bridge. */
+  ok?: boolean
   expires_in: string
-  token_type: 'Bearer'
-  /** OAuth `state` echoed from the authorize request (implicit fragment). */
+  token_type?: 'Bearer'
+  /** OAuth `state` echoed from the authorize request. */
   state?: string
 }
 
@@ -81,17 +82,28 @@ export interface SaizenNative {
   share(data: ShareData): Promise<void>
   getDeviceInfo(): Promise<Record<string, unknown>>
 
-  authAnilist(url: string): Promise<AuthResponse | MalAuthCodeResponse>
+  authAnilist(
+    url: string,
+    options?: { clientId: string; redirectUri?: string }
+  ): Promise<AuthResponse | MalAuthCodeResponse>
   authMAL(url: string): Promise<MalAuthCodeResponse>
-  /** Native MAL token exchange (URLSession form POST + Basic auth). */
+  /** Native MAL token exchange (URLSession form POST + Basic auth). Persists to Keychain. */
   exchangeMalToken?(options: {
     clientId: string
     code: string
     codeVerifier: string
     redirectUri: string
   }): Promise<{
-    access_token: string
-    refresh_token?: string
+    ok?: boolean
+    expires_in?: number
+    token_type?: string
+  }>
+  /** Native MAL refresh (same URLSession + Basic auth as code exchange). Persists to Keychain. */
+  refreshMalToken?(options: {
+    clientId: string
+    refreshToken: string
+  }): Promise<{
+    ok?: boolean
     expires_in?: number
     token_type?: string
   }>

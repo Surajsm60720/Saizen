@@ -14,8 +14,9 @@ import {
 import {
   clearAnilistToken,
   clearMalToken,
-  setAnilistToken,
-  setMalToken
+  getAnilistToken,
+  getMalToken,
+  notifyAuthChanged
 } from './tokens'
 
 function randomVerifier(length = 64): string {
@@ -46,31 +47,37 @@ export async function connectAnilist(): Promise<void> {
   }
   sessionStorage.setItem('saizen:anilist:state', state)
 
+  // Authorization Code — `?code=` works with saizen://; secret from AnilistSecret.local.swift / Keychain.
   const url =
     `https://anilist.co/api/v2/oauth/authorize` +
     `?client_id=${encodeURIComponent(anilistClientId)}` +
-    `&response_type=token` +
+    `&response_type=code` +
     `&state=${encodeURIComponent(state)}` +
     `&redirect_uri=${encodeURIComponent(ANILIST_REDIRECT_URI)}`
 
-  const res = await native.authAnilist(url)
-  if (!('access_token' in res) || !res.access_token) {
-    throw new Error('AniList did not return an access token')
+  if (!native.authAnilist) {
+    throw new Error('Native AniList auth unavailable — rebuild the iOS app (pnpm sync:ios).')
   }
+
+  const res = await native.authAnilist(url, {
+    clientId: anilistClientId,
+    redirectUri: ANILIST_REDIRECT_URI
+  })
   const expected = sessionStorage.getItem('saizen:anilist:state')
   const returnedState = 'state' in res && typeof res.state === 'string' ? res.state : ''
-  if (!expected || !returnedState || returnedState !== expected) {
-    sessionStorage.removeItem('saizen:anilist:state')
+  sessionStorage.removeItem('saizen:anilist:state')
+  if (returnedState && expected && returnedState !== expected) {
     throw new Error('AniList OAuth state mismatch')
   }
-  sessionStorage.removeItem('saizen:anilist:state')
-  const expiresIn = Number(res.expires_in)
-  await setAnilistToken({
-    accessToken: res.access_token,
-    expiresAt: Number.isFinite(expiresIn) && expiresIn > 0 ? Date.now() + expiresIn * 1000 : null
-  })
+
+  // Token was written to Keychain by native — never returned over the bridge.
+  const stored = await getAnilistToken()
+  if (!stored?.accessToken) {
+    throw new Error('AniList login did not persist to Keychain')
+  }
+  notifyAuthChanged()
+
   clearViewerListCache()
-  // Warm list cache so Home rails + episode watched marks pull AniList progress.
   try {
     await fetchViewerAnimeList(
       ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED', 'PLANNING'],
@@ -130,17 +137,11 @@ export async function connectMal(): Promise<void> {
   sessionStorage.removeItem('saizen:mal:state')
   sessionStorage.removeItem('saizen:mal:verifier')
 
-  // CapacitorHttp has mangled form bodies before (invalid_client). Use native URLSession.
   if (!native.exchangeMalToken) {
     throw new Error('Native MAL token exchange unavailable — rebuild the iOS app (pnpm sync:ios).')
   }
-  let json: {
-    access_token: string
-    refresh_token?: string
-    expires_in?: number
-  }
   try {
-    json = await native.exchangeMalToken({
+    await native.exchangeMalToken({
       clientId: malClientId,
       code: res.code,
       codeVerifier: verifier,
@@ -155,15 +156,12 @@ export async function connectMal(): Promise<void> {
     }
     throw new Error(msg)
   }
-  if (!json.access_token) throw new Error('MAL token response missing access_token')
-  await setMalToken({
-    accessToken: json.access_token,
-    refreshToken: json.refresh_token ?? '',
-    expiresAt:
-      json.expires_in && Number.isFinite(json.expires_in)
-        ? Date.now() + json.expires_in * 1000
-        : null
-  })
+
+  const stored = await getMalToken()
+  if (!stored?.accessToken) {
+    throw new Error('MAL login did not persist to Keychain')
+  }
+  notifyAuthChanged()
   void flushPendingListSync()
 }
 

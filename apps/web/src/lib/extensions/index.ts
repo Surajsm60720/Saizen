@@ -10,7 +10,8 @@ export {
   getExtensionOptions,
   refreshCatalogs,
   reloadAllExtensions,
-  hasAdultExtensionsEnabled
+  hasAdultExtensionsEnabled,
+  subscribeExtensions
 } from './registry'
 export { searchExtensions, testExtension, rankScore, isLikelyFaster } from './host'
 export { loadExtensionInstance, clearExtensionCache, evaluateExtensionSource } from './loader'

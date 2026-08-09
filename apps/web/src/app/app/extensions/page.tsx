@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   EXTENSION_CATALOGS,
+  ensureExtensions,
   listExtensions,
   loadExtensionInstance,
   reloadAllExtensions,
@@ -20,8 +21,7 @@ export default function ExtensionsPage() {
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
-  const refresh = useCallback(async () => {
-    const list = await reloadAllExtensions()
+  const applyList = useCallback((list: LoadedExtension[]) => {
     setItems([...list])
     const failed = list.filter((e) => e.enabled && e.loadError)
     const ok = list.filter((e) => e.enabled && !e.loadError && e.instance.single)
@@ -35,19 +35,20 @@ export default function ExtensionsPage() {
     }
   }, [])
 
+  // Mount: reuse in-memory registry (don't nuke + re-fetch — that raced toggles).
   useEffect(() => {
     void (async () => {
       setLoading(true)
       setError('')
       try {
-        await refresh()
+        applyList(await ensureExtensions())
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       } finally {
         setLoading(false)
       }
     })()
-  }, [refresh])
+  }, [applyList])
 
   const byCatalog = useMemo(() => {
     const map = new Map<string, LoadedExtension[]>()
@@ -101,9 +102,7 @@ export default function ExtensionsPage() {
     setLoading(true)
     setStatus('Refreshing catalogs…')
     try {
-      const list = await reloadAllExtensions()
-      setItems([...list])
-      setStatus(`Loaded ${list.length} torrent extension(s)`)
+      applyList(await reloadAllExtensions())
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {

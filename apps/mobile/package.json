@@ -1,10 +1,11 @@
 {
   "name": "@saizen/mobile",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "private": true,
   "type": "module",
   "scripts": {
-    "sync": "npx cap sync ios; node ../../scripts/register-local-ios-plugins.mjs && bash ../../scripts/sync-swift-into-cap.sh",
+    "sync": "npx cap sync ios; node ../../scripts/register-local-ios-plugins.mjs; bash ../../scripts/sync-swift-into-cap.sh",
+    "copy": "npx cap copy ios; node ../../scripts/register-local-ios-plugins.mjs",
     "open:ios": "npx cap open ios",
     "add:ios": "npx cap add ios"
   },

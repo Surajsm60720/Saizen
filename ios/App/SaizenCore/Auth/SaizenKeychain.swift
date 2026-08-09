@@ -6,7 +6,12 @@ public enum SaizenKeychain {
   private static let service = "app.saizen.auth"
 
   public static func set(_ value: String, account: String) -> Bool {
-    guard let data = value.data(using: .utf8) else { return false }
+    setStatus(value, account: account) == errSecSuccess
+  }
+
+  @discardableResult
+  public static func setStatus(_ value: String, account: String) -> OSStatus {
+    guard let data = value.data(using: .utf8) else { return errSecParam }
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
@@ -15,8 +20,9 @@ public enum SaizenKeychain {
     SecItemDelete(query as CFDictionary)
     var add = query
     add[kSecValueData as String] = data
+    // Survives app relaunch after device unlock; wiped only if the app is deleted.
     add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+    return SecItemAdd(add as CFDictionary, nil)
   }
 
   public static func get(account: String) -> String? {

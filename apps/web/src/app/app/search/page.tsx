@@ -18,7 +18,7 @@ import {
   type AnimeSearchFilters
 } from '@/lib/anilist'
 import { isAnilistConnected } from '@/lib/auth/tokens'
-import { ensureExtensions, hasAdultExtensionsEnabled } from '@/lib/extensions'
+import { ensureExtensions, hasAdultExtensionsEnabled, subscribeExtensions } from '@/lib/extensions'
 import { readSearchSession, writeSearchSession, consumePendingSearchPreset, mergeSearchFilters } from '@/lib/search/session'
 import { PageHeader, PosterCard, PosterGrid, SearchFiltersSheet } from '@/components/saizen'
 import { Badge } from '@/components/ui/badge'
@@ -115,15 +115,21 @@ export default function SearchPage() {
     })
   }, [term, filters, results, page, hasNextPage, error, includeAdult, anilistOn])
 
-  // One-time warm: extensions + list cache. Skip heavy refetch on keep-alive revisits.
+  // Warm once for catalogs/list cache; keep includeAdult in sync when extensions toggle
+  // (Search is keep-alive — a one-shot ref would otherwise stale until app restart).
   useEffect(() => {
-    if (warmed.current) return
-    warmed.current = true
-    void ensureExtensions().then(() => {
+    const syncAdult = () => {
       const adult = hasAdultExtensionsEnabled()
       setIncludeAdult(adult)
       writeSearchSession({ includeAdult: adult })
-    })
+    }
+    void ensureExtensions().then(syncAdult)
+    return subscribeExtensions(syncAdult)
+  }, [])
+
+  useEffect(() => {
+    if (warmed.current) return
+    warmed.current = true
     void isAnilistConnected().then(async (on) => {
       setAnilistOn(on)
       writeSearchSession({ anilistOn: on })

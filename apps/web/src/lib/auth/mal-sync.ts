@@ -2,6 +2,8 @@ import { clearMalToken, getMalToken, setMalToken } from './tokens'
 import { getOAuthCredentials } from './credentials'
 import type { AniListStatus } from './anilist-sync'
 import { saizenFetch } from '@/lib/extensions/fetch'
+import { refreshNative } from '@/lib/native'
+import { whenBridgeReady } from '@/lib/native/ready'
 
 async function refreshMalAccessToken(): Promise<string | null> {
   const existing = await getMalToken()
@@ -10,6 +12,31 @@ async function refreshMalAccessToken(): Promise<string | null> {
   const { malClientId } = getOAuthCredentials()
   if (!malClientId) return null
 
+  await whenBridgeReady()
+  const native = refreshNative()
+
+  // CapacitorHttp has mangled MAL form bodies before (unsupported_grant_type).
+  // Prefer the same native URLSession path as the initial code exchange.
+  if (native.isApp && native.refreshMalToken) {
+    try {
+      await native.refreshMalToken({
+        clientId: malClientId,
+        refreshToken: existing.refreshToken
+      })
+      // Native wrote Keychain; reload without tokens crossing the bridge resolve.
+      const updated = await getMalToken()
+      return updated?.accessToken ?? null
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      // Only wipe on hard auth failure — not transient network / encoding blips.
+      if (/invalid_grant|invalid_token|invalid_client/i.test(msg)) {
+        await clearMalToken()
+      }
+      console.warn('[saizen] MAL refresh failed', msg)
+      return null
+    }
+  }
+
   const body = new URLSearchParams()
   body.set('client_id', malClientId)
   body.set('grant_type', 'refresh_token')
@@ -17,11 +44,19 @@ async function refreshMalAccessToken(): Promise<string | null> {
 
   const res = await saizenFetch('https://myanimelist.net/v1/oauth2/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      // Scheme 1: Basic client_id: (empty secret) — required for public MAL clients.
+      Authorization: `Basic ${btoa(`${malClientId}:`)}`
+    },
     body: body.toString()
   })
   if (!res.ok) {
-    await clearMalToken()
+    const text = await res.text().catch(() => '')
+    if (/invalid_grant|invalid_token|invalid_client/i.test(text)) {
+      await clearMalToken()
+    }
+    console.warn('[saizen] MAL refresh HTTP', res.status, text.slice(0, 160))
     return null
   }
 

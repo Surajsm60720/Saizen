@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.3.1'
+export const APP_VERSION = '1.3.2'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,22 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.3.2',
+    date: '2026-08-09',
+    title: 'Navigation, scroll, auth & icons',
+    highlights: [
+      'Tab switches replace history instead of stacking — edge-swipe no longer jumps across Home / Search / Schedule / More',
+      'Home, Search, Schedule, and Settings stay mounted; scroll position is restored when you return',
+      'Opening anime posters no longer wipes the list scroll you came from',
+      'Enabling an extension applies immediately — no app restart (Search adult flag + registry stay in sync)',
+      'Auth: Keychain login persists across relaunch; Settings refreshes after hydrate',
+      'AniList: Authorization Code via ASWebAuthenticationSession; Client Secret from gitignored local file (not Settings / not NEXT_PUBLIC)',
+      'MAL: ASWebAuthenticationSession + native URLSession token exchange (no more CapacitorHttp grant_type wipe)',
+      'Security: Cap bridge logging off; OAuth tokens written to Keychain and omitted from plugin resolve payloads',
+      'iOS: UIScene lifecycle (SceneDelegate); updated App Icon (light / dark / tinted)'
+    ]
+  },
   {
     version: '1.3.1',
     date: '2026-08-08',

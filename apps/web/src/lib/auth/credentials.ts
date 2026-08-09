@@ -1,5 +1,6 @@
 const CRED_KEY = 'saizen:oauth-credentials'
 
+/** AniList Authorization Code — `saizen://anilist/callback`; secret via AnilistSecret.local.swift (gitignored). */
 export const ANILIST_REDIRECT_URI = 'saizen://anilist/callback'
 export const MAL_REDIRECT_URI = 'saizen://mal/callback'
 

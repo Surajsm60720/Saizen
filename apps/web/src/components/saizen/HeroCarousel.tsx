@@ -7,6 +7,7 @@ import { displayTitle, stripHtml, type AnimeMedia } from '@/lib/anilist'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { hapticPress } from '@/lib/haptics'
+import { rememberCurrentScroll } from '@/lib/nav/scrollMemory'
 
 function shortTitle(title: string, max = 34) {
   const t = title.trim()
@@ -109,13 +110,24 @@ export function HeroCarousel({
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 saizen-enter">
             <Button asChild size="lg" className="min-h-10 gap-2 px-4" haptic="medium">
-              <Link href={`/app/anime/?id=${featured.id}`} draggable={false}>
+              <Link
+                href={`/app/anime/?id=${featured.id}`}
+                scroll={false}
+                draggable={false}
+                onClick={() => rememberCurrentScroll()}
+              >
                 <Play className="size-4 fill-current" />
                 Watch now
               </Link>
             </Button>
             <Button asChild variant="outline" size="lg" className="min-h-10 px-4" haptic="selection">
-              <Link href="/app/search/" draggable={false}>
+              <Link
+                href="/app/search/"
+                replace
+                scroll={false}
+                draggable={false}
+                onClick={() => rememberCurrentScroll()}
+              >
                 Browse
               </Link>
             </Button>

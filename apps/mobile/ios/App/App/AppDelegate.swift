@@ -6,28 +6,39 @@ import Capacitor
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    private var webViewConfigObserver: NSObjectProtocol?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         SaizenStorage.ensureDirectories()
         window?.backgroundColor = Self.saizenBackground
-        // WebView exists after Capacitor finishes launching — configure on next runloop + when active.
+        webViewConfigObserver = NotificationCenter.default.addObserver(
+            forName: .saizenConfigureWebView,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.configureWebViewAppearance()
+        }
+        // Fallback if scene connect is delayed (legacy path).
         DispatchQueue.main.async { [weak self] in
             self?.configureWebViewAppearance()
         }
         return true
     }
 
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        configureWebViewAppearance()
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let config = UISceneConfiguration(
+            name: "Default Configuration",
+            sessionRole: connectingSceneSession.role
+        )
+        config.delegateClass = SceneDelegate.self
+        return config
     }
 
-    func applicationWillResignActive(_ application: UIApplication) {}
-
-    func applicationDidEnterBackground(_ application: UIApplication) {}
-
-    func applicationWillEnterForeground(_ application: UIApplication) {}
-
-    func applicationWillTerminate(_ application: UIApplication) {}
+    func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {}
 
     func application(
       _ application: UIApplication,
@@ -40,7 +51,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       )
     }
 
+    // Kept for Cap 7 / pre-scene cold starts; unused once UIApplicationSceneManifest is active.
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        _ = AuthSession.handleIncomingURL(url)
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
@@ -58,12 +71,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
+            ?? UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first
 
         guard let root = keyWindow?.rootViewController?.view,
               let webView = findWebView(in: root)
         else { return }
 
         let bg = Self.saizenBackground
+        keyWindow?.backgroundColor = bg
         window?.backgroundColor = bg
         root.backgroundColor = bg
         webView.isOpaque = true

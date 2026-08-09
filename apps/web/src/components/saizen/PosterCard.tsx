@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { hapticPress } from '@/lib/haptics'
+import { rememberCurrentScroll } from '@/lib/nav/scrollMemory'
 
 function shortTitle(title: string, max = 28) {
   const t = title.trim()
@@ -43,8 +44,10 @@ export function PosterCard({
   return (
     <Link
       href={href}
+      scroll={false}
       title={title}
       onClick={() => {
+        rememberCurrentScroll()
         hapticPress('light')
         onNavigate?.()
       }}

@@ -11,9 +11,12 @@
 		A1PP0001PROGSWIFT01 /* SaizenCore/Player/PlaybackProgressReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */; };
 		A1AU0001AUTHSESS01 /* SaizenCore/Auth/AuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */; };
 		A1AU0003KEYCHAIN01 /* SaizenCore/Auth/SaizenKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */; };
+		A1AU0005SECRETSTORE01 /* SaizenCore/Auth/AnilistSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0006SECRETSTORE02 /* SaizenCore/Auth/AnilistSecretStore.swift */; };
+		A1AU0007SECRETLOCAL01 /* SaizenCore/Auth/AnilistSecret.local.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0008SECRETLOCAL02 /* SaizenCore/Auth/AnilistSecret.local.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		A1SC0001SCENEDELEGATE01 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1SC0002SCENEDELEGATE02 /* SceneDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -39,6 +42,7 @@
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A1SC0002SCENEDELEGATE02 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -49,6 +53,8 @@
 		A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/PlaybackProgressReporter.swift; sourceTree = "<group>"; };
 		A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/AuthSession.swift; sourceTree = "<group>"; };
 		A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/SaizenKeychain.swift; sourceTree = "<group>"; };
+		A1AU0006SECRETSTORE02 /* SaizenCore/Auth/AnilistSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/AnilistSecretStore.swift; sourceTree = "<group>"; };
+		A1AU0008SECRETLOCAL02 /* SaizenCore/Auth/AnilistSecret.local.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/AnilistSecret.local.swift; sourceTree = "<group>"; };
 		61AADF12714A49A785221F68 /* Plugins/SaizenPlayer/SaizenPlayerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Plugins/SaizenPlayer/SaizenPlayerPlugin.swift; sourceTree = "<group>"; };
 		A06D3A4C8C434A2C87BC878F /* SaizenCore/HTTP/HTTPRangeServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/HTTP/HTTPRangeServer.swift; sourceTree = "<group>"; };
 		A873FC6416834EE49673EAC5 /* SaizenCore/Torrent/TorrentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Torrent/TorrentEngine.swift; sourceTree = "<group>"; };
@@ -116,6 +122,7 @@
 			children = (
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				A1SC0002SCENEDELEGATE02 /* SceneDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -138,6 +145,8 @@
 				A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */,
 				A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */,
 				A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */,
+				A1AU0006SECRETSTORE02 /* SaizenCore/Auth/AnilistSecretStore.swift */,
+				A1AU0008SECRETLOCAL02 /* SaizenCore/Auth/AnilistSecret.local.swift */,
 				5D02D61996A24B21A848A951 /* Plugins/SaizenTorrent/SaizenTorrentPlugin.swift */,
 				61AADF12714A49A785221F68 /* Plugins/SaizenPlayer/SaizenPlayerPlugin.swift */,
 				EF4B6488169F4812815DE1C4 /* Plugins/SaizenAuth/SaizenAuthPlugin.swift */,
@@ -275,6 +284,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				A1SC0001SCENEDELEGATE01 /* SceneDelegate.swift in Sources */,
 				721685FDECA14C4FA1A54453 /* SaizenCore/HTTP/HTTPRangeServer.swift in Sources */,
 				82871A21EBC842E3BB2D5101 /* SaizenCore/Torrent/PieceStore.swift in Sources */,
 				6BC1B7873C2141C9955BEEFE /* SaizenCore/Torrent/TorrentEngine.swift in Sources */,
@@ -282,6 +292,8 @@
 				A1PP0001PROGSWIFT01 /* SaizenCore/Player/PlaybackProgressReporter.swift in Sources */,
 				A1AU0001AUTHSESS01 /* SaizenCore/Auth/AuthSession.swift in Sources */,
 				A1AU0003KEYCHAIN01 /* SaizenCore/Auth/SaizenKeychain.swift in Sources */,
+				A1AU0005SECRETSTORE01 /* SaizenCore/Auth/AnilistSecretStore.swift in Sources */,
+				A1AU0007SECRETLOCAL01 /* SaizenCore/Auth/AnilistSecret.local.swift in Sources */,
 				CEB26AFB3C7E46CA98F53771 /* Plugins/SaizenTorrent/SaizenTorrentPlugin.swift in Sources */,
 				81624850B61649BC99DE4BE0 /* Plugins/SaizenPlayer/SaizenPlayerPlugin.swift in Sources */,
 				7ECEA436F8C5433FBC5233CB /* Plugins/SaizenAuth/SaizenAuthPlugin.swift in Sources */,
@@ -446,7 +458,7 @@
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.3.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = app.saizen;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -482,7 +494,7 @@
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.3.2;
 				PRODUCT_BUNDLE_IDENTIFIER = app.saizen;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

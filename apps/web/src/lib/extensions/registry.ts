@@ -12,6 +12,25 @@ let manifests: ExtensionManifest[] = []
 let loaded: Map<string, LoadedExtension> = new Map()
 let state: ExtensionEnableState = { enabled: {}, options: {} }
 let initialized = false
+const listeners = new Set<() => void>()
+
+/** Subscribe to enable/load changes (Search keep-alive, etc.). */
+export function subscribeExtensions(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+function emitExtensionsChanged(): void {
+  for (const listener of listeners) {
+    try {
+      listener()
+    } catch (e) {
+      console.warn('[saizen] extension listener failed', e)
+    }
+  }
+}
 
 function readState(): ExtensionEnableState {
   if (typeof localStorage === 'undefined') return { enabled: {}, options: {} }
@@ -140,6 +159,7 @@ export async function initExtensions(): Promise<LoadedExtension[]> {
   )
 
   initialized = true
+  emitExtensionsChanged()
   return listExtensions()
 }
 
@@ -168,16 +188,27 @@ export async function setExtensionEnabled(id: string, enabled: boolean): Promise
   state.enabled[id] = enabled
   writeState()
   const manifest = manifests.find((m) => m.id === id)
-  if (!manifest) return
+  if (!manifest) {
+    emitExtensionsChanged()
+    return
+  }
 
   if (!enabled) {
     unloadExtension(manifest)
     loaded.set(id, { manifest, instance: {}, enabled: false })
+    emitExtensionsChanged()
     return
   }
 
   try {
     const instance = await loadExtensionInstance(manifest)
+    // User may have toggled off again while the script was downloading.
+    if (!state.enabled[id]) {
+      unloadExtension(manifest)
+      loaded.set(id, { manifest, instance: {}, enabled: false })
+      emitExtensionsChanged()
+      return
+    }
     loaded.set(id, { manifest, instance, enabled: true })
   } catch (e) {
     loaded.set(id, {
@@ -187,6 +218,7 @@ export async function setExtensionEnabled(id: string, enabled: boolean): Promise
       loadError: e instanceof Error ? e.message : String(e)
     })
   }
+  emitExtensionsChanged()
 }
 
 export function setExtensionOption(id: string, key: string, value: unknown): void {

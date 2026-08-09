@@ -121,6 +121,12 @@ function mergeNative(): SaizenNative {
 let cached: SaizenNative | null = null
 
 export function getNative(): SaizenNative {
+  // Never stick on a pre-bridge webFallback cache — that made Keychain writes
+  // no-op (memory-only login → signed out on every relaunch).
+  if (typeof window !== 'undefined' && window.saizen?.isApp) {
+    cached = mergeNative()
+    return cached
+  }
   if (!cached) cached = mergeNative()
   return cached
 }
