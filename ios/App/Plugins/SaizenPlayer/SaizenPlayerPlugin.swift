@@ -8,6 +8,7 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
   public let pluginMethods: [CAPPluginMethod] = {
     var methods: [CAPPluginMethod] = [
       CAPPluginMethod(name: "spawnPlayer", returnType: CAPPluginReturnPromise),
+      CAPPluginMethod(name: "playStream", returnType: CAPPluginReturnPromise),
       CAPPluginMethod(name: "stopPlayer", returnType: CAPPluginReturnPromise)
     ]
     #if DEBUG
@@ -41,6 +42,26 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     let end = (dict["end"] as? Double) ?? (dict["end"] as? Int).map(Double.init)
     guard let start, let end else { return nil }
     return SkipInterval(start: start, end: end)
+  }
+
+  private static func parseHeaders(_ raw: Any?) -> [String: String] {
+    guard let dict = raw as? [String: Any] else { return [:] }
+    var out: [String: String] = [:]
+    for (key, value) in dict {
+      if let s = value as? String {
+        out[key] = s
+      } else if let n = value as? NSNumber {
+        out[key] = n.stringValue
+      }
+    }
+    return out
+  }
+
+  /// HTTPS-only gate for CDN `playStream` (no loopback).
+  private static func isAllowedStreamURL(_ url: URL) -> Bool {
+    guard url.scheme?.lowercased() == "https" else { return false }
+    guard let host = url.host, !host.isEmpty else { return false }
+    return true
   }
 
   private static func parseSessionOptions(_ call: CAPPluginCall) -> PlayerSessionOptions {
@@ -114,6 +135,56 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         context: context
       ) {
         // Only purge if this is still the same playback session.
+        SaizenPlayback.stopAndPurge(expecting: session)
+      }
+      call.resolve()
+    }
+  }
+
+  @objc func playStream(_ call: CAPPluginCall) {
+    guard let urlString = call.getString("url"), let url = URL(string: urlString) else {
+      call.reject("Missing or invalid url")
+      return
+    }
+    guard Self.isAllowedStreamURL(url) else {
+      call.reject("playStream requires https URL")
+      return
+    }
+    let hintRaw = call.getString("playerHint") ?? "avplayer"
+    let hint = PlayerHint(rawValue: hintRaw) ?? .avplayer
+    let title = call.getString("title")
+    let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
+    let episode = call.getInt("episode") ?? 0
+    let idMal = call.getInt("idMal")
+    let headers = Self.parseHeaders(call.getObject("headers"))
+    let options = Self.parseSessionOptions(call)
+    let context = PlaybackContext(
+      anilistId: anilistId,
+      episode: episode,
+      idMal: idMal,
+      options: options
+    )
+
+    let session = SaizenPlayback.currentSessionID
+    PlaybackProgressReporter.shared.resetThrottle()
+
+    DispatchQueue.main.async {
+      guard let root = self.bridge?.viewController else {
+        call.reject("No view controller")
+        return
+      }
+      var presenter = root
+      while let presented = presenter.presentedViewController {
+        presenter = presented
+      }
+      PlayerRouter.present(
+        from: presenter,
+        url: url,
+        hint: hint,
+        title: title,
+        context: context,
+        headers: headers
+      ) {
         SaizenPlayback.stopAndPurge(expecting: session)
       }
       call.resolve()

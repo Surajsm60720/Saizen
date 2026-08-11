@@ -3,6 +3,7 @@ import type {
   DownloadJob,
   EnqueueDownloadOptions,
   LibraryEntry,
+  PlayStreamOptions,
   SaizenNative,
   SpawnPlayerOptions,
   StorageUsage,
@@ -70,6 +71,9 @@ const webFallback: SaizenNative = {
   },
   async spawnPlayer(options: SpawnPlayerOptions) {
     console.info('[saizen] spawnPlayer (web fallback)', options)
+  },
+  async playStream(options: PlayStreamOptions) {
+    console.info('[saizen] playStream (web fallback)', options)
   },
   async stopPlayer() {},
   async torrentInfo(hash) {

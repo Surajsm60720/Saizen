@@ -1,3 +1,4 @@
+import type { PlayStreamOptions } from './stream'
 import type {
   ClientSettings,
   DownloadJob,
@@ -117,6 +118,8 @@ export interface SaizenNative {
     episode: number
   ): Promise<TorrentFile[]>
   spawnPlayer(options: SpawnPlayerOptions): Promise<void>
+  /** CDN HTTPS stream → native player (default hint avplayer). */
+  playStream(options: PlayStreamOptions): Promise<void>
   stopPlayer(): Promise<void>
   runModuleDay0Spike?(): Promise<{
     moduleId: string

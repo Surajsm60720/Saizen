@@ -7,6 +7,7 @@ import type {
   MalAuthCodeResponse,
   NativePlaybackProgress,
   NativePlayerAction,
+  PlayStreamOptions,
   SaizenNative,
   SpawnPlayerOptions,
   StorageUsage,
@@ -68,6 +69,7 @@ export async function installSaizenBridge(): Promise<void> {
 
   type PlayerPlugin = {
     spawnPlayer(o: SpawnPlayerOptions): Promise<void>
+    playStream(o: PlayStreamOptions): Promise<void>
     stopPlayer(): Promise<void>
     runModuleDay0Spike?(): Promise<{
       moduleId: string
@@ -151,6 +153,9 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async spawnPlayer(options) {
       await SaizenPlayer.spawnPlayer(options)
+    },
+    async playStream(options) {
+      await SaizenPlayer.playStream(options)
     },
     async stopPlayer() {
       await SaizenPlayer.stopPlayer()

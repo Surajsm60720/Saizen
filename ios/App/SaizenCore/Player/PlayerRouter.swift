@@ -17,6 +17,7 @@ public final class PlayerRouter {
     hint: PlayerHint,
     title: String?,
     context: PlaybackContext = PlaybackContext(anilistId: 0, episode: 0, idMal: nil),
+    headers: [String: String] = [:],
     onDismiss: (() -> Void)? = nil
   ) {
     NSLog("[Saizen] PlayerRouter present hint=%@ url=%@", hint.rawValue, HTTPRangeServer.redactedURLString(url))
@@ -29,7 +30,14 @@ public final class PlayerRouter {
 
     switch hint {
     case .avplayer:
-      presentAVPlayer(from: presenter, url: url, title: title, context: context, onDismiss: onDismiss)
+      presentAVPlayer(
+        from: presenter,
+        url: url,
+        title: title,
+        context: context,
+        headers: headers,
+        onDismiss: onDismiss
+      )
     case .vlc:
       if vlcAvailable {
         #if canImport(MobileVLCKit)
@@ -37,7 +45,14 @@ public final class PlayerRouter {
         #endif
       } else {
         NSLog("[Saizen] MobileVLCKit not linked — cannot play MKV/ASS via AVPlayer")
-        presentMissingVLCAlert(from: presenter, url: url, title: title, context: context, onDismiss: onDismiss)
+        presentMissingVLCAlert(
+          from: presenter,
+          url: url,
+          title: title,
+          context: context,
+          headers: headers,
+          onDismiss: onDismiss
+        )
       }
     }
   }
@@ -47,6 +62,7 @@ public final class PlayerRouter {
     url: URL,
     title: String?,
     context: PlaybackContext,
+    headers: [String: String],
     onDismiss: (() -> Void)?
   ) {
     let alert = UIAlertController(
@@ -60,7 +76,14 @@ public final class PlayerRouter {
       onDismiss?()
     })
     alert.addAction(UIAlertAction(title: "Try AVPlayer anyway", style: .default) { _ in
-      presentAVPlayer(from: presenter, url: url, title: title, context: context, onDismiss: onDismiss)
+      presentAVPlayer(
+        from: presenter,
+        url: url,
+        title: title,
+        context: context,
+        headers: headers,
+        onDismiss: onDismiss
+      )
     })
     presenter.present(alert, animated: true)
   }
@@ -70,9 +93,11 @@ public final class PlayerRouter {
     url: URL,
     title: String?,
     context: PlaybackContext,
+    headers: [String: String],
     onDismiss: (() -> Void)?
   ) {
-    let asset = AVURLAsset(url: url)
+    let opts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": headers]
+    let asset = AVURLAsset(url: url, options: opts)
     let item = AVPlayerItem(asset: asset)
     let player = AVPlayer(playerItem: item)
     let vc = DismissAwareAVPlayerViewController()
