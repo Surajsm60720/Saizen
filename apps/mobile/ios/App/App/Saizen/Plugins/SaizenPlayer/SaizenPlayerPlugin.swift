@@ -100,8 +100,13 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("Playback URL not allowed (https or http://127.0.0.1 only)")
       return
     }
-    let hintRaw = call.getString("playerHint") ?? "vlc"
-    let hint = PlayerHint(rawValue: hintRaw) ?? .vlc
+    // Omit → preferredHint (https CDN / AVF → avplayer; mkv/etc → vlc).
+    let hint: PlayerHint = {
+      if let raw = call.getString("playerHint"), let parsed = PlayerHint(rawValue: raw) {
+        return parsed
+      }
+      return PlayerRouter.preferredHint(for: url)
+    }()
     let title = call.getString("title")
     let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
     let episode = call.getInt("episode") ?? 0
@@ -150,8 +155,13 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("playStream requires https URL")
       return
     }
-    let hintRaw = call.getString("playerHint") ?? "avplayer"
-    let hint = PlayerHint(rawValue: hintRaw) ?? .avplayer
+    // Omit → preferredHint (default avplayer for CDN; mkv/etc → vlc).
+    let hint: PlayerHint = {
+      if let raw = call.getString("playerHint"), let parsed = PlayerHint(rawValue: raw) {
+        return parsed
+      }
+      return PlayerRouter.preferredHint(for: url)
+    }()
     let title = call.getString("title")
     let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
     let episode = call.getInt("episode") ?? 0

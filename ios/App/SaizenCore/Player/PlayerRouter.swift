@@ -1,4 +1,5 @@
 import AVKit
+import MediaPlayer
 import UIKit
 
 #if canImport(MobileVLCKit)
@@ -11,6 +12,21 @@ public enum PlayerHint: String {
 }
 
 public final class PlayerRouter {
+  /// Lightweight probe: non-AVFoundation containers → VLC; everything else → AVPlayer.
+  public static func preferredHint(for url: URL) -> PlayerHint {
+    let path = url.path.lowercased()
+    let name = url.lastPathComponent.lowercased()
+    let ext = (name as NSString).pathExtension
+    let nonAvf: Set<String> = [
+      "mkv", "avi", "wmv", "flv", "asf", "ogm", "rm", "rmvb", "divx", "m2ts", "webm"
+    ]
+    if !ext.isEmpty, nonAvf.contains(ext) { return .vlc }
+    for candidate in nonAvf where path.contains(".\(candidate)") {
+      return .vlc
+    }
+    return .avplayer
+  }
+
   public static func present(
     from presenter: UIViewController,
     url: URL,
@@ -99,18 +115,24 @@ public final class PlayerRouter {
     let opts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": headers]
     let asset = AVURLAsset(url: url, options: opts)
     let item = AVPlayerItem(asset: asset)
+    item.externalMetadata = nowPlayingMetadata(title: title, episode: context.episode)
     let player = AVPlayer(playerItem: item)
     let vc = DismissAwareAVPlayerViewController()
     vc.player = player
     vc.title = title
+    vc.updatesNowPlayingInfoCenter = true
     vc.onDismiss = onDismiss
     vc.playbackContext = context
+
+    activatePlaybackSession()
+    NowPlayingSession.shared.bind(player: player, title: title, episode: context.episode)
 
     var observer: NSKeyValueObservation?
     observer = item.observe(\.status, options: [.new]) { item, _ in
       switch item.status {
       case .readyToPlay:
         NSLog("[Saizen] AVPlayerItem readyToPlay")
+        NowPlayingSession.shared.refresh(from: player)
         player.play()
       case .failed:
         NSLog(
@@ -128,11 +150,13 @@ public final class PlayerRouter {
       }
     }
 
-    if context.isValid {
+    do {
       let interval = CMTime(seconds: 2, preferredTimescale: 600)
       vc.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
         [weak player] _ in
         guard let player else { return }
+        NowPlayingSession.shared.refresh(from: player)
+        guard context.isValid else { return }
         let pos = player.currentTime().seconds
         let dur = player.currentItem?.duration.seconds ?? .nan
         guard pos.isFinite, dur.isFinite, dur >= 30 else { return }
@@ -166,6 +190,33 @@ public final class PlayerRouter {
     presenter.present(vc, animated: true)
   }
 
+  private static func activatePlaybackSession() {
+    let session = AVAudioSession.sharedInstance()
+    do {
+      try session.setCategory(.playback, mode: .moviePlayback, options: [])
+      try session.setActive(true)
+    } catch {
+      NSLog("[Saizen] AVAudioSession activate failed: %@", error.localizedDescription)
+    }
+  }
+
+  private static func nowPlayingMetadata(title: String?, episode: Int) -> [AVMetadataItem] {
+    var items: [AVMetadataItem] = []
+    if let title, !title.isEmpty {
+      let meta = AVMutableMetadataItem()
+      meta.identifier = .commonIdentifierTitle
+      meta.value = title as NSString
+      items.append(meta)
+    }
+    if episode > 0 {
+      let meta = AVMutableMetadataItem()
+      meta.identifier = .iTunesMetadataTrackSubTitle
+      meta.value = "Episode \(episode)" as NSString
+      items.append(meta)
+    }
+    return items
+  }
+
   #if canImport(MobileVLCKit)
   private static func presentVLC(
     from presenter: UIViewController,
@@ -180,6 +231,116 @@ public final class PlayerRouter {
     presenter.present(vc, animated: true)
   }
   #endif
+}
+
+/// Lock-screen / Control Center Now Playing + remote play/pause/seek for AVPlayer.
+final class NowPlayingSession {
+  static let shared = NowPlayingSession()
+
+  private weak var player: AVPlayer?
+  private var title: String?
+  private var episode: Int = 0
+  private var commandsInstalled = false
+  private var playTarget: Any?
+  private var pauseTarget: Any?
+  private var toggleTarget: Any?
+  private var changePositionTarget: Any?
+
+  private init() {}
+
+  func bind(player: AVPlayer, title: String?, episode: Int) {
+    self.player = player
+    self.title = title
+    self.episode = episode
+    installRemoteCommandsIfNeeded()
+    refresh(from: player)
+  }
+
+  func refresh(from player: AVPlayer) {
+    guard self.player === player else { return }
+    var info: [String: Any] = [:]
+    if let title, !title.isEmpty {
+      info[MPMediaItemPropertyTitle] = title
+    } else {
+      info[MPMediaItemPropertyTitle] = "Saizen"
+    }
+    if episode > 0 {
+      info[MPMediaItemPropertyAlbumTitle] = "Episode \(episode)"
+    }
+    let pos = player.currentTime().seconds
+    if pos.isFinite {
+      info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = pos
+    }
+    let dur = player.currentItem?.duration.seconds ?? .nan
+    if dur.isFinite, dur > 0 {
+      info[MPMediaItemPropertyPlaybackDuration] = dur
+    }
+    info[MPNowPlayingInfoPropertyPlaybackRate] = player.rate > 0 ? player.rate : 0
+    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+  }
+
+  func tearDown() {
+    MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    player = nil
+    title = nil
+    episode = 0
+    removeRemoteCommands()
+    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+  }
+
+  private func installRemoteCommandsIfNeeded() {
+    guard !commandsInstalled else { return }
+    let center = MPRemoteCommandCenter.shared()
+    center.playCommand.isEnabled = true
+    center.pauseCommand.isEnabled = true
+    center.togglePlayPauseCommand.isEnabled = true
+    center.changePlaybackPositionCommand.isEnabled = true
+
+    playTarget = center.playCommand.addTarget { [weak self] _ in
+      guard let player = self?.player else { return .commandFailed }
+      player.play()
+      self?.refresh(from: player)
+      return .success
+    }
+    pauseTarget = center.pauseCommand.addTarget { [weak self] _ in
+      guard let player = self?.player else { return .commandFailed }
+      player.pause()
+      self?.refresh(from: player)
+      return .success
+    }
+    toggleTarget = center.togglePlayPauseCommand.addTarget { [weak self] _ in
+      guard let player = self?.player else { return .commandFailed }
+      if player.rate > 0 { player.pause() } else { player.play() }
+      self?.refresh(from: player)
+      return .success
+    }
+    changePositionTarget = center.changePlaybackPositionCommand.addTarget { [weak self] event in
+      guard let player = self?.player,
+            let posEvent = event as? MPChangePlaybackPositionCommandEvent
+      else { return .commandFailed }
+      let t = CMTime(seconds: posEvent.positionTime, preferredTimescale: 600)
+      player.seek(to: t) { [weak self] finished in
+        guard finished, let self, let player = self.player else { return }
+        self.refresh(from: player)
+      }
+      return .success
+    }
+    commandsInstalled = true
+  }
+
+  private func removeRemoteCommands() {
+    guard commandsInstalled else { return }
+    let center = MPRemoteCommandCenter.shared()
+    if let playTarget { center.playCommand.removeTarget(playTarget) }
+    if let pauseTarget { center.pauseCommand.removeTarget(pauseTarget) }
+    if let toggleTarget { center.togglePlayPauseCommand.removeTarget(toggleTarget) }
+    if let changePositionTarget { center.changePlaybackPositionCommand.removeTarget(changePositionTarget) }
+    playTarget = nil
+    pauseTarget = nil
+    toggleTarget = nil
+    changePositionTarget = nil
+    commandsInstalled = false
+  }
 }
 
 /// AVPlayer sheet that notifies when the user dismisses it.
@@ -223,6 +384,7 @@ final class DismissAwareAVPlayerViewController: AVPlayerViewController {
       NotificationCenter.default.removeObserver(endObserver)
       self.endObserver = nil
     }
+    NowPlayingSession.shared.tearDown()
     onDismiss?()
   }
 }
