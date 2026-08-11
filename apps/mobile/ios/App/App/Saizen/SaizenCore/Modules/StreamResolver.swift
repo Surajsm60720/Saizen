@@ -221,12 +221,15 @@ public final class StreamResolver: @unchecked Sendable {
     query: String,
     episode: Int
   ) async -> [StreamCandidate] {
-    let scriptURL = URL(fileURLWithPath: module.scriptPath)
-    guard let data = try? Data(contentsOf: scriptURL),
-          let scriptSource = String(data: data, encoding: .utf8),
-          !scriptSource.isEmpty
-    else {
-      NSLog("[Saizen] StreamResolver missing script module=%@", module.id)
+    let scriptSource: String
+    do {
+      scriptSource = try await ModuleStore.shared.loadScriptSource(for: module.id)
+    } catch {
+      NSLog(
+        "[Saizen] StreamResolver missing script module=%@ error=%@",
+        module.id,
+        errorMessage(error)
+      )
       return []
     }
 

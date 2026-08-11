@@ -8,7 +8,8 @@ public struct InstalledModule: Codable, Equatable, Sendable {
   public var enabled: Bool
   public var order: Int
   public var lastSuccessAt: Date?
-  /// Absolute path to cached script under Application Support/Saizen/Modules/
+  /// Cached script file name under Application Support/Saizen/Modules/ (e.g. `jLCx0.js`).
+  /// Legacy rows may still store an absolute path — resolve via `ModuleStore.resolvedScriptURL`.
   public var scriptPath: String
 
   public init(
@@ -98,6 +99,64 @@ public final class ModuleStore: @unchecked Sendable {
     return modules.sorted { $0.order < $1.order }
   }
 
+  /// Resolves on-disk script URL for a module (handles relative + legacy absolute paths).
+  public static func resolvedScriptURL(for module: InstalledModule) -> URL {
+    let stored = module.scriptPath
+    if stored.hasPrefix("/") {
+      return URL(fileURLWithPath: stored)
+    }
+    if stored.isEmpty {
+      return modulesDir.appendingPathComponent(safeFileName(module.id) + ".js")
+    }
+    return modulesDir.appendingPathComponent(stored)
+  }
+
+  /// Returns UTF-8 script source, re-downloading from `scriptUrl` if the cache file is missing.
+  public func loadScriptSource(for moduleId: String) async throws -> String {
+    let module: InstalledModule = try {
+      lock.lock()
+      defer { lock.unlock() }
+      guard let m = modules.first(where: { $0.id == moduleId }) else {
+        throw ModuleStoreError.notFound(moduleId)
+      }
+      return m
+    }()
+
+    let fileURL = Self.resolvedScriptURL(for: module)
+    if let data = try? Data(contentsOf: fileURL),
+       let source = String(data: data, encoding: .utf8),
+       !source.isEmpty {
+      return source
+    }
+
+    NSLog(
+      "[Saizen] ModuleStore cache miss module=%@ path=%@ — re-downloading",
+      module.id,
+      fileURL.path
+    )
+    try await installScript(
+      id: module.id,
+      name: module.name,
+      scriptUrlString: module.scriptUrl,
+      baseUrl: module.baseUrl
+    )
+
+    let refreshed: InstalledModule = try {
+      lock.lock()
+      defer { lock.unlock() }
+      guard let m = modules.first(where: { $0.id == moduleId }) else {
+        throw ModuleStoreError.notFound(moduleId)
+      }
+      return m
+    }()
+    let url = Self.resolvedScriptURL(for: refreshed)
+    let data = try Data(contentsOf: url)
+    guard let source = String(data: data, encoding: .utf8), !source.isEmpty else {
+      throw ModuleStoreError.downloadFailed(0)
+    }
+    return source
+  }
+
   public func install(from entry: ModuleCatalogEntry) async throws {
     let name = entry.sourceName.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty else { throw ModuleStoreError.emptyName }
@@ -161,7 +220,7 @@ public final class ModuleStore: @unchecked Sendable {
     guard let idx = modules.firstIndex(where: { $0.id == id }) else {
       throw ModuleStoreError.notFound(id)
     }
-    let path = modules[idx].scriptPath
+    let fileURL = Self.resolvedScriptURL(for: modules[idx])
     modules.remove(at: idx)
     for i in modules.indices {
       modules[i].order = i
@@ -172,9 +231,7 @@ public final class ModuleStore: @unchecked Sendable {
     }
     try persistLocked()
     try persistLastGoodLocked()
-    if !path.isEmpty {
-      try? FileManager.default.removeItem(atPath: path)
-    }
+    try? FileManager.default.removeItem(at: fileURL)
   }
 
   public func recordSuccess(id: String) throws {
@@ -212,8 +269,15 @@ public final class ModuleStore: @unchecked Sendable {
     let data = try await Self.downloadScript(from: url)
 
     ensureLayout()
-    let fileURL = Self.modulesDir.appendingPathComponent(Self.safeFileName(id) + ".js")
+    let fileName = Self.safeFileName(id) + ".js"
+    let fileURL = Self.modulesDir.appendingPathComponent(fileName)
     try data.write(to: fileURL, options: .atomic)
+    NSLog(
+      "[Saizen] ModuleStore installed module=%@ bytes=%d path=%@",
+      id,
+      data.count,
+      fileURL.path
+    )
 
     lock.lock()
     defer { lock.unlock() }
@@ -222,7 +286,8 @@ public final class ModuleStore: @unchecked Sendable {
       modules[idx].name = name
       modules[idx].scriptUrl = url.absoluteString
       modules[idx].baseUrl = baseUrl
-      modules[idx].scriptPath = fileURL.path
+      modules[idx].scriptPath = fileName
+      modules[idx].enabled = true
     } else {
       let order = modules.map(\.order).max().map { $0 + 1 } ?? 0
       modules.append(
@@ -234,7 +299,7 @@ public final class ModuleStore: @unchecked Sendable {
           enabled: true,
           order: order,
           lastSuccessAt: nil,
-          scriptPath: fileURL.path
+          scriptPath: fileName
         )
       )
     }
@@ -301,7 +366,11 @@ public final class ModuleStore: @unchecked Sendable {
     decoder.dateDecodingStrategy = .iso8601
     if let data = try? Data(contentsOf: Self.libraryURL),
        let decoded = try? decoder.decode([InstalledModule].self, from: data) {
-      modules = decoded
+      modules = decoded.map { Self.normalizeScriptPath($0) }
+      // Persist relative paths if we migrated any absolute ones.
+      if modules != decoded {
+        try? persistLocked()
+      }
     } else {
       modules = []
     }
@@ -311,6 +380,21 @@ public final class ModuleStore: @unchecked Sendable {
     } else {
       lastGoodByAniList = [:]
     }
+  }
+
+  /// Prefer storing `id.js` relative to Modules dir (survives container path changes).
+  private static func normalizeScriptPath(_ module: InstalledModule) -> InstalledModule {
+    var m = module
+    let stored = m.scriptPath
+    if stored.hasPrefix("/") {
+      m.scriptPath = (stored as NSString).lastPathComponent
+      if m.scriptPath.isEmpty || m.scriptPath == "/" {
+        m.scriptPath = safeFileName(m.id) + ".js"
+      }
+    } else if stored.isEmpty {
+      m.scriptPath = safeFileName(m.id) + ".js"
+    }
+    return m
   }
 
   private func persistLocked() throws {
