@@ -4,6 +4,7 @@ import type {
   InstalledModule,
   ModuleCatalogEntry,
   PlayStreamOptions,
+  RecordModuleSuccessOptions,
   ResolveAndPlayOptions,
   ResolveStreamsOptions,
   StreamCandidate
@@ -149,6 +150,11 @@ export interface SaizenNative {
   resolveStreams?(options: ResolveStreamsOptions): Promise<StreamCandidate[]>
   /** Resolve + native AVPlayer fallback; records lastGoodModule on success. */
   resolveAndPlay?(options: ResolveAndPlayOptions): Promise<StreamCandidate>
+  /**
+   * After successful CDN `playStream`, record module success + lastGoodModule.
+   * Used by product Watch (resolveStreams → playStream) which skips resolveAndPlay.
+   */
+  recordModuleSuccess?(options: RecordModuleSuccessOptions): Promise<void>
   /** Subscribe to native player position updates. Returns unsubscribe. */
   onPlaybackProgress?(
     cb: (progress: NativePlaybackProgress) => void
@@ -203,6 +209,7 @@ export type {
   InstallModuleOptions,
   InstalledModule,
   ModuleCatalogEntry,
+  RecordModuleSuccessOptions,
   ResolveAndPlayOptions,
   ResolveStreamsOptions,
   StreamCandidate

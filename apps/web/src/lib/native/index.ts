@@ -6,6 +6,7 @@ import type {
   LibraryEntry,
   ModuleCatalogEntry,
   PlayStreamOptions,
+  RecordModuleSuccessOptions,
   ResolveAndPlayOptions,
   ResolveStreamsOptions,
   SaizenNative,
@@ -107,6 +108,9 @@ const webFallback: SaizenNative = {
   },
   async resolveAndPlay(_options: ResolveAndPlayOptions): Promise<StreamCandidate> {
     throw new Error('Stream resolve requires the iOS app')
+  },
+  async recordModuleSuccess(_options: RecordModuleSuccessOptions) {
+    // no-op on web
   },
   async torrentInfo(hash) {
     return emptyInfo(hash)

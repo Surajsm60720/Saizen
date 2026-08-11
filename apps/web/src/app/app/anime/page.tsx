@@ -974,8 +974,8 @@ function AnimeDetail() {
       resolution?: string
       sourceLabel?: string
     }
-  ) {
-    if (!media || !selected) return
+  ): Promise<boolean> {
+    if (!media || !selected) return false
     setPlaying(true)
     setStreamStatus(`Starting: ${startLabel}`)
     try {
@@ -986,10 +986,12 @@ function AnimeDetail() {
       const playOpts = await buildPlayStreamOptions(opts)
       setStreamStatus('Opening player…')
       await native.playStream(playOpts)
+      return true
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setStreamStatus(msg)
       toast.error(msg)
+      return false
     } finally {
       setPlaying(false)
     }
@@ -1001,13 +1003,24 @@ function AnimeDetail() {
       candidate.quality ||
       moduleNames[candidate.moduleId] ||
       candidate.moduleId
-    await playWithOptions(label, {
+    const ok = await playWithOptions(label, {
       url: candidate.url,
       headers: candidate.headers,
       resolution: candidate.quality,
       sourceLabel:
         moduleNames[candidate.moduleId] || candidate.title || candidate.moduleId
     })
+    if (!ok || !media) return
+    // Product Watch uses resolveStreams → playStream (not resolveAndPlay),
+    // so persist lastGoodModule / lastSuccessAt here.
+    try {
+      await getNative().recordModuleSuccess?.({
+        moduleId: candidate.moduleId,
+        anilistId: media.id
+      })
+    } catch {
+      // Non-fatal: playback already started.
+    }
   }
 
   async function playResult(result: ProviderResult) {

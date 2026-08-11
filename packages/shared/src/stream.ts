@@ -82,3 +82,9 @@ export interface InstallModuleFromUrlOptions {
   url: string
   name?: string
 }
+
+/** Persist module success after CDN `playStream` (mirrors resolveAndPlay bookkeeping). */
+export interface RecordModuleSuccessOptions {
+  moduleId: string
+  anilistId: number
+}

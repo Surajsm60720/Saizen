@@ -16,7 +16,8 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "reorderModules", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "removeModule", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "resolveStreams", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "resolveAndPlay", returnType: CAPPluginReturnPromise)
+    CAPPluginMethod(name: "resolveAndPlay", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "recordModuleSuccess", returnType: CAPPluginReturnPromise)
   ]
 
   @objc func listModules(_ call: CAPPluginCall) {
@@ -206,6 +207,28 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
           call.reject(error.localizedDescription)
         }
       }
+    }
+  }
+
+  /// Bookkeeping for product Watch after successful CDN `playStream`.
+  @objc func recordModuleSuccess(_ call: CAPPluginCall) {
+    guard let moduleId = call.getString("moduleId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !moduleId.isEmpty
+    else {
+      call.reject("Missing moduleId")
+      return
+    }
+    let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
+    guard anilistId > 0 else {
+      call.reject("Missing anilistId")
+      return
+    }
+    do {
+      try ModuleStore.shared.recordSuccess(id: moduleId)
+      try ModuleStore.shared.setLastGoodModule(anilistId: anilistId, moduleId: moduleId)
+      call.resolve(["ok": true])
+    } catch {
+      call.reject(error.localizedDescription)
     }
   }
 
