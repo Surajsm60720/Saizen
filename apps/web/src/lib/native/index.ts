@@ -6,9 +6,12 @@ import type {
   LibraryEntry,
   ModuleCatalogEntry,
   PlayStreamOptions,
+  ResolveAndPlayOptions,
+  ResolveStreamsOptions,
   SaizenNative,
   SpawnPlayerOptions,
   StorageUsage,
+  StreamCandidate,
   TorrentFile,
   TorrentInfo
 } from '@saizen/shared'
@@ -98,6 +101,12 @@ const webFallback: SaizenNative = {
   },
   async removeModule(): Promise<InstalledModule[]> {
     throw new Error('Module settings require the iOS app')
+  },
+  async resolveStreams(_options: ResolveStreamsOptions): Promise<StreamCandidate[]> {
+    throw new Error('Stream resolve requires the iOS app')
+  },
+  async resolveAndPlay(_options: ResolveAndPlayOptions): Promise<StreamCandidate> {
+    throw new Error('Stream resolve requires the iOS app')
   },
   async torrentInfo(hash) {
     return emptyInfo(hash)

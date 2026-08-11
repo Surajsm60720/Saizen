@@ -3,7 +3,10 @@ import type {
   InstallModuleOptions,
   InstalledModule,
   ModuleCatalogEntry,
-  PlayStreamOptions
+  PlayStreamOptions,
+  ResolveAndPlayOptions,
+  ResolveStreamsOptions,
+  StreamCandidate
 } from './stream'
 import type {
   ClientSettings,
@@ -142,6 +145,10 @@ export interface SaizenNative {
   setModuleEnabled?(id: string, enabled: boolean): Promise<void>
   reorderModules?(ids: string[]): Promise<InstalledModule[]>
   removeModule?(id: string): Promise<InstalledModule[]>
+  /** Ranked CDN stream candidates from enabled modules. */
+  resolveStreams?(options: ResolveStreamsOptions): Promise<StreamCandidate[]>
+  /** Resolve + native AVPlayer fallback; records lastGoodModule on success. */
+  resolveAndPlay?(options: ResolveAndPlayOptions): Promise<StreamCandidate>
   /** Subscribe to native player position updates. Returns unsubscribe. */
   onPlaybackProgress?(
     cb: (progress: NativePlaybackProgress) => void
@@ -195,5 +202,8 @@ export type {
   InstallModuleFromUrlOptions,
   InstallModuleOptions,
   InstalledModule,
-  ModuleCatalogEntry
+  ModuleCatalogEntry,
+  ResolveAndPlayOptions,
+  ResolveStreamsOptions,
+  StreamCandidate
 } from './stream'

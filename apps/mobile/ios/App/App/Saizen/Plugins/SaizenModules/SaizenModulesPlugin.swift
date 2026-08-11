@@ -1,7 +1,8 @@
 import Capacitor
 import Foundation
+import UIKit
 
-/// Capacitor plugin: CDN stream module library (install / enable / order).
+/// Capacitor plugin: CDN stream module library (install / enable / order) + resolve/play.
 @objc(SaizenModulesPlugin)
 public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
   public let identifier = "SaizenModulesPlugin"
@@ -13,7 +14,9 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "installModuleFromUrl", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "setModuleEnabled", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "reorderModules", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "removeModule", returnType: CAPPluginReturnPromise)
+    CAPPluginMethod(name: "removeModule", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "resolveStreams", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "resolveAndPlay", returnType: CAPPluginReturnPromise)
   ]
 
   @objc func listModules(_ call: CAPPluginCall) {
@@ -140,6 +143,72 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
+  @objc func resolveStreams(_ call: CAPPluginCall) {
+    guard let title = call.getString("title")?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
+      call.reject("Missing title")
+      return
+    }
+    let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
+    let episode = call.getInt("episode") ?? 0
+    guard anilistId > 0, episode > 0 else {
+      call.reject("Missing anilistId or episode")
+      return
+    }
+    let query = call.getString("query")
+
+    Task {
+      do {
+        let candidates = try await StreamResolver.shared.resolve(
+          title: title,
+          anilistId: anilistId,
+          episode: episode,
+          query: query
+        )
+        call.resolve(["candidates": candidates.map { Self.encodeCandidate($0) }])
+      } catch {
+        call.reject(error.localizedDescription)
+      }
+    }
+  }
+
+  @objc func resolveAndPlay(_ call: CAPPluginCall) {
+    guard let title = call.getString("title")?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
+      call.reject("Missing title")
+      return
+    }
+    let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
+    let episode = call.getInt("episode") ?? 0
+    guard anilistId > 0, episode > 0 else {
+      call.reject("Missing anilistId or episode")
+      return
+    }
+    let query = call.getString("query")
+    let idMal = call.getInt("idMal")
+    let spawn = Self.parseSpawnContext(call, fallbackTitle: title, idMal: idMal)
+
+    DispatchQueue.main.async {
+      guard let root = self.bridge?.viewController else {
+        call.reject("No view controller")
+        return
+      }
+      Task {
+        do {
+          let winner = try await StreamResolver.shared.playBest(
+            title: title,
+            anilistId: anilistId,
+            episode: episode,
+            query: query,
+            presenter: root,
+            spawn: spawn
+          )
+          call.resolve(["candidate": Self.encodeCandidate(winner)])
+        } catch {
+          call.reject(error.localizedDescription)
+        }
+      }
+    }
+  }
+
   // MARK: - Encoding
 
   private static let isoFormatter: ISO8601DateFormatter = {
@@ -176,5 +245,59 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     if let type = e.type { dict["type"] = type }
     if let quality = e.quality { dict["quality"] = quality }
     return dict
+  }
+
+  private static func encodeCandidate(_ c: StreamCandidate) -> [String: Any] {
+    var dict: [String: Any] = [
+      "url": c.url.absoluteString,
+      "headers": c.headers,
+      "moduleId": c.moduleId,
+      "kind": c.kind.rawValue
+    ]
+    if let quality = c.quality { dict["quality"] = quality }
+    if let title = c.title { dict["title"] = title }
+    return dict
+  }
+
+  private static func parseSpawnContext(_ call: CAPPluginCall, fallbackTitle: String, idMal: Int?) -> SpawnContext {
+    let hintRaw = call.getString("playerHint") ?? "avplayer"
+    let hint = PlayerHint(rawValue: hintRaw) ?? .avplayer
+    let skip = call.getObject("skipTimes")
+    let op = parseSkipInterval(skip?["op"])
+    let ed = parseSkipInterval(skip?["ed"])
+    let total = call.getInt("totalEpisodes")
+    let episode = call.getInt("episode") ?? 0
+    let hasNext =
+      call.getBool("hasNextEpisode")
+      ?? (total.map { t in episode > 0 && episode < t } ?? false)
+
+    let options = PlayerSessionOptions(
+      resolution: call.getString("resolution"),
+      sourceLabel: call.getString("sourceLabel"),
+      totalEpisodes: total,
+      hasNextEpisode: hasNext,
+      autoSkipOpEd: call.getBool("autoSkipOpEd") ?? false,
+      gestureSeekEnabled: call.getBool("gestureSeekEnabled") ?? true,
+      doubleTapSeekSec: call.getInt("doubleTapSeekSec") ?? 10,
+      tripleTapSeekSec: call.getInt("tripleTapSeekSec") ?? 30,
+      autoplayNext: call.getBool("autoplayNext") ?? false,
+      op: op,
+      ed: ed
+    )
+
+    return SpawnContext(
+      title: call.getString("title") ?? fallbackTitle,
+      idMal: idMal,
+      playerHint: hint,
+      options: options
+    )
+  }
+
+  private static func parseSkipInterval(_ raw: Any?) -> SkipInterval? {
+    guard let dict = raw as? [String: Any] else { return nil }
+    let start = (dict["start"] as? Double) ?? (dict["start"] as? Int).map(Double.init)
+    let end = (dict["end"] as? Double) ?? (dict["end"] as? Int).map(Double.init)
+    guard let start, let end else { return nil }
+    return SkipInterval(start: start, end: end)
   }
 }

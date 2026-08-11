@@ -12,9 +12,12 @@ import type {
   NativePlaybackProgress,
   NativePlayerAction,
   PlayStreamOptions,
+  ResolveAndPlayOptions,
+  ResolveStreamsOptions,
   SaizenNative,
   SpawnPlayerOptions,
   StorageUsage,
+  StreamCandidate,
   TorrentFile
 } from '@saizen/shared'
 import { updateWatchProgress } from '@/lib/watch/progress'
@@ -132,6 +135,8 @@ export async function installSaizenBridge(): Promise<void> {
     setModuleEnabled(o: { id: string; enabled: boolean }): Promise<{ ok?: boolean }>
     reorderModules(o: { ids: string[] }): Promise<{ modules: InstalledModule[] }>
     removeModule(o: { id: string }): Promise<{ modules: InstalledModule[] }>
+    resolveStreams(o: ResolveStreamsOptions): Promise<{ candidates: StreamCandidate[] }>
+    resolveAndPlay(o: ResolveAndPlayOptions): Promise<{ candidate: StreamCandidate }>
   }>('SaizenModules')
 
   void SaizenPlayer.addListener('playbackProgress', (progress) => {
@@ -206,6 +211,14 @@ export async function installSaizenBridge(): Promise<void> {
     async removeModule(id) {
       const { modules } = await SaizenModules.removeModule({ id })
       return modules ?? []
+    },
+    async resolveStreams(options) {
+      const { candidates } = await SaizenModules.resolveStreams(options)
+      return candidates ?? []
+    },
+    async resolveAndPlay(options) {
+      const { candidate } = await SaizenModules.resolveAndPlay(options)
+      return candidate
     },
     async onPlaybackProgress(cb) {
       const handle = await SaizenPlayer.addListener('playbackProgress', cb)

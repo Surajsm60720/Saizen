@@ -1,4 +1,4 @@
-import type { SpawnPlayerOptions } from './native'
+import type { SkipTimes, SpawnPlayerOptions } from './native'
 import type { PlayerHint } from './torrent'
 
 export type StreamKind = 'hls' | 'mp4' | 'other'
@@ -25,6 +25,21 @@ export interface ResolveStreamsOptions {
   episode: number
   idMal?: number | null
   query?: string
+}
+
+/** Native resolve + AVPlayer fallback loop (`SaizenModules.resolveAndPlay`). */
+export interface ResolveAndPlayOptions extends ResolveStreamsOptions {
+  playerHint?: PlayerHint
+  resolution?: string
+  sourceLabel?: string
+  totalEpisodes?: number | null
+  hasNextEpisode?: boolean
+  autoSkipOpEd?: boolean
+  gestureSeekEnabled?: boolean
+  doubleTapSeekSec?: number
+  tripleTapSeekSec?: number
+  autoplayNext?: boolean
+  skipTimes?: SkipTimes
 }
 
 /** Catalog entry from library.cufiy.net (or equivalent). */
