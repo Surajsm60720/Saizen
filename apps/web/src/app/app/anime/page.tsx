@@ -849,6 +849,31 @@ function AnimeDetail() {
     })
   }
 
+  async function enqueueStreamCandidate(candidate: StreamCandidate, episode: EpisodeItem) {
+    if (!media) return
+    const native = getNative()
+    if (!native.isApp || !native.enqueueDownload) {
+      toast.error('Downloads require the iOS app')
+      return
+    }
+    const url = candidate.url?.trim()
+    if (!url) throw new Error('Stream candidate has no url')
+    await native.enqueueDownload({
+      source: url,
+      kind: candidate.kind === 'hls' ? 'hls' : 'http',
+      headers: candidate.headers,
+      mediaId: media.id,
+      episode: episode.number,
+      seriesTitle: displayTitle(media),
+      episodeTitle: episode.title,
+      poster: media.coverImage?.large ?? media.coverImage?.medium ?? undefined,
+      resolution: candidate.quality,
+      sourceLabel: candidate.title || candidate.quality || candidate.moduleId,
+      seasonLabel: seasonFolderLabel(media),
+      isIncognito: isIncognitoMode()
+    })
+  }
+
   async function queueEpisodes(targets: EpisodeItem[]) {
     if (!media || !targets.length) return
     const native = getNative()
@@ -1267,6 +1292,12 @@ function AnimeDetail() {
         results={results}
         playing={playing}
         onPlayStream={(c) => void playStreamCandidate(c)}
+        onSaveStream={(c) => {
+          if (!selected) return
+          void enqueueStreamCandidate(c, selected)
+            .then(() => toast.success(`Queued episode ${selected.number}`))
+            .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
+        }}
         onPlay={(r) => void playResult(r)}
         onDownload={(r) => {
           if (!selected) return

@@ -243,7 +243,7 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
       "source", "mediaId", "episode", "seriesTitle", "episodeTitle", "poster",
       "resolution", "sourceLabel", "seasonLabel", "maxParallelDownloads", "wifiOnly",
       "preferredQuality", "torrentPersist", "torrentStreamedDownload", "torrentSpeed",
-      "maxConns", "hashes", "ids", "id"
+      "maxConns", "hashes", "ids", "id", "kind", "isIncognito"
     ]
     for key in keys {
       if let n = call.getInt(key) {
@@ -257,6 +257,17 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
       if let s = call.getString(key) {
         d[key] = s
       }
+    }
+    if let headers = call.getObject("headers") {
+      var map: [String: String] = [:]
+      for (key, value) in headers {
+        if let s = value as? String {
+          map[key] = s
+        } else if let n = value as? NSNumber {
+          map[key] = n.stringValue
+        }
+      }
+      if !map.isEmpty { d["headers"] = map }
     }
     return d
   }

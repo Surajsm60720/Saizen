@@ -41,6 +41,7 @@ export function EpisodeSourcesSheet({
   results,
   playing,
   onPlayStream,
+  onSaveStream,
   onPlay,
   onDownload
 }: {
@@ -57,6 +58,8 @@ export function EpisodeSourcesSheet({
   results: ProviderResult[]
   playing: boolean
   onPlayStream?: (candidate: StreamCandidate) => void
+  /** Save CDN stream (HLS/MP4) for offline — separate from torrent Save. */
+  onSaveStream?: (candidate: StreamCandidate) => void
   onPlay?: (result: ProviderResult) => void
   onDownload?: (result: ProviderResult) => void
 }) {
@@ -328,6 +331,18 @@ export function EpisodeSourcesSheet({
                                   <Badge variant="secondary">{streamKindLabel(c.kind)}</Badge>
                                 </div>
                               </div>
+                              {onSaveStream ? (
+                                <Button
+                                  size="lg"
+                                  variant="outline"
+                                  className="min-h-11 shrink-0 px-3"
+                                  disabled={playing}
+                                  haptic="selection"
+                                  onClick={() => onSaveStream(c)}
+                                >
+                                  Save
+                                </Button>
+                              ) : null}
                               {onPlayStream ? (
                                 <Button
                                   size="lg"

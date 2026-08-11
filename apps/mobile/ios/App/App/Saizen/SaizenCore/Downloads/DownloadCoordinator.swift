@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreMedia
 import Foundation
 import Network
 import UniformTypeIdentifiers
@@ -48,6 +49,10 @@ public struct SaizenDownloadRecord: Codable {
   public var relativePath: String?
   public var date: TimeInterval
   public var files: Int
+  /// Queued while Incognito Mode was on. Same download folder; filtered in UI when Incognito is off.
+  public var isIncognito: Bool?
+  /// HTTP headers for http/hls CDN downloads (Referer, User-Agent, etc.).
+  public var headers: [String: String]?
 }
 
 private struct SaizenDownloadManifest: Codable {
@@ -57,13 +62,15 @@ private struct SaizenDownloadManifest: Codable {
   var folderDisplayPath: String?
 }
 
-public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UIDocumentPickerDelegate {
+public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AVAssetDownloadDelegate, UIDocumentPickerDelegate {
   public static let shared = DownloadCoordinator()
 
   private let lock = NSLock()
   private var manifest: SaizenDownloadManifest
   private var engines: [String: LibtorrentEngine] = [:]
   private var httpTasks: [Int: String] = [:]
+  private var hlsTasks: [Int: String] = [:]
+  private var hlsTaskByJobId: [String: AVAssetDownloadTask] = [:]
   private var cancelFlags: Set<String> = []
   private var pausedFlags: Set<String> = []
   private var runningIds: Set<String> = []
@@ -71,6 +78,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
   private var pathMonitor: NWPathMonitor?
   private var wifiAvailable = true
   private var bgSession: URLSession!
+  private var assetSession: AVAssetDownloadURLSession!
   private var bgCompletion: (() -> Void)?
   private var audioPlayer: AVAudioPlayer?
   private var libraryServer: HTTPRangeServer?
@@ -93,6 +101,15 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     cfg.isDiscretionary = false
     cfg.allowsCellularAccess = !manifest.settings.wifiOnly
     bgSession = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
+    let assetCfg = URLSessionConfiguration.background(withIdentifier: "app.saizen.hls-downloads")
+    assetCfg.sessionSendsLaunchEvents = true
+    assetCfg.isDiscretionary = false
+    assetCfg.allowsCellularAccess = !manifest.settings.wifiOnly
+    assetSession = AVAssetDownloadURLSession(
+      configuration: assetCfg,
+      assetDownloadDelegate: self,
+      delegateQueue: OperationQueue.main
+    )
     startPathMonitor()
     pumpQueue()
   }
@@ -142,6 +159,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     let running = Array(engines.values)
     lock.unlock()
     bgSession.configuration.allowsCellularAccess = !wifiOnly
+    assetSession.configuration.allowsCellularAccess = !wifiOnly
     persist()
     for engine in running {
       engine.applyTransferLimits(downloadMbps: speed, maxConns: conns)
@@ -216,7 +234,8 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     let rawSeason = (options["seasonLabel"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let seasonLabel = rawSeason.isEmpty ? "Season 1" : Self.sanitize(rawSeason)
     let id = UUID().uuidString
-    let kind = source.hasPrefix("magnet:") || LibtorrentEngine.isTorrentFileURL(source) ? "torrent" : "http"
+    let kind = Self.resolveKind(source: source, explicit: options["kind"] as? String)
+    let headers = Self.parseHeaders(options["headers"])
     let record = SaizenDownloadRecord(
       id: id,
       mediaId: mediaId,
@@ -239,7 +258,9 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
       name: options["sourceLabel"] as? String ?? source,
       relativePath: nil,
       date: Date().timeIntervalSince1970,
-      files: 1
+      files: 1,
+      isIncognito: (options["isIncognito"] as? Bool) ?? false,
+      headers: headers.isEmpty ? nil : headers
     )
     lock.lock()
     manifest.jobs.append(record)
@@ -298,7 +319,10 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     manifest.jobs.removeAll { $0.id == id && $0.status != "completed" }
     let engine = engines[id]
     engines[id] = nil
+    let hlsTask = hlsTaskByJobId[id]
+    hlsTaskByJobId[id] = nil
     lock.unlock()
+    hlsTask?.cancel()
     engine?.shutdownSession()
     removeWorkDir(id: id)
     persist()
@@ -369,6 +393,11 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     guard let job, let fileURL = resolvedFileURL(for: job) else {
       throw NSError(domain: "SaizenDownloads", code: 4, userInfo: [NSLocalizedDescriptionKey: "Download not found"])
     }
+    // Offline HLS asset (.movpkg) — play local file URL with AVPlayer (no Range server).
+    if job.kind == "hls" || fileURL.pathExtension.lowercased() == "movpkg" {
+      spawn(fileURL, "avplayer", job)
+      return
+    }
     libraryServer?.stop()
     let store = try PieceStore.openComplete(url: fileURL)
     libraryStore = store
@@ -422,9 +451,12 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     persist()
     emit()
 
-    if job.kind == "http" {
+    switch job.kind {
+    case "http":
       startHttp(job)
-    } else {
+    case "hls":
+      startHls(job)
+    default:
       startTorrent(job)
     }
   }
@@ -438,9 +470,47 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
       fail(id: job.id, message: "Invalid HTTP(S) URL")
       return
     }
-    let task = bgSession.downloadTask(with: url)
+    var request = URLRequest(url: url)
+    if let headers = job.headers {
+      for (key, value) in headers {
+        request.setValue(value, forHTTPHeaderField: key)
+      }
+    }
+    let task = bgSession.downloadTask(with: request)
     lock.lock()
     httpTasks[task.taskIdentifier] = job.id
+    lock.unlock()
+    task.taskDescription = job.id
+    task.resume()
+  }
+
+  private func startHls(_ job: SaizenDownloadRecord) {
+    guard let url = URL(string: job.source),
+          let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https",
+          url.host != nil
+    else {
+      fail(id: job.id, message: "Invalid HLS URL")
+      return
+    }
+    var assetOptions: [String: Any] = [:]
+    if let headers = job.headers, !headers.isEmpty {
+      assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
+    }
+    let asset = AVURLAsset(url: url, options: assetOptions.isEmpty ? nil : assetOptions)
+    let title = job.sourceLabel ?? "\(job.seriesTitle) Ep \(job.episode)"
+    guard let task = assetSession.makeAssetDownloadTask(
+      asset: asset,
+      assetTitle: Self.sanitize(title),
+      assetArtworkData: nil,
+      options: nil
+    ) else {
+      fail(id: job.id, message: "HLS offline download is not available on this device")
+      return
+    }
+    lock.lock()
+    hlsTasks[task.taskIdentifier] = job.id
+    hlsTaskByJobId[job.id] = task
     lock.unlock()
     task.taskDescription = job.id
     task.resume()
@@ -524,12 +594,79 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
   public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
     if let error, (error as NSError).code != NSURLErrorCancelled {
       lock.lock()
-      let id = httpTasks[task.taskIdentifier] ?? task.taskDescription
+      let id =
+        httpTasks[task.taskIdentifier]
+        ?? hlsTasks[task.taskIdentifier]
+        ?? task.taskDescription
+      if task is AVAssetDownloadTask {
+        hlsTasks[task.taskIdentifier] = nil
+        if let id { hlsTaskByJobId[id] = nil }
+      }
       lock.unlock()
       if let id { fail(id: id, message: error.localizedDescription) }
+    } else if task is AVAssetDownloadTask {
+      lock.lock()
+      hlsTasks[task.taskIdentifier] = nil
+      if let desc = task.taskDescription {
+        hlsTaskByJobId[desc] = nil
+      }
+      lock.unlock()
     }
     bgCompletion?()
     bgCompletion = nil
+  }
+
+  // MARK: - AVAssetDownloadDelegate (HLS)
+
+  public func urlSession(
+    _ session: URLSession,
+    assetDownloadTask: AVAssetDownloadTask,
+    didLoad timeRange: CMTimeRange,
+    totalTimeRangesLoaded loadedTimeRanges: [NSValue],
+    timeRangeExpectedToLoad: CMTimeRange
+  ) {
+    lock.lock()
+    let id = hlsTasks[assetDownloadTask.taskIdentifier] ?? assetDownloadTask.taskDescription
+    lock.unlock()
+    guard let id else { return }
+    var loaded: Double = 0
+    for value in loadedTimeRanges {
+      loaded += value.timeRangeValue.duration.seconds
+    }
+    let expected = timeRangeExpectedToLoad.duration.seconds
+    let progress = expected > 0 ? min(1, loaded / expected) : 0
+    // Byte totals unknown for HLS asset downloads — report progress fraction only.
+    updateProgress(
+      id: id,
+      progress: progress,
+      downloaded: Int64(loaded * 1000),
+      total: Int64(max(expected, 0) * 1000),
+      speed: 0
+    )
+  }
+
+  public func urlSession(
+    _ session: URLSession,
+    assetDownloadTask: AVAssetDownloadTask,
+    didFinishDownloadingTo location: URL
+  ) {
+    lock.lock()
+    let id = hlsTasks[assetDownloadTask.taskIdentifier] ?? assetDownloadTask.taskDescription
+    hlsTasks[assetDownloadTask.taskIdentifier] = nil
+    if let id { hlsTaskByJobId[id] = nil }
+    lock.unlock()
+    guard let id else { return }
+    var name = location.lastPathComponent
+    if name.isEmpty { name = "episode.movpkg" }
+    if !name.lowercased().hasSuffix(".movpkg"), location.hasDirectoryPath {
+      name = (name as NSString).appendingPathExtension("movpkg") ?? "episode.movpkg"
+    }
+    let size = SaizenStorage.directorySize(location)
+    do {
+      try finalizeFile(jobId: id, from: location, originalName: name, size: size, hash: id)
+    } catch {
+      fail(id: id, message: error.localizedDescription)
+    }
   }
 
   private func finalizeFile(jobId: String, from src: URL, originalName: String, size: Int64, hash: String) throws {
@@ -572,6 +709,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     lock.lock()
     let engine = engines[jobId]
     engines[jobId] = nil
+    hlsTaskByJobId[jobId] = nil
     runningIds.remove(jobId)
     lock.unlock()
     engine?.shutdownSession()
@@ -634,7 +772,10 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     runningIds.remove(id)
     let engine = engines[id]
     engines[id] = nil
+    let hlsTask = hlsTaskByJobId[id]
+    hlsTaskByJobId[id] = nil
     lock.unlock()
+    hlsTask?.cancel()
     engine?.shutdownSession()
     removeWorkDir(id: id)
     persist()
@@ -955,6 +1096,32 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, UI
     if let s = raw as? String { return Int(s) ?? 0 }
     return 0
   }
+
+  private static func resolveKind(source: String, explicit: String?) -> String {
+    if let explicit {
+      let k = explicit.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+      if k == "torrent" || k == "http" || k == "hls" { return k }
+    }
+    if source.hasPrefix("magnet:") || LibtorrentEngine.isTorrentFileURL(source) {
+      return "torrent"
+    }
+    let lower = source.lowercased()
+    if lower.contains(".m3u8") { return "hls" }
+    return "http"
+  }
+
+  private static func parseHeaders(_ raw: Any?) -> [String: String] {
+    guard let dict = raw as? [String: Any] else { return [:] }
+    var out: [String: String] = [:]
+    for (key, value) in dict {
+      if let s = value as? String {
+        out[key] = s
+      } else if let n = value as? NSNumber {
+        out[key] = n.stringValue
+      }
+    }
+    return out
+  }
 }
 
 private extension SaizenDownloadRecord {
@@ -983,6 +1150,7 @@ private extension SaizenDownloadRecord {
     if let sourceLabel { d["sourceLabel"] = sourceLabel }
     if let error { d["error"] = error }
     if let relativePath { d["relativePath"] = relativePath }
+    d["isIncognito"] = isIncognito ?? false
     return d
   }
 

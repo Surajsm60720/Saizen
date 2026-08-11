@@ -6,7 +6,7 @@ export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'completed' |
 
 export type DownloadQuality = '2160p' | '1080p' | '720p' | '480p'
 
-export type DownloadKind = 'torrent' | 'http'
+export type DownloadKind = 'torrent' | 'http' | 'hls'
 
 export interface TorrentFile {
   id: number
@@ -64,6 +64,8 @@ export interface LibraryEntry {
   status?: DownloadStatus
   kind?: DownloadKind
   relativePath?: string
+  /** Queued while Incognito Mode was on — hidden from library UI when Incognito is off. */
+  isIncognito?: boolean
 }
 
 export interface DownloadJob {
@@ -85,6 +87,7 @@ export interface DownloadJob {
   speed: number
   error?: string
   hash?: string
+  isIncognito?: boolean
 }
 
 export interface EnqueueDownloadOptions {
@@ -97,6 +100,11 @@ export interface EnqueueDownloadOptions {
   resolution?: string
   sourceLabel?: string
   seasonLabel?: string
+  isIncognito?: boolean
+  /** When omitted, native infers from source (magnet/.torrent → torrent, .m3u8 → hls, else http). */
+  kind?: DownloadKind
+  /** Request headers for http/hls CDN downloads (Referer, User-Agent, etc.). */
+  headers?: Record<string, string>
 }
 
 export interface StorageUsage {
