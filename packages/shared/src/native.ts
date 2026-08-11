@@ -118,6 +118,12 @@ export interface SaizenNative {
   ): Promise<TorrentFile[]>
   spawnPlayer(options: SpawnPlayerOptions): Promise<void>
   stopPlayer(): Promise<void>
+  runModuleDay0Spike?(): Promise<{
+    moduleId: string
+    sourceName: string
+    streamUrl: string
+    quality?: string | null
+  }>
   /** Subscribe to native player position updates. Returns unsubscribe. */
   onPlaybackProgress?(
     cb: (progress: NativePlaybackProgress) => void

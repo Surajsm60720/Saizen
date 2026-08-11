@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { PageHeader, SettingsGroup, SettingsRow } from '@/components/saizen'
@@ -53,6 +53,7 @@ export default function SettingsPage() {
   const [isApp, setIsApp] = useState(false)
   const [creds, setCreds] = useState(() => getOAuthCredentials())
   const [quality, setQuality] = useState<DownloadQuality>('1080p')
+  const day0PressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const canAnilist = Boolean(creds.anilistClientId)
   const canMal = Boolean(creds.malClientId)
 
@@ -136,6 +137,34 @@ export default function SettingsPage() {
       toast.error(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(null)
+    }
+  }
+
+  function clearDay0Press() {
+    if (day0PressTimer.current) {
+      clearTimeout(day0PressTimer.current)
+      day0PressTimer.current = null
+    }
+  }
+
+  function startDay0Press() {
+    clearDay0Press()
+    day0PressTimer.current = setTimeout(() => {
+      day0PressTimer.current = null
+      void runDay0Spike()
+    }, 900)
+  }
+
+  async function runDay0Spike() {
+    try {
+      const native = getNative()
+      if (!native.runModuleDay0Spike) {
+        throw new Error('Day 0 spike is only available in a DEBUG iOS build')
+      }
+      const result = await native.runModuleDay0Spike()
+      toast.success(`Day 0 spike started: ${result.moduleId}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -430,7 +459,16 @@ export default function SettingsPage() {
 
         <SettingsGroup title="About">
           <SettingsRow label="Version" hint="Saizen for iOS">
-            <Badge variant="secondary">{APP_VERSION_LABEL}</Badge>
+            <Badge
+              variant="secondary"
+              onPointerDown={startDay0Press}
+              onPointerUp={clearDay0Press}
+              onPointerCancel={clearDay0Press}
+              onPointerLeave={clearDay0Press}
+              title="Long-press in DEBUG builds to run the Day 0 module spike"
+            >
+              {APP_VERSION_LABEL}
+            </Badge>
           </SettingsRow>
           <Link
             href="/app/changelog/"

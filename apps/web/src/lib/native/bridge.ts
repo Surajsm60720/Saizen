@@ -69,6 +69,12 @@ export async function installSaizenBridge(): Promise<void> {
   type PlayerPlugin = {
     spawnPlayer(o: SpawnPlayerOptions): Promise<void>
     stopPlayer(): Promise<void>
+    runModuleDay0Spike?(): Promise<{
+      moduleId: string
+      sourceName: string
+      streamUrl: string
+      quality?: string | null
+    }>
     addListener(
       event: 'playbackProgress',
       cb: (p: NativePlaybackProgress) => void
@@ -148,6 +154,12 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async stopPlayer() {
       await SaizenPlayer.stopPlayer()
+    },
+    async runModuleDay0Spike() {
+      if (!SaizenPlayer.runModuleDay0Spike) {
+        throw new Error('Day 0 spike is only available in a DEBUG iOS build')
+      }
+      return SaizenPlayer.runModuleDay0Spike()
     },
     async onPlaybackProgress(cb) {
       const handle = await SaizenPlayer.addListener('playbackProgress', cb)

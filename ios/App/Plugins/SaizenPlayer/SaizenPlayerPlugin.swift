@@ -5,10 +5,16 @@ import UIKit
 public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
   public let identifier = "SaizenPlayerPlugin"
   public let jsName = "SaizenPlayer"
-  public let pluginMethods: [CAPPluginMethod] = [
-    CAPPluginMethod(name: "spawnPlayer", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "stopPlayer", returnType: CAPPluginReturnPromise)
-  ]
+  public let pluginMethods: [CAPPluginMethod] = {
+    var methods: [CAPPluginMethod] = [
+      CAPPluginMethod(name: "spawnPlayer", returnType: CAPPluginReturnPromise),
+      CAPPluginMethod(name: "stopPlayer", returnType: CAPPluginReturnPromise)
+    ]
+    #if DEBUG
+    methods.append(CAPPluginMethod(name: "runModuleDay0Spike", returnType: CAPPluginReturnPromise))
+    #endif
+    return methods
+  }()
 
   public override func load() {
     PlaybackProgressReporter.shared.bind(plugin: self)
@@ -123,4 +129,34 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
       call.resolve()
     }
   }
+
+  #if DEBUG
+  @objc func runModuleDay0Spike(_ call: CAPPluginCall) {
+    DispatchQueue.main.async {
+      guard let root = self.bridge?.viewController else {
+        call.reject("No view controller")
+        return
+      }
+
+      Task {
+        do {
+          let result = try await ModuleDay0Spike.run(from: root)
+          var payload: [String: Any] = [
+            "moduleId": result.moduleId,
+            "sourceName": result.sourceName,
+            "streamUrl": result.streamURL.absoluteString
+          ]
+          if let quality = result.quality {
+            payload["quality"] = quality
+          }
+          call.resolve(payload)
+        } catch {
+          let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+          NSLog("[Saizen] Day0 spike failed: %@", message)
+          call.reject(message)
+        }
+      }
+    }
+  }
+  #endif
 }

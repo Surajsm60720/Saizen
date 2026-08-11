@@ -34,6 +34,8 @@
 		A1MD0001MODTYPES01 /* SaizenCore/Modules/ModuleTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1MD0002MODTYPES02 /* SaizenCore/Modules/ModuleTypes.swift */; };
 		A1MD0003FETCHSESS01 /* SaizenCore/Modules/ModuleFetchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1MD0004FETCHSESS02 /* SaizenCore/Modules/ModuleFetchSession.swift */; };
 		A1MD0005RUNTIME01 /* SaizenCore/Modules/ModuleRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1MD0006RUNTIME02 /* SaizenCore/Modules/ModuleRuntime.swift */; };
+		A1MD0007LIBCLIENT01 /* SaizenCore/Modules/ModuleLibraryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1MD0008LIBCLIENT02 /* SaizenCore/Modules/ModuleLibraryClient.swift */; };
+		A1MD0009DAY0SPIKE01 /* SaizenCore/Modules/ModuleDay0Spike.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1MD000ADAY0SPIKE02 /* SaizenCore/Modules/ModuleDay0Spike.swift */; };
 		A1LT0003BRIDGECPP0001 /* SaizenCore/Torrent/LibtorrentBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A1LT0004BRIDGECPP0002 /* SaizenCore/Torrent/LibtorrentBridge.cpp */; };
 		A1LT0006LIBA00000001 /* libtorrent.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A1LT0007LIBA00000002 /* libtorrent.a */; };
 		A1LT0008TRYA00000001 /* libtry_signal.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A1LT0009TRYA00000002 /* libtry_signal.a */; };
@@ -72,6 +74,8 @@
 		A1MD0002MODTYPES02 /* SaizenCore/Modules/ModuleTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Modules/ModuleTypes.swift; sourceTree = "<group>"; };
 		A1MD0004FETCHSESS02 /* SaizenCore/Modules/ModuleFetchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Modules/ModuleFetchSession.swift; sourceTree = "<group>"; };
 		A1MD0006RUNTIME02 /* SaizenCore/Modules/ModuleRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Modules/ModuleRuntime.swift; sourceTree = "<group>"; };
+		A1MD0008LIBCLIENT02 /* SaizenCore/Modules/ModuleLibraryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Modules/ModuleLibraryClient.swift; sourceTree = "<group>"; };
+		A1MD000ADAY0SPIKE02 /* SaizenCore/Modules/ModuleDay0Spike.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Modules/ModuleDay0Spike.swift; sourceTree = "<group>"; };
 		A1LT0004BRIDGECPP0002 /* SaizenCore/Torrent/LibtorrentBridge.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SaizenCore/Torrent/LibtorrentBridge.cpp; sourceTree = "<group>"; };
 		A1LT0005BRIDGEH000003 /* SaizenCore/Torrent/LibtorrentBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SaizenCore/Torrent/LibtorrentBridge.h; sourceTree = "<group>"; };
 		A1LT0007LIBA00000002 /* libtorrent.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtorrent.a; path = ../../../../ios/vendor/libtorrent-ios/lib/libtorrent.a; sourceTree = "<group>"; };
@@ -163,6 +167,8 @@
 				A1MD0002MODTYPES02 /* SaizenCore/Modules/ModuleTypes.swift */,
 				A1MD0004FETCHSESS02 /* SaizenCore/Modules/ModuleFetchSession.swift */,
 				A1MD0006RUNTIME02 /* SaizenCore/Modules/ModuleRuntime.swift */,
+				A1MD0008LIBCLIENT02 /* SaizenCore/Modules/ModuleLibraryClient.swift */,
+				A1MD000ADAY0SPIKE02 /* SaizenCore/Modules/ModuleDay0Spike.swift */,
 			);
 			path = Saizen;
 			sourceTree = "<group>";
@@ -312,6 +318,8 @@
 				A1MD0001MODTYPES01 /* SaizenCore/Modules/ModuleTypes.swift in Sources */,
 				A1MD0003FETCHSESS01 /* SaizenCore/Modules/ModuleFetchSession.swift in Sources */,
 				A1MD0005RUNTIME01 /* SaizenCore/Modules/ModuleRuntime.swift in Sources */,
+				A1MD0007LIBCLIENT01 /* SaizenCore/Modules/ModuleLibraryClient.swift in Sources */,
+				A1MD0009DAY0SPIKE01 /* SaizenCore/Modules/ModuleDay0Spike.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
