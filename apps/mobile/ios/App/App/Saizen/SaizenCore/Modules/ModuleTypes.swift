@@ -45,4 +45,24 @@ public struct ModuleCatalogEntry: Codable, Sendable {
   public var status: String?
   public var type: String?
   public var quality: String?
+
+  public init(
+    id: String,
+    sourceName: String,
+    scriptUrl: String,
+    baseUrl: String? = nil,
+    streamType: String? = nil,
+    status: String? = nil,
+    type: String? = nil,
+    quality: String? = nil
+  ) {
+    self.id = id
+    self.sourceName = sourceName
+    self.scriptUrl = scriptUrl
+    self.baseUrl = baseUrl
+    self.streamType = streamType
+    self.status = status
+    self.type = type
+    self.quality = quality
+  }
 }

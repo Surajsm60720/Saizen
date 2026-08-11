@@ -50,7 +50,8 @@ export const GLASS_TAB_ITEMS: readonly TabItem[] = [
       p.startsWith('/app/appearance') ||
       p.startsWith('/app/changelog') ||
       p.startsWith('/app/downloads') ||
-      p.startsWith('/app/extensions')
+      p.startsWith('/app/extensions') ||
+      p.startsWith('/app/modules')
   }
 ] as const
 

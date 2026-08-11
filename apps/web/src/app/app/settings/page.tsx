@@ -455,6 +455,18 @@ export default function SettingsPage() {
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
+          <Link
+            href="/app/modules/"
+            scroll={false}
+            onClick={() => rememberCurrentScroll()}
+            className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
+          >
+            <div>
+              <div className="text-sm font-medium">Modules</div>
+              <div className="text-xs text-muted-foreground">CDN stream sources</div>
+            </div>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </Link>
         </SettingsGroup>
 
         <SettingsGroup title="About">

@@ -26,3 +26,44 @@ export interface ResolveStreamsOptions {
   idMal?: number | null
   query?: string
 }
+
+/** Catalog entry from library.cufiy.net (or equivalent). */
+export interface ModuleCatalogEntry {
+  id: string
+  sourceName: string
+  scriptUrl: string
+  baseUrl?: string | null
+  streamType?: string | null
+  status?: string | null
+  type?: string | null
+  quality?: string | null
+}
+
+/** Module installed via SaizenModules bridge; script cached on device. */
+export interface InstalledModule {
+  id: string
+  name: string
+  scriptUrl: string
+  baseUrl?: string | null
+  enabled: boolean
+  order: number
+  lastSuccessAt?: string | null
+  scriptPath: string
+}
+
+export interface InstallModuleOptions {
+  id: string
+  scriptUrl?: string
+  sourceName?: string
+  name?: string
+  baseUrl?: string
+  streamType?: string
+  status?: string
+  type?: string
+  quality?: string
+}
+
+export interface InstallModuleFromUrlOptions {
+  url: string
+  name?: string
+}

@@ -1,4 +1,10 @@
-import type { PlayStreamOptions } from './stream'
+import type {
+  InstallModuleFromUrlOptions,
+  InstallModuleOptions,
+  InstalledModule,
+  ModuleCatalogEntry,
+  PlayStreamOptions
+} from './stream'
 import type {
   ClientSettings,
   DownloadJob,
@@ -127,6 +133,15 @@ export interface SaizenNative {
     streamUrl: string
     quality?: string | null
   }>
+
+  /** Installed CDN stream modules (native ModuleStore). */
+  listModules?(): Promise<InstalledModule[]>
+  browseModuleCatalog?(): Promise<ModuleCatalogEntry[]>
+  installModule?(options: InstallModuleOptions): Promise<InstalledModule[]>
+  installModuleFromUrl?(options: InstallModuleFromUrlOptions): Promise<InstalledModule[]>
+  setModuleEnabled?(id: string, enabled: boolean): Promise<void>
+  reorderModules?(ids: string[]): Promise<InstalledModule[]>
+  removeModule?(id: string): Promise<InstalledModule[]>
   /** Subscribe to native player position updates. Returns unsubscribe. */
   onPlaybackProgress?(
     cb: (progress: NativePlaybackProgress) => void
@@ -175,3 +190,10 @@ export type {
   TorrentFile,
   TorrentInfo
 }
+
+export type {
+  InstallModuleFromUrlOptions,
+  InstallModuleOptions,
+  InstalledModule,
+  ModuleCatalogEntry
+} from './stream'

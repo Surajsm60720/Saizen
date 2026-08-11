@@ -3,8 +3,12 @@ import type {
   ClientSettings,
   DownloadJob,
   EnqueueDownloadOptions,
+  InstallModuleFromUrlOptions,
+  InstallModuleOptions,
+  InstalledModule,
   LibraryEntry,
   MalAuthCodeResponse,
+  ModuleCatalogEntry,
   NativePlaybackProgress,
   NativePlayerAction,
   PlayStreamOptions,
@@ -120,6 +124,16 @@ export async function installSaizenBridge(): Promise<void> {
     deleteSecureItem(o: { key: string }): Promise<void>
   }>('SaizenAuth')
 
+  const SaizenModules = registerPlugin<{
+    listModules(): Promise<{ modules: InstalledModule[] }>
+    browseModuleCatalog(): Promise<{ entries: ModuleCatalogEntry[] }>
+    installModule(o: InstallModuleOptions): Promise<{ modules: InstalledModule[] }>
+    installModuleFromUrl(o: InstallModuleFromUrlOptions): Promise<{ modules: InstalledModule[] }>
+    setModuleEnabled(o: { id: string; enabled: boolean }): Promise<{ ok?: boolean }>
+    reorderModules(o: { ids: string[] }): Promise<{ modules: InstalledModule[] }>
+    removeModule(o: { id: string }): Promise<{ modules: InstalledModule[] }>
+  }>('SaizenModules')
+
   void SaizenPlayer.addListener('playbackProgress', (progress) => {
     const active = getActivePlayback()
     updateWatchProgress({
@@ -165,6 +179,33 @@ export async function installSaizenBridge(): Promise<void> {
         throw new Error('Day 0 spike is only available in a DEBUG iOS build')
       }
       return SaizenPlayer.runModuleDay0Spike()
+    },
+    async listModules() {
+      const { modules } = await SaizenModules.listModules()
+      return modules ?? []
+    },
+    async browseModuleCatalog() {
+      const { entries } = await SaizenModules.browseModuleCatalog()
+      return entries ?? []
+    },
+    async installModule(options) {
+      const { modules } = await SaizenModules.installModule(options)
+      return modules ?? []
+    },
+    async installModuleFromUrl(options) {
+      const { modules } = await SaizenModules.installModuleFromUrl(options)
+      return modules ?? []
+    },
+    async setModuleEnabled(id, enabled) {
+      await SaizenModules.setModuleEnabled({ id, enabled })
+    },
+    async reorderModules(ids) {
+      const { modules } = await SaizenModules.reorderModules({ ids })
+      return modules ?? []
+    },
+    async removeModule(id) {
+      const { modules } = await SaizenModules.removeModule({ id })
+      return modules ?? []
     },
     async onPlaybackProgress(cb) {
       const handle = await SaizenPlayer.addListener('playbackProgress', cb)

@@ -2,7 +2,9 @@ import type {
   ClientSettings,
   DownloadJob,
   EnqueueDownloadOptions,
+  InstalledModule,
   LibraryEntry,
+  ModuleCatalogEntry,
   PlayStreamOptions,
   SaizenNative,
   SpawnPlayerOptions,
@@ -76,6 +78,27 @@ const webFallback: SaizenNative = {
     console.info('[saizen] playStream (web fallback)', options)
   },
   async stopPlayer() {},
+  async listModules(): Promise<InstalledModule[]> {
+    return []
+  },
+  async browseModuleCatalog(): Promise<ModuleCatalogEntry[]> {
+    throw new Error('Module catalog requires the iOS app')
+  },
+  async installModule() {
+    throw new Error('Module install requires the iOS app')
+  },
+  async installModuleFromUrl() {
+    throw new Error('Module install requires the iOS app')
+  },
+  async setModuleEnabled() {
+    throw new Error('Module settings require the iOS app')
+  },
+  async reorderModules(): Promise<InstalledModule[]> {
+    throw new Error('Module settings require the iOS app')
+  },
+  async removeModule(): Promise<InstalledModule[]> {
+    throw new Error('Module settings require the iOS app')
+  },
   async torrentInfo(hash) {
     return emptyInfo(hash)
   },

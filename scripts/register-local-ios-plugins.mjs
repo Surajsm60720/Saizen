@@ -14,7 +14,8 @@ const configPath = resolve(root, 'apps/mobile/ios/App/App/capacitor.config.json'
 const LOCAL_PLUGINS = [
   'SaizenTorrentPlugin',
   'SaizenPlayerPlugin',
-  'SaizenAuthPlugin'
+  'SaizenAuthPlugin',
+  'SaizenModulesPlugin'
 ]
 
 const config = JSON.parse(readFileSync(configPath, 'utf8'))
