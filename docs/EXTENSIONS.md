@@ -1,6 +1,17 @@
 # Extension / Provider format
 
-Saizen loads **Hayase-compatible** remote torrent extensions from public catalogs (reimplemented host — does **not** vendor Hayase source).
+## Watch vs Download roles
+
+| Role | Source | Runtime | Purpose |
+|------|--------|---------|---------|
+| **Watch** | CDN modules (`library.cufiy.net` / custom HTTPS) | Native `JSContext` + `ModuleFetchSession` | Resolve HLS/MP4 `StreamCandidate` → `playStream` → AVPlayer |
+| **Download** | Optional Hayase-compatible **torrent** extensions + built-in providers | Web extension loader (`apps/web/src/lib/extensions/`) | Magnet / `.torrent` / HTTP → `DownloadCoordinator` (offline library) |
+
+Live Watch does **not** use `playTorrent`. Torrent extensions stay available for Save / queue / offline play only. Stream Save (HLS/MP4 with headers) is a separate download kind on the same coordinator.
+
+---
+
+Saizen loads **Hayase-compatible** remote torrent extensions from public catalogs (reimplemented host — does **not** vendor Hayase source). These feed the **Download** path, not primary Watch.
 
 ## Catalogs
 

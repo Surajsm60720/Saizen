@@ -1,6 +1,6 @@
-# Saizen · v1.3.3
+# Saizen · v1.3.4
 
-Personal iOS anime client: **Next.js + Capacitor 7 + Swift**, with an in-app BitTorrent engine (libtorrent) that streams to **MobileVLCKit** over a loopback HTTP Range server.
+Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Watch plays CDN HLS/MP4 via native modules → **AVPlayer**; libtorrent remains for optional offline downloads.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
 
@@ -10,11 +10,11 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 - **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar
 - **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names (tap to copy)
 - **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
-- **Player** — Native VLC + in-app chrome; ±seek / next episode; double/triple-tap seek; autoplay-next sources sheet; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
-- **Downloads** — Settings → Downloads: pick a folder, queue episodes (all / range / selected), lock-screen progress, offline library playback
+- **Player** — AVPlayer primary (HLS/MP4); MobileVLCKit probe fallback; ±seek / next episode; double/triple-tap seek; autoplay-next sources sheet; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
+- **Downloads** — Settings → Downloads: queue HLS/MP4 streams or torrents; lock-screen progress; offline library playback
 - **Transfers** — Settings: torrent download Mbps cap + max peers (applied live to libtorrent)
 - **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
-- **Sources** — Hayase-compatible extensions; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
+- **Sources** — CDN Watch modules (Settings → Modules) + optional Hayase-compatible torrent extensions for Download; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
 - **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (wheel, hex, live preview); immersive Saizen chrome on Home only; swipe-down to dismiss sources
 - **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only extensions; CSP meta; secret-scanned IPA packaging
 
@@ -22,7 +22,7 @@ Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md)
 
 ## Status
 
-Proven on a physical iPhone for browse → search filters → sources → torrent/HTTP stream → VLC playback, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, and adult index mirror failover.
+Proven on a physical iPhone for browse → search filters → module streams → AVPlayer, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, and adult index mirror failover.
 
 This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
@@ -156,20 +156,15 @@ Expect: no App Store listing, 7-day cert renewals on free IDs, and each installe
 ## Playback path
 
 ```
-Provider (magnet | .torrent URL | http URL)
-  → SaizenTorrent.playTorrent
-  → libtorrent (or ProgressiveHTTP) → PieceStore
-  → HTTPRangeServer  http://127.0.0.1:PORT/{token}/…/stream
-  → focus ~4MB head (+ lookahead); MKV cues/tail deferred
-  → open player ASAP (buffering overlay + live stats)
-  → SaizenPlayer → MobileVLCKit (MKV / incomplete Range) / AVPlayer (MP4)
+Module (JSContext) → StreamCandidate (HLS/MP4) → AVPlayer
+Optional: torrent/magnet → DownloadCoordinator (offline only)
 ```
 
-Download continues in the background while VLC plays from the contiguous head.
+Live Watch resolves HTTPS module scripts (`searchResults` → `extractEpisodes` → `extractStreamUrl`), ranks candidates, and plays via `playStream` (AVPlayer primary). Magnet / `.torrent` rows are Save/download only — not the primary Watch path.
 
 ## Providers
 
-Torrent sources come from **Hayase-compatible extensions** (https://exten.pages.dev). Manage them in-app under **Settings → Extensions**. NZB is not supported. HTTP progressive sources are preferred when an extension returns a direct URL. Extension JS is fetched over **HTTPS only**. Adult indexes (Sukebei) may use public Nyaa mirrors when `nyaa.si` TLS is blocked on the device network.
+**Watch** uses CDN modules (Settings → Modules; catalog `library.cufiy.net`). **Download** may still use **Hayase-compatible torrent extensions** (https://exten.pages.dev) under Settings → Extensions. NZB is not supported. Extension JS is fetched over **HTTPS only**. Adult indexes (Sukebei) may use public Nyaa mirrors when `nyaa.si` TLS is blocked on the device network.
 
 | Built-in | Notes |
 |----------|--------|

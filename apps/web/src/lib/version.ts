@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.3.3'
+export const APP_VERSION = '1.3.4'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.3.4',
+    date: '2026-08-11',
+    title: 'CDN Watch middleware',
+    highlights: [
+      'Watch resolves HTTPS modules (JSContext) to HLS/MP4 StreamCandidates and plays via AVPlayer — live torrent Watch removed',
+      'Sources sheet lists module streams first; magnet/torrent rows are Save/download only',
+      'Downloads: enqueue HLS/MP4 (with headers) or keep torrent Save through DownloadCoordinator',
+      'Settings → Modules for catalog install / enable / order; torrent extensions remain optional for Download',
+      'Player defaults CDN HTTPS to AVPlayer with Now Playing; MobileVLCKit stays probe-only for non-AVF candidates'
+    ]
+  },
   {
     version: '1.3.3',
     date: '2026-08-09',
