@@ -29,7 +29,11 @@ import { fetchJikanEpisodeList, type JikanEpisodeDetail } from '@/lib/jikan/epis
 import { ensureExtensions, searchExtensions, rankScore } from '@/lib/extensions'
 import { searchAllProviders, type ProviderResult } from '@/lib/providers'
 import getNative from '@/lib/native'
-import type { NativePlayerAction, SkipTimes, StreamCandidate } from '@saizen/shared'
+import type {
+  NativePlayerAction,
+  PlayStreamOptions,
+  StreamCandidate
+} from '@saizen/shared'
 import { isAnilistConnected, isMalConnected } from '@/lib/auth/tokens'
 import type { AniListStatus } from '@/lib/auth/sync'
 import { listContinueWatching, recordContinueWatching } from '@/lib/watch/continue'
@@ -87,12 +91,18 @@ function AnimeDetail() {
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<EpisodeItem | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [searching, setSearching] = useState(false)
+  const [streamsSearching, setStreamsSearching] = useState(false)
+  const [torrentsSearching, setTorrentsSearching] = useState(false)
   const [results, setResults] = useState<ProviderResult[]>([])
   const [streamCandidates, setStreamCandidates] = useState<StreamCandidate[]>([])
   const [moduleNames, setModuleNames] = useState<Record<string, string>>({})
   const [playing, setPlaying] = useState(false)
-  const [status, setStatus] = useState('')
+  const [streamStatus, setStreamStatus] = useState('')
+  const [torrentStatus, setTorrentStatus] = useState('')
+  const status = useMemo(
+    () => [streamStatus, torrentStatus].filter(Boolean).join(' · '),
+    [streamStatus, torrentStatus]
+  )
   const [themes, setThemes] = useState<AnimeThemeTrack[]>([])
   const [themesLoading, setThemesLoading] = useState(false)
   const [themesNotice, setThemesNotice] = useState<string | null>(null)
@@ -157,7 +167,10 @@ function AnimeDetail() {
       setResults([])
       setStreamCandidates([])
       setModuleNames({})
-      setStatus('')
+      setStreamStatus('')
+      setTorrentStatus('')
+      setStreamsSearching(false)
+      setTorrentsSearching(false)
       setThemes([])
       setThemesNotice(null)
       setJikanByEp(new Map())
@@ -647,150 +660,134 @@ function AnimeDetail() {
   }, [media])
 
   const searchSources = useCallback(
-    async (ep: EpisodeItem) => {
+    (ep: EpisodeItem) => {
       if (!media || ep.unreleased) return
       setSelected(ep)
       setSheetOpen(true)
-      setSearching(true)
-      setStatus(`Searching sources for episode ${ep.number}…`)
       setResults([])
       setStreamCandidates([])
-      try {
-        const titles = [
-          media.title.romaji,
-          media.title.english,
-          media.title.native,
-          media.title.userPreferred
-        ].filter(Boolean) as string[]
+      setStreamsSearching(true)
+      setTorrentsSearching(true)
+      setStreamStatus(`Searching streams for episode ${ep.number}…`)
+      setTorrentStatus('Searching torrent sources…')
 
-        const adult =
-          Boolean(media.isAdult) ||
-          (media.genres ?? []).some((g) => /hentai/i.test(g || ''))
+      const titles = [
+        media.title.romaji,
+        media.title.english,
+        media.title.native,
+        media.title.userPreferred
+      ].filter(Boolean) as string[]
 
-        const native = getNative()
-        const query =
-          media.title.romaji || media.title.english || displayTitle(media)
+      const adult =
+        Boolean(media.isAdult) ||
+        (media.genres ?? []).some((g) => /hentai/i.test(g || ''))
 
-        const streamPromise = (async (): Promise<{
-          candidates: StreamCandidate[]
-          noModules: boolean
-          error?: string
-        }> => {
+      const native = getNative()
+      const query =
+        media.title.romaji || media.title.english || displayTitle(media)
+
+      // Streams resolve independently — sheet updates as soon as modules respond.
+      void (async () => {
+        try {
           if (!native.isApp || !native.resolveStreams || !native.listModules) {
-            return { candidates: [], noModules: false }
+            setStreamCandidates([])
+            setStreamStatus('')
+            return
           }
-          try {
-            const modules = await native.listModules()
-            const names: Record<string, string> = {}
-            for (const m of modules) names[m.id] = m.name
-            setModuleNames(names)
-            const enabled = modules.filter((m) => m.enabled)
-            if (!enabled.length) {
-              return { candidates: [], noModules: true }
-            }
-            const candidates = await native.resolveStreams({
-              title: displayTitle(media),
-              anilistId: media.id,
-              episode: ep.number,
-              idMal: media.idMal ?? null,
-              query
-            })
-            return { candidates: candidates ?? [], noModules: false }
-          } catch (e) {
-            return {
-              candidates: [],
-              noModules: false,
-              error: e instanceof Error ? e.message : String(e)
-            }
+          const modules = await native.listModules()
+          const names: Record<string, string> = {}
+          for (const m of modules) names[m.id] = m.name
+          setModuleNames(names)
+          const enabled = modules.filter((m) => m.enabled)
+          if (!enabled.length) {
+            setStreamCandidates([])
+            setStreamStatus('Install modules in Settings → Modules')
+            return
           }
-        })()
-
-        const [streamOut, extOut, builtInOut] = await Promise.all([
-          streamPromise,
-          searchExtensions({ media, episode: ep.number }),
-          // Built-ins (SubsPlease/Erai/Nyaa) don't index adult — skip for speed.
-          adult
-            ? Promise.resolve({ results: [] as ProviderResult[], errors: [] })
-            : searchAllProviders({
-                anilistId: media.id,
-                title: displayTitle(media),
-                titles,
-                episode: ep.number,
-                episodeCount: media.episodes
-              })
-        ])
-
-        setStreamCandidates(streamOut.candidates)
-
-        const merged = [...extOut.results, ...builtInOut.results]
-        const sorted = [...merged].sort((a, b) => rankScore(b) - rankScore(a))
-        setResults(sorted)
-        const magnets = sorted.filter((r) => r.magnet).length
-        const torrents = sorted.filter((r) => r.torrentUrl).length
-        const http = sorted.filter((r) => r.httpUrl).length
-        const streamCount = streamOut.candidates.length
-
-        const torrentStatusParts: string[] = []
-        if (sorted.length) {
-          torrentStatusParts.push(
-            `${sorted.length} torrent source(s) · ${http} HTTP · ${torrents} torrent · ${magnets} magnet`
+          const candidates = await native.resolveStreams({
+            title: displayTitle(media),
+            anilistId: media.id,
+            episode: ep.number,
+            idMal: media.idMal ?? null,
+            query
+          })
+          const list = candidates ?? []
+          setStreamCandidates(list)
+          setStreamStatus(
+            list.length > 0
+              ? `${list.length} stream(s) from modules`
+              : 'No streams from modules'
           )
+        } catch (e) {
+          setStreamCandidates([])
+          setStreamStatus(
+            `Streams unavailable: ${e instanceof Error ? e.message : String(e)}`
+          )
+        } finally {
+          setStreamsSearching(false)
         }
+      })()
 
-        if (streamOut.noModules) {
-          setStatus(
-            [
-              'Install modules in Settings → Modules',
-              ...torrentStatusParts
-            ].join(' · ')
-          )
-        } else if (streamOut.error && !streamCount) {
-          setStatus(
-            [
-              `Streams unavailable: ${streamOut.error}`,
-              ...torrentStatusParts
-            ].join(' · ') || streamOut.error
-          )
-        } else if (streamCount > 0) {
-          setStatus(
-            [
-              `${streamCount} stream(s) from modules`,
-              ...torrentStatusParts
-            ].join(' · ')
-          )
-        } else if (!sorted.length) {
-          const errs = [...extOut.errors, ...builtInOut.errors]
-          const tls = errs.some((e) => /TLS|SSL|-1200|secure connection/i.test(e.message))
-          if (adult && tls) {
-            setStatus(
-              'Adult index blocked on this network (TLS). Enable Nyaa Sukebei and retry, or use another network/VPN.'
+      // Torrents / extensions — parallel, does not block Streams UI.
+      void (async () => {
+        try {
+          const [extOut, builtInOut] = await Promise.all([
+            searchExtensions({ media, episode: ep.number }),
+            // Built-ins (SubsPlease/Erai/Nyaa) don't index adult — skip for speed.
+            adult
+              ? Promise.resolve({ results: [] as ProviderResult[], errors: [] })
+              : searchAllProviders({
+                  anilistId: media.id,
+                  title: displayTitle(media),
+                  titles,
+                  episode: ep.number,
+                  episodeCount: media.episodes
+                })
+          ])
+
+          const merged = [...extOut.results, ...builtInOut.results]
+          const sorted = [...merged].sort((a, b) => rankScore(b) - rankScore(a))
+          setResults(sorted)
+          const magnets = sorted.filter((r) => r.magnet).length
+          const torrents = sorted.filter((r) => r.torrentUrl).length
+          const http = sorted.filter((r) => r.httpUrl).length
+
+          if (sorted.length) {
+            setTorrentStatus(
+              `${sorted.length} torrent source(s) · ${http} HTTP · ${torrents} torrent · ${magnets} magnet`
             )
-          } else if (adult && errs.length) {
-            setStatus(
-              `No adult sources. ${errs[0]!.providerId}: ${errs[0]!.message}`
-            )
-          } else if (errs.length) {
-            setStatus(`No sources found. ${errs[0]!.providerId}: ${errs[0]!.message}`)
           } else {
-            setStatus(
-              adult
-                ? 'No sources found. Enable Nyaa Sukebei under Extensions → Hentai.'
-                : 'No streams or torrent sources for this episode.'
+            const errs = [...extOut.errors, ...builtInOut.errors]
+            const tls = errs.some((e) =>
+              /TLS|SSL|-1200|secure connection/i.test(e.message)
             )
+            if (adult && tls) {
+              setTorrentStatus(
+                'Adult index blocked on this network (TLS). Enable Nyaa Sukebei and retry, or use another network/VPN.'
+              )
+            } else if (adult && errs.length) {
+              setTorrentStatus(
+                `No adult torrent sources. ${errs[0]!.providerId}: ${errs[0]!.message}`
+              )
+            } else if (errs.length) {
+              setTorrentStatus(
+                `No torrent sources. ${errs[0]!.providerId}: ${errs[0]!.message}`
+              )
+            } else if (adult) {
+              setTorrentStatus(
+                'No torrent sources. Enable Nyaa Sukebei under Extensions → Hentai.'
+              )
+            } else {
+              setTorrentStatus('')
+            }
           }
-        } else {
-          setStatus(
-            [
-              'No streams from modules',
-              ...torrentStatusParts
-            ].join(' · ')
-          )
+        } catch (e) {
+          setResults([])
+          setTorrentStatus(e instanceof Error ? e.message : String(e))
+        } finally {
+          setTorrentsSearching(false)
         }
-      } catch (e) {
-        setStatus(e instanceof Error ? e.message : String(e))
-      } finally {
-        setSearching(false)
-      }
+      })()
     },
     [media]
   )
@@ -889,136 +886,116 @@ function AnimeDetail() {
     }
   }
 
-  async function playStreamCandidate(candidate: StreamCandidate) {
+  /** Shared skipTimes / continue / activePlayback / player options for CDN Watch. */
+  async function buildPlayStreamOptions(opts: {
+    url: string
+    headers?: Record<string, string>
+    resolution?: string
+    sourceLabel?: string
+  }): Promise<PlayStreamOptions> {
+    if (!media || !selected) {
+      throw new Error('No episode selected')
+    }
+    const watch = getWatchSettings()
+    const totalEpisodes = media.episodes ?? null
+    const hasNextEpisode =
+      typeof totalEpisodes === 'number' &&
+      totalEpisodes > 0 &&
+      selected.number < totalEpisodes
+
+    let skipTimes = undefined as PlayStreamOptions['skipTimes']
+    if (media.idMal) {
+      const probed = getProbedDurationSec(media.id, selected.number)
+      const approxSec =
+        probed ?? (media.duration != null && media.duration > 0 ? media.duration * 60 : 0)
+      skipTimes =
+        (await fetchSkipTimes(media.idMal, selected.number, approxSec)) ?? undefined
+    }
+
+    recordContinueWatching(media, selected.number)
+    setActivePlayback({
+      anilistId: media.id,
+      episode: selected.number,
+      idMal: media.idMal ?? null,
+      totalEpisodes
+    })
+
+    return {
+      url: opts.url,
+      headers: opts.headers,
+      playerHint: 'avplayer',
+      title: `${displayTitle(media)} · Ep ${selected.number}`,
+      episode: selected.number,
+      anilistId: media.id,
+      idMal: media.idMal ?? null,
+      resolution: opts.resolution,
+      sourceLabel: opts.sourceLabel,
+      totalEpisodes,
+      hasNextEpisode,
+      autoSkipOpEd: watch.autoSkipOpEd,
+      gestureSeekEnabled: watch.gestureSeekEnabled,
+      doubleTapSeekSec: watch.doubleTapSeekSec,
+      tripleTapSeekSec: watch.tripleTapSeekSec,
+      autoplayNext: watch.autoplayNext,
+      skipTimes
+    }
+  }
+
+  async function playWithOptions(
+    startLabel: string,
+    opts: {
+      url: string
+      headers?: Record<string, string>
+      resolution?: string
+      sourceLabel?: string
+    }
+  ) {
     if (!media || !selected) return
     setPlaying(true)
-    const label =
-      candidate.title ||
-      candidate.quality ||
-      moduleNames[candidate.moduleId] ||
-      candidate.moduleId
-    setStatus(`Starting: ${label}`)
+    setStreamStatus(`Starting: ${startLabel}`)
     try {
       const native = getNative()
       if (!native.isApp || !native.playStream) {
         throw new Error('CDN Watch requires the iOS app')
       }
-
-      const watch = getWatchSettings()
-      const totalEpisodes = media.episodes ?? null
-      const hasNextEpisode =
-        typeof totalEpisodes === 'number' &&
-        totalEpisodes > 0 &&
-        selected.number < totalEpisodes
-
-      let skipTimes: SkipTimes | null = null
-      if (media.idMal) {
-        const probed = getProbedDurationSec(media.id, selected.number)
-        const approxSec =
-          probed ?? (media.duration != null && media.duration > 0 ? media.duration * 60 : 0)
-        skipTimes = await fetchSkipTimes(media.idMal, selected.number, approxSec)
-      }
-
-      recordContinueWatching(media, selected.number)
-      setActivePlayback({
-        anilistId: media.id,
-        episode: selected.number,
-        idMal: media.idMal ?? null,
-        totalEpisodes
-      })
-      setStatus('Opening player…')
-      await native.playStream({
-        url: candidate.url,
-        headers: candidate.headers,
-        playerHint: 'avplayer',
-        title: `${displayTitle(media)} · Ep ${selected.number}`,
-        episode: selected.number,
-        anilistId: media.id,
-        idMal: media.idMal ?? null,
-        resolution: candidate.quality,
-        sourceLabel:
-          moduleNames[candidate.moduleId] || candidate.title || candidate.moduleId,
-        totalEpisodes,
-        hasNextEpisode,
-        autoSkipOpEd: watch.autoSkipOpEd,
-        gestureSeekEnabled: watch.gestureSeekEnabled,
-        doubleTapSeekSec: watch.doubleTapSeekSec,
-        tripleTapSeekSec: watch.tripleTapSeekSec,
-        autoplayNext: watch.autoplayNext,
-        skipTimes: skipTimes ?? undefined
-      })
+      const playOpts = await buildPlayStreamOptions(opts)
+      setStreamStatus('Opening player…')
+      await native.playStream(playOpts)
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
-      toast.error(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      setStreamStatus(msg)
+      toast.error(msg)
     } finally {
       setPlaying(false)
     }
   }
 
-  async function playResult(result: ProviderResult) {
-    if (!media || !selected) return
+  async function playStreamCandidate(candidate: StreamCandidate) {
+    const label =
+      candidate.title ||
+      candidate.quality ||
+      moduleNames[candidate.moduleId] ||
+      candidate.moduleId
+    await playWithOptions(label, {
+      url: candidate.url,
+      headers: candidate.headers,
+      resolution: candidate.quality,
+      sourceLabel:
+        moduleNames[candidate.moduleId] || candidate.title || candidate.moduleId
+    })
+  }
 
+  async function playResult(result: ProviderResult) {
     // Watch is CDN-only — magnets/torrents cannot start progressive playback.
     if (!result.httpUrl) {
       toast.error('Watch is CDN-only. Use Save for torrent downloads.')
       return
     }
-
-    setPlaying(true)
-    setStatus(`Starting: ${result.title}`)
-    try {
-      const native = getNative()
-      if (!native.isApp || !native.playStream) {
-        throw new Error('CDN Watch requires the iOS app')
-      }
-
-      const watch = getWatchSettings()
-      const totalEpisodes = media.episodes ?? null
-      const hasNextEpisode =
-        typeof totalEpisodes === 'number' &&
-        totalEpisodes > 0 &&
-        selected.number < totalEpisodes
-
-      let skipTimes: SkipTimes | null = null
-      if (media.idMal) {
-        const probed = getProbedDurationSec(media.id, selected.number)
-        const approxSec =
-          probed ?? (media.duration != null && media.duration > 0 ? media.duration * 60 : 0)
-        skipTimes = await fetchSkipTimes(media.idMal, selected.number, approxSec)
-      }
-
-      recordContinueWatching(media, selected.number)
-      setActivePlayback({
-        anilistId: media.id,
-        episode: selected.number,
-        idMal: media.idMal ?? null,
-        totalEpisodes
-      })
-      setStatus('Opening player…')
-      await native.playStream({
-        url: result.httpUrl,
-        playerHint: 'avplayer',
-        title: `${displayTitle(media)} · Ep ${selected.number}`,
-        episode: selected.number,
-        anilistId: media.id,
-        idMal: media.idMal ?? null,
-        resolution: result.resolution,
-        sourceLabel: result.title,
-        totalEpisodes,
-        hasNextEpisode,
-        autoSkipOpEd: watch.autoSkipOpEd,
-        gestureSeekEnabled: watch.gestureSeekEnabled,
-        doubleTapSeekSec: watch.doubleTapSeekSec,
-        tripleTapSeekSec: watch.tripleTapSeekSec,
-        autoplayNext: watch.autoplayNext,
-        skipTimes: skipTimes ?? undefined
-      })
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
-      toast.error(e instanceof Error ? e.message : String(e))
-    } finally {
-      setPlaying(false)
-    }
+    await playWithOptions(result.title, {
+      url: result.httpUrl,
+      resolution: result.resolution,
+      sourceLabel: result.title
+    })
   }
 
   if (loading) {
@@ -1282,7 +1259,8 @@ function AnimeDetail() {
         episode={selected}
         malId={media.idMal}
         durationMin={media.duration}
-        searching={searching}
+        streamsSearching={streamsSearching}
+        torrentsSearching={torrentsSearching}
         status={status}
         streamCandidates={streamCandidates}
         moduleNames={moduleNames}

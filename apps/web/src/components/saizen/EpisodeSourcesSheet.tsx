@@ -33,7 +33,8 @@ export function EpisodeSourcesSheet({
   onOpenChange,
   episode,
   durationMin,
-  searching,
+  streamsSearching = false,
+  torrentsSearching = false,
   status,
   streamCandidates = [],
   moduleNames = {},
@@ -48,7 +49,8 @@ export function EpisodeSourcesSheet({
   episode: EpisodeItem | null
   malId?: number | null
   durationMin?: number | null
-  searching: boolean
+  streamsSearching?: boolean
+  torrentsSearching?: boolean
   status: string
   streamCandidates?: StreamCandidate[]
   moduleNames?: Record<string, string>
@@ -185,7 +187,10 @@ export function EpisodeSourcesSheet({
   if (!mounted) return null
 
   const showEmpty =
-    !searching && streamCandidates.length === 0 && results.length === 0
+    !streamsSearching &&
+    !torrentsSearching &&
+    streamCandidates.length === 0 &&
+    results.length === 0
 
   return (
     <Sheet
@@ -293,16 +298,8 @@ export function EpisodeSourcesSheet({
                   </p>
                 ) : null}
 
-                {searching && streamCandidates.length === 0 && results.length === 0 ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} className="h-14 w-full rounded-xl" />
-                    ))}
-                  </div>
-                ) : null}
-
                 {/* CDN streams from installed modules — primary Watch path */}
-                {streamCandidates.length > 0 || searching ? (
+                {streamCandidates.length > 0 || streamsSearching ? (
                   <div>
                     <h3 className="mb-2 text-sm font-semibold">Streams</h3>
                     {streamCandidates.length > 0 ? (
@@ -346,39 +343,47 @@ export function EpisodeSourcesSheet({
                           )
                         })}
                       </SourceList>
-                    ) : searching ? (
+                    ) : (
                       <div className="space-y-2">
                         {Array.from({ length: 2 }).map((_, i) => (
                           <Skeleton key={i} className="h-14 w-full rounded-xl" />
                         ))}
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 ) : null}
 
                 {/* Torrents / extensions — Save only for magnets; Watch is CDN */}
-                {results.length > 0 ? (
+                {results.length > 0 || torrentsSearching ? (
                   <div>
                     <h3 className="mb-2 text-sm font-semibold">Download via torrent</h3>
-                    <SourceList>
-                      {results.map((r, i) => {
-                        const key = `${r.providerName}-${r.title}-${i}`
-                        const canStreamHttp = Boolean(r.httpUrl)
-                        return (
-                          <SourceRow
-                            key={key}
-                            result={r}
-                            likelyFaster={isLikelyFaster(r, i)}
-                            playing={playing}
-                            showPlay={canStreamHttp && Boolean(onPlay)}
-                            onPlay={
-                              canStreamHttp && onPlay ? () => onPlay(r) : undefined
-                            }
-                            onDownload={onDownload ? () => onDownload(r) : undefined}
-                          />
-                        )
-                      })}
-                    </SourceList>
+                    {results.length > 0 ? (
+                      <SourceList>
+                        {results.map((r, i) => {
+                          const key = `${r.providerName}-${r.title}-${i}`
+                          const canStreamHttp = Boolean(r.httpUrl)
+                          return (
+                            <SourceRow
+                              key={key}
+                              result={r}
+                              likelyFaster={isLikelyFaster(r, i)}
+                              playing={playing}
+                              showPlay={canStreamHttp && Boolean(onPlay)}
+                              onPlay={
+                                canStreamHttp && onPlay ? () => onPlay(r) : undefined
+                              }
+                              onDownload={onDownload ? () => onDownload(r) : undefined}
+                            />
+                          )
+                        })}
+                      </SourceList>
+                    ) : (
+                      <div className="space-y-2">
+                        {Array.from({ length: 2 }).map((_, i) => (
+                          <Skeleton key={i} className="h-14 w-full rounded-xl" />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : null}
 
