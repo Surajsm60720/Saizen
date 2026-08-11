@@ -41,6 +41,8 @@ Thumbs.db
 *.swp
 *~
 .cursor/
+.derivedData/
+.derived-data/
 
 # —— iOS / Xcode ——
 apps/mobile/ios/App/Pods/

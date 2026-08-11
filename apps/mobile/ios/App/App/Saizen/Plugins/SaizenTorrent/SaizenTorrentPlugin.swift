@@ -29,11 +29,72 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "playLibraryItem", returnType: CAPPluginReturnPromise)
   ]
 
+  private var lastProgressNotifyAt = Date.distantPast
+  private var lastStatusSignature = ""
+  private var pendingProgressJobs: [[String: Any]]?
+  private var pendingIncludeLibrary = false
+  private var progressNotifyWorkItem: DispatchWorkItem?
+  private let progressNotifyInterval: TimeInterval = 2.0
+
   public override func load() {
     SaizenPlayback.purgeIfIdle()
     DownloadCoordinator.shared.onJobsUpdated = { [weak self] jobs in
-      self?.notifyListeners("downloadProgress", data: ["jobs": jobs])
+      guard let self else { return }
+      // Cap→WebView postMessage floods can terminate WKWebView (50k+ queued IPC).
+      // Progress ticks are throttled; status changes (completed/paused/deleted) flush
+      // immediately and include a library snapshot only on those transitions.
+      DispatchQueue.main.async {
+        self.pendingProgressJobs = jobs
+        let statusSig = Self.statusSignature(jobs)
+        let statusChanged = statusSig != self.lastStatusSignature
+        if statusChanged {
+          self.lastStatusSignature = statusSig
+          self.pendingIncludeLibrary = true
+          self.flushProgressNotify()
+          return
+        }
+        let elapsed = Date().timeIntervalSince(self.lastProgressNotifyAt)
+        if elapsed >= self.progressNotifyInterval {
+          self.flushProgressNotify()
+          return
+        }
+        self.progressNotifyWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+          self?.flushProgressNotify()
+        }
+        self.progressNotifyWorkItem = work
+        DispatchQueue.main.asyncAfter(
+          deadline: .now() + max(0.05, self.progressNotifyInterval - elapsed),
+          execute: work
+        )
+      }
     }
+  }
+
+  private static func statusSignature(_ jobs: [[String: Any]]) -> String {
+    jobs
+      .compactMap { job -> String? in
+        guard let id = job["id"] as? String else { return nil }
+        let status = job["status"] as? String ?? "?"
+        return "\(id):\(status)"
+      }
+      .sorted()
+      .joined(separator: "|")
+  }
+
+  private func flushProgressNotify() {
+    progressNotifyWorkItem?.cancel()
+    progressNotifyWorkItem = nil
+    guard let jobs = pendingProgressJobs else { return }
+    pendingProgressJobs = nil
+    let includeLibrary = pendingIncludeLibrary
+    pendingIncludeLibrary = false
+    lastProgressNotifyAt = Date()
+    var data: [String: Any] = ["jobs": jobs]
+    if includeLibrary {
+      data["library"] = DownloadCoordinator.shared.librarySnapshot()
+    }
+    notifyListeners("downloadProgress", data: data)
   }
 
   @objc func playTorrent(_ call: CAPPluginCall) {
@@ -154,8 +215,11 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("Missing ids — pass non-empty hashes/ids to delete specific library items")
       return
     }
-    DownloadCoordinator.shared.deleteLibrary(ids: ids)
-    call.resolve()
+    // File deletes + directory walks must not block the Cap/UI thread (IPC backlog → WebView kill).
+    DispatchQueue.global(qos: .userInitiated).async {
+      DownloadCoordinator.shared.deleteLibrary(ids: ids)
+      call.resolve()
+    }
   }
 
   @objc func cachedTorrents(_ call: CAPPluginCall) {
@@ -168,7 +232,10 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   @objc func storageUsage(_ call: CAPPluginCall) {
-    call.resolve(DownloadCoordinator.shared.storageUsage())
+    DispatchQueue.global(qos: .utility).async {
+      let usage = DownloadCoordinator.shared.storageUsage()
+      call.resolve(usage)
+    }
   }
 
   @objc func clearCache(_ call: CAPPluginCall) {

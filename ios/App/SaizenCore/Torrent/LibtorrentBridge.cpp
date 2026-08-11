@@ -14,6 +14,7 @@
 #include <libtorrent/torrent_status.hpp>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -34,6 +35,9 @@ struct SaizenLTSession {
   int tick_count = 0;
   bool has_meta = false;
   bool full_file_mode = false;
+  /// Once set, every piece of the selected video stays priority ≥ 1 so libtorrent
+  /// never reports "finished" mid-stream (which disconnects all peers).
+  bool streaming_floor_applied = false;
   std::atomic<bool> alive{true};
 
   explicit SaizenLTSession(lt::settings_pack pack)
@@ -232,6 +236,35 @@ extern "C" int saizen_lt_add_torrent_file(SaizenLTSession *session, const char *
   return 0;
 }
 
+/// Piece indices covering the selected video file (clamped to torrent).
+static void file_piece_span(SaizenLTSession *session, int n, int *out_first, int *out_last) {
+  int64_t abs_start = session->file_offset;
+  int64_t abs_end = session->file_offset + std::max<int64_t>(session->file_size, 1);
+  int first = int(abs_start / session->piece_length);
+  int last = int((abs_end - 1) / session->piece_length);
+  *out_first = std::max(0, std::min(first, n - 1));
+  *out_last = std::max(0, std::min(last, n - 1));
+}
+
+/// Keep every piece of the active video wanted (prio ≥ 1). Priority 0 makes
+/// libtorrent report torrent_status::finished as soon as the head window is
+/// done, which disconnects peers with "torrent finished" and stalls VLC.
+static void ensure_streaming_floor_locked(SaizenLTSession *session, int n) {
+  if (session->streaming_floor_applied || session->file_size <= 0 || session->piece_length <= 0) {
+    return;
+  }
+  int file_first = 0;
+  int file_last = 0;
+  file_piece_span(session, n, &file_first, &file_last);
+  for (int p = file_first; p <= file_last; ++p) {
+    auto idx = lt::piece_index_t(p);
+    if (std::uint8_t(session->handle.piece_priority(idx)) == 0) {
+      session->handle.piece_priority(idx, lt::download_priority_t(1));
+    }
+  }
+  session->streaming_floor_applied = true;
+}
+
 static void prioritize_bytes_locked(SaizenLTSession *session, int64_t start, int64_t end) {
   if (!session->handle.is_valid() || !session->has_meta || session->piece_length <= 0) return;
 
@@ -245,16 +278,35 @@ static void prioritize_bytes_locked(SaizenLTSession *session, int64_t start, int
   first = std::max(0, std::min(first, n - 1));
   last = std::max(0, std::min(last, n - 1));
 
+  ensure_streaming_floor_locked(session, n);
+
   for (int p = first; p <= last; ++p) {
     session->handle.piece_priority(lt::piece_index_t(p), lt::download_priority_t(7));
     // Tighter deadlines = sooner piece requests for the warm / playhead window.
     session->handle.set_piece_deadline(lt::piece_index_t(p), (p - first) * 25);
   }
+
+  // Pipeline past the playhead so VLC does not underrun while peers catch up.
+  int64_t ahead_bytes = 24 * 1024 * 1024;
+  int64_t ahead_end = std::min(session->file_offset + session->file_size,
+    abs_end + ahead_bytes);
+  int ahead_last = int((ahead_end - 1) / session->piece_length);
+  ahead_last = std::max(0, std::min(ahead_last, n - 1));
+  for (int p = last + 1; p <= ahead_last; ++p) {
+    auto idx = lt::piece_index_t(p);
+    if (std::uint8_t(session->handle.piece_priority(idx)) < 4) {
+      session->handle.piece_priority(idx, lt::download_priority_t(4));
+    }
+  }
+
+  // If we briefly hit "finished" before the floor applied, re-enter download.
+  session->handle.unset_flags(lt::torrent_flags::upload_mode);
+  session->handle.resume();
 }
 
-/// Streaming mode: zero every piece, then only raise [0, head_bytes) of the active file.
-/// Without this, prioritize_files(7) marks the whole episode high-priority and we
-/// download tens/hundreds of MB before the first contiguous head bytes arrive.
+/// Streaming kickoff: prefer the file head without abandoning the rest of the file.
+/// Head = priority 7 + deadlines; short lookahead = 4; remainder of the video = 1.
+/// Leaving remainder at 0 caused premature "finished" + peer disconnects (~30MB in).
 static void focus_head_locked(SaizenLTSession *session, int64_t head_bytes) {
   if (!session->handle.is_valid() || !session->has_meta || session->piece_length <= 0) return;
   auto ti = session->handle.torrent_file();
@@ -263,9 +315,17 @@ static void focus_head_locked(SaizenLTSession *session, int64_t head_bytes) {
   if (n <= 0) return;
 
   std::vector<lt::download_priority_t> prios(std::size_t(n), lt::download_priority_t(0));
+  int file_first = 0;
+  int file_last = 0;
+  file_piece_span(session, n, &file_first, &file_last);
+  for (int p = file_first; p <= file_last; ++p) {
+    prios[std::size_t(p)] = lt::download_priority_t(1);
+  }
+
   int64_t want = std::min(head_bytes, session->file_size);
   if (want <= 0) {
     session->handle.prioritize_pieces(prios);
+    session->streaming_floor_applied = true;
     return;
   }
   int64_t abs_start = session->file_offset;
@@ -275,17 +335,23 @@ static void focus_head_locked(SaizenLTSession *session, int64_t head_bytes) {
   first = std::max(0, std::min(first, n - 1));
   last = std::max(0, std::min(last, n - 1));
 
-  // Small lookahead so playback does not stall right after open.
-  int extend = std::min(n - 1, last + 24);
+  // Lookahead so open does not stall immediately after the first few pieces.
+  int extend = std::min(file_last, last + 24);
   for (int p = first; p <= extend; ++p) {
     prios[std::size_t(p)] = lt::download_priority_t(p <= last ? 7 : 4);
   }
   session->handle.prioritize_pieces(prios);
+  session->streaming_floor_applied = true;
+  session->handle.set_flags(lt::torrent_flags::sequential_download);
+  session->handle.unset_flags(lt::torrent_flags::upload_mode);
+  session->handle.resume();
   for (int p = first; p <= last; ++p) {
     session->handle.set_piece_deadline(lt::piece_index_t(p), (p - first) * 20);
   }
   log(session, std::string("focus_head pieces=") + std::to_string(first) + ".." + std::to_string(last)
-    + " extend=" + std::to_string(extend) + " bytes=" + std::to_string(want));
+    + " extend=" + std::to_string(extend)
+    + " floor=" + std::to_string(file_first) + ".." + std::to_string(file_last)
+    + " bytes=" + std::to_string(want));
 }
 
 extern "C" void saizen_lt_prioritize_bytes(SaizenLTSession *session, int64_t start, int64_t end) {
@@ -325,6 +391,7 @@ static void download_all_locked(SaizenLTSession *session) {
   session->handle.set_flags(lt::torrent_flags::sequential_download);
   session->handle.unset_flags(lt::torrent_flags::upload_mode);
   session->handle.resume();
+  session->streaming_floor_applied = true;
   log(session, std::string("download_all pieces=") + std::to_string(first) + ".." + std::to_string(last)
     + " bytes=" + std::to_string(session->file_size));
 }

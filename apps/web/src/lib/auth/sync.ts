@@ -14,6 +14,7 @@ import {
   upsertViewerListCacheEntry,
   type MediaListEntry
 } from '@/lib/anilist'
+import { isIncognitoMode } from '@/lib/privacy/incognito'
 
 export type SyncListOpts = {
   anilistId: number
@@ -60,6 +61,9 @@ export async function syncListProgress(opts: SyncListOpts): Promise<{
   mal: SyncStatus
   errors: string[]
 }> {
+  if (isIncognitoMode()) {
+    return { anilist: 'skip', mal: 'skip', errors: [] }
+  }
   const errors: string[] = []
   const result: { anilist: SyncStatus; mal: SyncStatus } = {
     anilist: 'skip',
@@ -128,6 +132,9 @@ export async function syncListEntry(opts: SyncListEntryOpts): Promise<{
   errors: string[]
   entryId?: number
 }> {
+  if (isIncognitoMode()) {
+    throw new Error('List edits are unavailable in Incognito Mode')
+  }
   const errors: string[] = []
   const result: { anilist: SyncStatus; mal: SyncStatus; entryId?: number } = {
     anilist: 'skip',
@@ -207,6 +214,9 @@ export async function syncDeleteListEntry(opts: {
   anilistMediaId?: number | null
   idMal?: number | null
 }): Promise<{ anilist: SyncStatus; mal: SyncStatus; errors: string[] }> {
+  if (isIncognitoMode()) {
+    return { anilist: 'skip', mal: 'skip', errors: [] }
+  }
   const errors: string[] = []
   const result: { anilist: SyncStatus; mal: SyncStatus } = {
     anilist: 'skip',

@@ -256,6 +256,14 @@ public final class StreamResolver: @unchecked Sendable {
       let results = try await session.searchResults(query)
       guard let showURL = firstURLString(in: results) else {
         NSLog("[Saizen] StreamResolver no search url module=%@", module.id)
+        // AnimePahe (jLCx0) routes every request through tmdbproxy22…/solver.
+        // When that worker returns Cloudflare 525, search JSON has no `data` and
+        // the module returns empty hrefs — install Animex/Aniwave instead.
+        if module.id == "jLCx0" || module.name.lowercased().contains("animepahe") {
+          NSLog(
+            "[Saizen] StreamResolver hint: AnimePahe bypass worker likely down — try Animex (jjqos) or Aniwave (zc8g) in Settings → Modules"
+          )
+        }
         return []
       }
       let episodes = try await session.extractEpisodes(showURL)

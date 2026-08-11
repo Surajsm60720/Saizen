@@ -21,6 +21,10 @@ import {
   setScroll,
   takeLastKnownScroll
 } from '@/lib/nav/scrollMemory'
+import {
+  isIncognitoMode,
+  subscribeIncognitoMode
+} from '@/lib/privacy/incognito'
 import HomePage from './page'
 import SearchPage from './app/search/page'
 import SchedulePage from './app/schedule/page'
@@ -48,6 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showLandscapeNav = !isPlayer && !immersiveHeader
   const [headerFaded, setHeaderFaded] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
+  const [incognito, setIncognito] = useState(false)
   const routeKeyRef = useRef(
     typeof window !== 'undefined'
       ? scrollKey(pathname, window.location.search)
@@ -65,6 +70,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       markBridgeReady()
       setDownloadSettings({})
     })()
+  }, [])
+
+  useEffect(() => {
+    setIncognito(isIncognitoMode())
+    return subscribeIncognitoMode(setIncognito)
   }, [])
 
   // Hide bottom nav while the soft keyboard is open (iOS visualViewport shrinks).
@@ -151,17 +161,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               headerFaded && 'opacity-0 -translate-y-1'
             )}
           >
-            <Link
-              href="/"
-              replace
-              scroll={false}
-              draggable={false}
-              onClick={() => rememberCurrentScroll()}
-              className="text-brand text-white transition-opacity hover:opacity-95 [text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_0_18px_rgba(0,0,0,0.55)]"
-              tabIndex={headerFaded ? -1 : undefined}
-            >
-              Saizen
-            </Link>
+            <div className="flex min-w-0 items-center gap-2">
+              <Link
+                href="/"
+                replace
+                scroll={false}
+                draggable={false}
+                onClick={() => rememberCurrentScroll()}
+                className="text-brand text-white transition-opacity hover:opacity-95 [text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_0_18px_rgba(0,0,0,0.55)]"
+                tabIndex={headerFaded ? -1 : undefined}
+              >
+                Saizen
+              </Link>
+              {incognito ? (
+                <span className="rounded-md bg-white/15 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.75)]">
+                  Incognito
+                </span>
+              ) : null}
+            </div>
             <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
               {desktopNav.map((item) => {
                 const active = item.match(pathname)
@@ -189,6 +206,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
         </header>
+      ) : null}
+
+      {incognito && !immersiveHeader && !isPlayer ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center pt-[max(0.35rem,var(--safe-top))]"
+          aria-hidden
+        >
+          <span className="rounded-full bg-background/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-foreground/90 ring-1 ring-white/10 backdrop-blur-md">
+            Incognito
+          </span>
+        </div>
       ) : null}
 
       {showLandscapeNav ? (
@@ -271,7 +299,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SettingsPage />
           </PaneErrorBoundary>
         </div>
-        {!keepAliveRoute ? children : null}
+        {!keepAliveRoute ? (
+          <PaneErrorBoundary name="Page">{children}</PaneErrorBoundary>
+        ) : null}
       </main>
 
       <div

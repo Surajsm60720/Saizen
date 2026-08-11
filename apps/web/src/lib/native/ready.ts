@@ -23,9 +23,12 @@ export function whenBridgeReady(): Promise<void> {
       return
     }
     waiters.push(resolve)
-    // Safety timeout so Home never hangs forever
+    // Unblock waiters if AppShell install is slow — do NOT mark ready early
+    // (that made Watch call listModules/resolveStreams before Cap wired them).
     window.setTimeout(() => {
-      if (!bridgeReady) markBridgeReady()
-    }, 800)
+      const idx = waiters.indexOf(resolve)
+      if (idx >= 0) waiters.splice(idx, 1)
+      resolve()
+    }, 5000)
   })
 }

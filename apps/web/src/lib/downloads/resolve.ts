@@ -1,46 +1,33 @@
-import { displayTitle, type AnimeMedia } from '@/lib/anilist'
-import { searchExtensions, rankScore } from '@/lib/extensions'
-import { searchAllProviders, type ProviderResult } from '@/lib/providers'
-import type { DownloadQuality } from '@saizen/shared'
+import type { DownloadQuality, StreamCandidate } from '@saizen/shared'
 
-export async function searchEpisodeSources(
-  media: AnimeMedia,
-  episode: number
-): Promise<ProviderResult[]> {
-  const titles = [
-    media.title.romaji,
-    media.title.english,
-    media.title.native,
-    media.title.userPreferred
-  ].filter(Boolean) as string[]
-  const adult =
-    Boolean(media.isAdult) || (media.genres ?? []).some((g) => /hentai/i.test(g || ''))
-  const [extOut, builtInOut] = await Promise.all([
-    searchExtensions({ media, episode }),
-    adult
-      ? Promise.resolve({ results: [] as ProviderResult[], errors: [] })
-      : searchAllProviders({
-          anilistId: media.id,
-          title: displayTitle(media),
-          titles,
-          episode,
-          episodeCount: media.episodes
-        })
-  ])
-  return [...extOut.results, ...builtInOut.results].sort((a, b) => rankScore(b) - rankScore(a))
+function qualityRank(q: string | undefined): number {
+  if (!q) return 0
+  const m = q.match(/(\d{3,4})/)
+  return m ? Number(m[1]) : 0
 }
 
-export function pickSourceForQuality(
-  results: ProviderResult[],
+/**
+ * Pick a CDN stream for offline download closest to the preferred quality.
+ * Prefers exact match, then nearest lower, then nearest higher.
+ */
+export function pickStreamForQuality(
+  candidates: StreamCandidate[],
   preferred: DownloadQuality
-): ProviderResult | null {
-  if (!results.length) return null
-  const want = preferred.replace('p', '')
-  const matching = results.filter((r) => (r.resolution || '').replace('p', '') === want)
-  const pool = matching.length ? matching : results
-  return [...pool].sort((a, b) => rankScore(b) - rankScore(a))[0] ?? null
-}
-
-export function sourceUrl(result: ProviderResult): string | null {
-  return result.httpUrl || result.torrentUrl || result.magnet || null
+): StreamCandidate | null {
+  if (!candidates.length) return null
+  const want = Number(preferred.replace('p', '')) || 1080
+  const scored = candidates.map((c) => {
+    const q = qualityRank(c.quality) || qualityRank(c.title)
+    const kindBonus = c.kind === 'hls' || c.kind === 'mp4' ? 1 : 0
+    return { c, q, kindBonus }
+  })
+  const exact = scored.filter((s) => s.q === want)
+  if (exact.length) {
+    return exact.sort((a, b) => b.kindBonus - a.kindBonus)[0]!.c
+  }
+  const lower = scored.filter((s) => s.q > 0 && s.q <= want).sort((a, b) => b.q - a.q)
+  if (lower.length) return lower[0]!.c
+  const higher = scored.filter((s) => s.q > want).sort((a, b) => a.q - b.q)
+  if (higher.length) return higher[0]!.c
+  return scored[0]!.c
 }

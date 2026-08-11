@@ -24,8 +24,12 @@ const config: CapacitorConfig = {
     scrollEnabled: true
   },
   plugins: {
+    // Do NOT patch global fetch/XHR. With enabled:true every AniList call and
+    // asset request hops Cap IPC (WebProcessProxy_DidPostMessage) and WKWebView
+    // dies at ~50k queued messages. Extensions that need CORS bypass call
+    // CapacitorHttp.request explicitly via saizenFetch.
     CapacitorHttp: {
-      enabled: true
+      enabled: false
     }
   }
 }

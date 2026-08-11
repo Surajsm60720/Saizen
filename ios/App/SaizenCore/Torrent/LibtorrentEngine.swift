@@ -201,8 +201,9 @@ public final class LibtorrentEngine: TorrentEngine, @unchecked Sendable {
     ]
   }
 
-  /// Do not block on head/tail bytes — that waited while the rest of the file downloaded.
-  /// Focus libtorrent on the head, open immediately; defer MKV cue/tail priority.
+  /// Open immediately with a high-priority head window. Remainder of the file stays
+  /// wanted at low priority (see focus_head) so peers are not dropped mid-stream.
+  /// Defer MKV cue/tail bump so the head wins the first few seconds.
   private func kickstartStreaming(session: OpaquePointer, store: PieceStore, fileName: String) {
     let isMkv = fileName.lowercased().hasSuffix(".mkv")
     let headWindow = min(Int64(4 * 1024 * 1024), store.fileSize)

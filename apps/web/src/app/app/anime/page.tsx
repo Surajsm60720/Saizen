@@ -26,9 +26,8 @@ import {
 import { fetchSkipTimes } from '@/lib/aniskip'
 import { fetchAniZipEpisodes, type AniZipEpisode } from '@/lib/anizip/episodes'
 import { fetchJikanEpisodeList, type JikanEpisodeDetail } from '@/lib/jikan/episodes'
-import { ensureExtensions, searchExtensions, rankScore } from '@/lib/extensions'
-import { searchAllProviders, type ProviderResult } from '@/lib/providers'
 import getNative from '@/lib/native'
+import { whenBridgeReady } from '@/lib/native/ready'
 import type {
   NativePlayerAction,
   PlayStreamOptions,
@@ -44,11 +43,7 @@ import { getWatchSettings } from '@/lib/watch/settings'
 import { getDownloadSettings } from '@/lib/downloads/settings'
 import { seasonFolderLabel } from '@/lib/downloads/season'
 import { isIncognitoMode, subscribeIncognitoMode } from '@/lib/privacy/incognito'
-import {
-  pickSourceForQuality,
-  searchEpisodeSources,
-  sourceUrl
-} from '@/lib/downloads/resolve'
+import { pickStreamForQuality } from '@/lib/downloads/resolve'
 import { toast } from 'sonner'
 import {
   consumePendingPlayerAction,
@@ -89,20 +84,15 @@ function AnimeDetail() {
   const [media, setMedia] = useState<AnimeMedia | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  /** Bumped to re-fetch after WebView process death / transient AniList failures. */
+  const [mediaReloadToken, setMediaReloadToken] = useState(0)
   const [selected, setSelected] = useState<EpisodeItem | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [streamsSearching, setStreamsSearching] = useState(false)
-  const [torrentsSearching, setTorrentsSearching] = useState(false)
-  const [results, setResults] = useState<ProviderResult[]>([])
   const [streamCandidates, setStreamCandidates] = useState<StreamCandidate[]>([])
   const [moduleNames, setModuleNames] = useState<Record<string, string>>({})
   const [playing, setPlaying] = useState(false)
   const [streamStatus, setStreamStatus] = useState('')
-  const [torrentStatus, setTorrentStatus] = useState('')
-  const status = useMemo(
-    () => [streamStatus, torrentStatus].filter(Boolean).join(' · '),
-    [streamStatus, torrentStatus]
-  )
   const [themes, setThemes] = useState<AnimeThemeTrack[]>([])
   const [themesLoading, setThemesLoading] = useState(false)
   const [themesNotice, setThemesNotice] = useState<string | null>(null)
@@ -164,13 +154,10 @@ function AnimeDetail() {
       setError('')
       setSelected(null)
       setSheetOpen(false)
-      setResults([])
       setStreamCandidates([])
       setModuleNames({})
       setStreamStatus('')
-      setTorrentStatus('')
       setStreamsSearching(false)
-      setTorrentsSearching(false)
       setThemes([])
       setThemesNotice(null)
       setJikanByEp(new Map())
@@ -184,8 +171,6 @@ function AnimeDetail() {
       setFranchiseLoadedFor(cachedFranchise ? id : null)
       setFranchiseLoading(false)
       try {
-        // Don't block detail on extension catalog warm-up
-        void ensureExtensions()
         const m = await fetchAnime(id)
         if (cancelled) return
         if (!m) setError('Anime not found')
@@ -212,7 +197,23 @@ function AnimeDetail() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, mediaReloadToken])
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return
+      // After a WKWebView content-process crash+reload, in-flight fetches die — retry.
+      if (error || (!media && !loading && id)) {
+        setMediaReloadToken((n) => n + 1)
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onVis)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('focus', onVis)
+    }
+  }, [error, media, loading, id])
 
   useEffect(() => {
     if (!id) return
@@ -275,8 +276,23 @@ function AnimeDetail() {
     }
     void native.library().then(apply).catch(() => {})
     let unsub: (() => void) | undefined
+    let lastLibraryRefresh = 0
     void (async () => {
-      const ret = await native.onDownloadProgress?.(async () => {
+      // Avoid Cap bridge storms: do not call library() on every progress tick.
+      const ret = await native.onDownloadProgress?.(async (jobs, librarySnap) => {
+        if (cancelled || !id) return
+        if (librarySnap) {
+          apply(librarySnap)
+          lastLibraryRefresh = Date.now()
+          return
+        }
+        const relevant = jobs.filter((j) => j.mediaId === id)
+        const completedChanged = relevant.some(
+          (j) => j.status === 'completed' || (j.progress ?? 0) >= 1
+        )
+        const now = Date.now()
+        if (!completedChanged && now - lastLibraryRefresh < 8000) return
+        lastLibraryRefresh = now
         try {
           apply(await native.library())
         } catch {
@@ -664,34 +680,22 @@ function AnimeDetail() {
       if (!media || ep.unreleased) return
       setSelected(ep)
       setSheetOpen(true)
-      setResults([])
       setStreamCandidates([])
       setStreamsSearching(true)
-      setTorrentsSearching(true)
       setStreamStatus(`Searching streams for episode ${ep.number}…`)
-      setTorrentStatus('Searching torrent sources…')
 
-      const titles = [
-        media.title.romaji,
-        media.title.english,
-        media.title.native,
-        media.title.userPreferred
-      ].filter(Boolean) as string[]
-
-      const adult =
-        Boolean(media.isAdult) ||
-        (media.genres ?? []).some((g) => /hentai/i.test(g || ''))
-
-      const native = getNative()
       const query =
         media.title.romaji || media.title.english || displayTitle(media)
 
-      // Streams resolve independently — sheet updates as soon as modules respond.
       void (async () => {
         try {
+          // Cap wires SaizenModules in AppShell — wait so we don't hit web stubs
+          // (empty listModules / throw resolveStreams) and show a blank sheet.
+          await whenBridgeReady()
+          const native = getNative()
           if (!native.isApp || !native.resolveStreams || !native.listModules) {
             setStreamCandidates([])
-            setStreamStatus('')
+            setStreamStatus('Module streams need the iOS app (bridge not ready)')
             return
           }
           const modules = await native.listModules()
@@ -716,7 +720,9 @@ function AnimeDetail() {
           setStreamStatus(
             list.length > 0
               ? `${list.length} stream(s) from modules`
-              : 'No streams from modules'
+              : enabled.some((m) => /pahe/i.test(m.name) || m.id === 'jLCx0')
+                ? 'No streams — AnimePahe’s bypass is down; install Animex in Settings → Modules'
+                : 'No streams from modules — try another module in Settings → Modules'
           )
         } catch (e) {
           setStreamCandidates([])
@@ -725,67 +731,6 @@ function AnimeDetail() {
           )
         } finally {
           setStreamsSearching(false)
-        }
-      })()
-
-      // Torrents / extensions — parallel, does not block Streams UI.
-      void (async () => {
-        try {
-          const [extOut, builtInOut] = await Promise.all([
-            searchExtensions({ media, episode: ep.number }),
-            // Built-ins (SubsPlease/Erai/Nyaa) don't index adult — skip for speed.
-            adult
-              ? Promise.resolve({ results: [] as ProviderResult[], errors: [] })
-              : searchAllProviders({
-                  anilistId: media.id,
-                  title: displayTitle(media),
-                  titles,
-                  episode: ep.number,
-                  episodeCount: media.episodes
-                })
-          ])
-
-          const merged = [...extOut.results, ...builtInOut.results]
-          const sorted = [...merged].sort((a, b) => rankScore(b) - rankScore(a))
-          setResults(sorted)
-          const magnets = sorted.filter((r) => r.magnet).length
-          const torrents = sorted.filter((r) => r.torrentUrl).length
-          const http = sorted.filter((r) => r.httpUrl).length
-
-          if (sorted.length) {
-            setTorrentStatus(
-              `${sorted.length} torrent source(s) · ${http} HTTP · ${torrents} torrent · ${magnets} magnet`
-            )
-          } else {
-            const errs = [...extOut.errors, ...builtInOut.errors]
-            const tls = errs.some((e) =>
-              /TLS|SSL|-1200|secure connection/i.test(e.message)
-            )
-            if (adult && tls) {
-              setTorrentStatus(
-                'Adult index blocked on this network (TLS). Enable Nyaa Sukebei and retry, or use another network/VPN.'
-              )
-            } else if (adult && errs.length) {
-              setTorrentStatus(
-                `No adult torrent sources. ${errs[0]!.providerId}: ${errs[0]!.message}`
-              )
-            } else if (errs.length) {
-              setTorrentStatus(
-                `No torrent sources. ${errs[0]!.providerId}: ${errs[0]!.message}`
-              )
-            } else if (adult) {
-              setTorrentStatus(
-                'No torrent sources. Enable Nyaa Sukebei under Extensions → Hentai.'
-              )
-            } else {
-              setTorrentStatus('')
-            }
-          }
-        } catch (e) {
-          setResults([])
-          setTorrentStatus(e instanceof Error ? e.message : String(e))
-        } finally {
-          setTorrentsSearching(false)
         }
       })()
     },
@@ -826,29 +771,6 @@ function AnimeDetail() {
     }
   }
 
-  async function enqueueResult(result: ProviderResult, episode: EpisodeItem) {
-    if (!media) return
-    const native = getNative()
-    if (!native.isApp || !native.enqueueDownload) {
-      toast.error('Downloads require the iOS app')
-      return
-    }
-    const source = sourceUrl(result)
-    if (!source) throw new Error('Result has no torrentUrl, magnet, or httpUrl')
-    await native.enqueueDownload({
-      source,
-      mediaId: media.id,
-      episode: episode.number,
-      seriesTitle: displayTitle(media),
-      episodeTitle: episode.title,
-      poster: media.coverImage?.large ?? media.coverImage?.medium ?? undefined,
-      resolution: result.resolution,
-      sourceLabel: result.title,
-      seasonLabel: seasonFolderLabel(media),
-      isIncognito: isIncognitoMode()
-    })
-  }
-
   async function enqueueStreamCandidate(candidate: StreamCandidate, episode: EpisodeItem) {
     if (!media) return
     const native = getNative()
@@ -877,32 +799,41 @@ function AnimeDetail() {
   async function queueEpisodes(targets: EpisodeItem[]) {
     if (!media || !targets.length) return
     const native = getNative()
-    if (!native.isApp || !native.enqueueDownload) {
-      toast.error('Downloads require the iOS app')
+    if (!native.isApp || !native.enqueueDownload || !native.resolveStreams) {
+      toast.error('Downloads require the iOS app with modules')
       return
     }
     setDownloadBusy(true)
     const quality = getDownloadSettings().preferredQuality
+    const query =
+      media.title.romaji || media.title.english || displayTitle(media)
     let ok = 0
     let failed = 0
     try {
       for (const ep of targets) {
         if (downloadedEps.has(ep.number)) continue
         try {
-          const results = await searchEpisodeSources(media, ep.number)
-          const pick = pickSourceForQuality(results, quality)
+          const candidates =
+            (await native.resolveStreams({
+              title: displayTitle(media),
+              anilistId: media.id,
+              episode: ep.number,
+              idMal: media.idMal ?? null,
+              query
+            })) ?? []
+          const pick = pickStreamForQuality(candidates, quality)
           if (!pick) {
             failed += 1
             continue
           }
-          await enqueueResult(pick, ep)
+          await enqueueStreamCandidate(pick, ep)
           ok += 1
         } catch {
           failed += 1
         }
       }
       if (ok) toast.success(`Queued ${ok} episode${ok === 1 ? '' : 's'}`)
-      if (failed) toast.error(`${failed} episode${failed === 1 ? '' : 's'} had no source`)
+      if (failed) toast.error(`${failed} episode${failed === 1 ? '' : 's'} had no stream`)
       setDownloadOpen(false)
       setSelectingEps(false)
       setSelectedEps(new Set())
@@ -930,11 +861,9 @@ function AnimeDetail() {
 
     let skipTimes = undefined as PlayStreamOptions['skipTimes']
     if (media.idMal) {
-      const probed = getProbedDurationSec(media.id, selected.number)
-      const approxSec =
-        probed ?? (media.duration != null && media.duration > 0 ? media.duration * 60 : 0)
+      // episodeLength=0 → AniSkip returns all matches (avoid missing OP/ED when probed duration is off)
       skipTimes =
-        (await fetchSkipTimes(media.idMal, selected.number, approxSec)) ?? undefined
+        (await fetchSkipTimes(media.idMal, selected.number, 0)) ?? undefined
     }
 
     recordContinueWatching(media, selected.number)
@@ -1023,19 +952,6 @@ function AnimeDetail() {
     }
   }
 
-  async function playResult(result: ProviderResult) {
-    // Watch is CDN-only — magnets/torrents cannot start progressive playback.
-    if (!result.httpUrl) {
-      toast.error('Watch is CDN-only. Use Save for torrent downloads.')
-      return
-    }
-    await playWithOptions(result.title, {
-      url: result.httpUrl,
-      resolution: result.resolution,
-      sourceLabel: result.title
-    })
-  }
-
   if (loading) {
     return (
       <div className="-mx-4 space-y-5 sm:-mx-5">
@@ -1056,9 +972,18 @@ function AnimeDetail() {
     return (
       <div className="space-y-3 pt-[calc(3.5rem+var(--safe-top))]">
         <p className="text-sm text-destructive">{error}</p>
-        <Link href="/" className="text-sm">
-          ← Home
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="text-sm font-medium text-primary"
+            onClick={() => setMediaReloadToken((n) => n + 1)}
+          >
+            Try again
+          </button>
+          <Link href="/" className="text-sm">
+            ← Home
+          </Link>
+        </div>
       </div>
     )
   }
@@ -1298,23 +1223,14 @@ function AnimeDetail() {
         malId={media.idMal}
         durationMin={media.duration}
         streamsSearching={streamsSearching}
-        torrentsSearching={torrentsSearching}
-        status={status}
+        status={streamStatus}
         streamCandidates={streamCandidates}
         moduleNames={moduleNames}
-        results={results}
         playing={playing}
         onPlayStream={(c) => void playStreamCandidate(c)}
         onSaveStream={(c) => {
           if (!selected) return
           void enqueueStreamCandidate(c, selected)
-            .then(() => toast.success(`Queued episode ${selected.number}`))
-            .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
-        }}
-        onPlay={(r) => void playResult(r)}
-        onDownload={(r) => {
-          if (!selected) return
-          void enqueueResult(r, selected)
             .then(() => toast.success(`Queued episode ${selected.number}`))
             .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
         }}

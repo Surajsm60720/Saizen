@@ -71,7 +71,7 @@ export async function installSaizenBridge(): Promise<void> {
     playLibraryItem(o: { id: string }): Promise<void>
     addListener(
       event: 'downloadProgress',
-      cb: (p: { jobs: DownloadJob[] }) => void
+      cb: (p: { jobs: DownloadJob[]; library?: LibraryEntry[] }) => void
     ): Promise<{ remove: () => Promise<void> }>
   }>('SaizenTorrent')
 
@@ -296,7 +296,9 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async onDownloadProgress(cb) {
       const handle = await SaizenTorrent.addListener('downloadProgress', (p) => {
-        cb(p.jobs ?? [])
+        const jobs = p.jobs ?? []
+        const library = Array.isArray(p.library) ? p.library : undefined
+        cb(jobs, library)
       })
       return () => {
         void handle.remove()

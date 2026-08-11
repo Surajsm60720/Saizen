@@ -64,7 +64,7 @@ export function DownloadPickerSheet({
         <SheetHeader className="shrink-0 border-b border-border/50 pb-3">
           <SheetTitle className="text-page-title pr-10">Download</SheetTitle>
           <SheetDescription>
-            {preferredQuality} · auto-picks the best matching source per episode
+            {preferredQuality} · picks the closest CDN stream from installed modules
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 pb-[calc(1rem+var(--safe-bottom))]">

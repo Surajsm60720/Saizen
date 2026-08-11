@@ -69,6 +69,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   private var manifest: SaizenDownloadManifest
   private var engines: [String: LibtorrentEngine] = [:]
   private var httpTasks: [Int: String] = [:]
+  private var httpTaskByJobId: [String: URLSessionDownloadTask] = [:]
   private var hlsTasks: [Int: String] = [:]
   private var hlsTaskByJobId: [String: AVAssetDownloadTask] = [:]
   private var cancelFlags: Set<String> = []
@@ -87,6 +88,8 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   private var lastNotifAt = Date.distantPast
   private var lastNotifBody = ""
   private var lastEmitAt = Date.distantPast
+  private var pendingEmitWorkItem: DispatchWorkItem?
+  private let emitInterval: TimeInterval = 2.0
 
   public var onJobsUpdated: (([[String: Any]]) -> Void)?
 
@@ -105,10 +108,15 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     assetCfg.sessionSendsLaunchEvents = true
     assetCfg.isDiscretionary = false
     assetCfg.allowsCellularAccess = !manifest.settings.wifiOnly
+    // Keep HLS callbacks off the main thread so Cap/UI aren't starved by segment ticks.
+    let hlsQueue = OperationQueue()
+    hlsQueue.name = "app.saizen.hls-downloads"
+    hlsQueue.qualityOfService = .utility
+    hlsQueue.maxConcurrentOperationCount = 1
     assetSession = AVAssetDownloadURLSession(
       configuration: assetCfg,
       assetDownloadDelegate: self,
-      delegateQueue: OperationQueue.main
+      delegateQueue: hlsQueue
     )
     startPathMonitor()
     pumpQueue()
@@ -289,39 +297,73 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   public func pause(id: String) {
     lock.lock()
     pausedFlags.insert(id)
-    if let idx = manifest.jobs.firstIndex(where: { $0.id == id }), manifest.jobs[idx].status == "downloading" {
+    if let idx = manifest.jobs.firstIndex(where: { $0.id == id }),
+       manifest.jobs[idx].status == "downloading" || manifest.jobs[idx].status == "queued"
+    {
       manifest.jobs[idx].status = "paused"
+      manifest.jobs[idx].speed = 0
     }
+    let httpTask = httpTaskByJobId[id]
+    let hlsTask = hlsTaskByJobId[id]
     lock.unlock()
+    // Torrent loop polls pausedFlags; HTTP/HLS must actually stop transferring.
+    httpTask?.suspend()
+    hlsTask?.suspend()
     persist()
     emit()
+    updateKeepAlive()
   }
 
   public func resume(id: String) {
     lock.lock()
     pausedFlags.remove(id)
+    cancelFlags.remove(id)
+    let httpTask = httpTaskByJobId[id]
+    let hlsTask = hlsTaskByJobId[id]
+    let hasLiveTask = httpTask != nil || hlsTask != nil
     if let idx = manifest.jobs.firstIndex(where: { $0.id == id }),
        manifest.jobs[idx].status == "paused" || manifest.jobs[idx].status == "failed"
     {
-      manifest.jobs[idx].status = "queued"
+      if hasLiveTask {
+        manifest.jobs[idx].status = "downloading"
+        runningIds.insert(id)
+      } else {
+        manifest.jobs[idx].status = "queued"
+      }
       manifest.jobs[idx].error = nil
     }
     lock.unlock()
     persist()
     emit()
-    pumpQueue()
+    if hasLiveTask {
+      httpTask?.resume()
+      hlsTask?.resume()
+      updateKeepAlive()
+    } else {
+      pumpQueue()
+    }
   }
 
   public func cancel(id: String) {
     lock.lock()
     cancelFlags.insert(id)
+    pausedFlags.remove(id)
     runningIds.remove(id)
     manifest.jobs.removeAll { $0.id == id && $0.status != "completed" }
     let engine = engines[id]
     engines[id] = nil
+    let httpTask = httpTaskByJobId[id]
+    httpTaskByJobId[id] = nil
+    if let httpTask {
+      httpTasks[httpTask.taskIdentifier] = nil
+    }
     let hlsTask = hlsTaskByJobId[id]
     hlsTaskByJobId[id] = nil
+    if let hlsTask {
+      hlsTasks[hlsTask.taskIdentifier] = nil
+    }
     lock.unlock()
+    httpTask?.cancel()
     hlsTask?.cancel()
     engine?.shutdownSession()
     removeWorkDir(id: id)
@@ -479,6 +521,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     let task = bgSession.downloadTask(with: request)
     lock.lock()
     httpTasks[task.taskIdentifier] = job.id
+    httpTaskByJobId[job.id] = task
     lock.unlock()
     task.taskDescription = job.id
     task.resume()
@@ -577,8 +620,16 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     lock.lock()
     let id = httpTasks[downloadTask.taskIdentifier] ?? downloadTask.taskDescription
     httpTasks[downloadTask.taskIdentifier] = nil
+    if let id { httpTaskByJobId[id] = nil }
     lock.unlock()
     guard let id else { return }
+    lock.lock()
+    let wasCancelled = cancelFlags.contains(id)
+    lock.unlock()
+    if wasCancelled {
+      finishCancelled(id: id)
+      return
+    }
     let suggested =
       downloadTask.response?.suggestedFilename
       ?? downloadTask.originalRequest?.url?.lastPathComponent
@@ -598,19 +649,36 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
         httpTasks[task.taskIdentifier]
         ?? hlsTasks[task.taskIdentifier]
         ?? task.taskDescription
+      if task is URLSessionDownloadTask {
+        httpTasks[task.taskIdentifier] = nil
+        if let id { httpTaskByJobId[id] = nil }
+      }
       if task is AVAssetDownloadTask {
         hlsTasks[task.taskIdentifier] = nil
         if let id { hlsTaskByJobId[id] = nil }
       }
       lock.unlock()
       if let id { fail(id: id, message: error.localizedDescription) }
-    } else if task is AVAssetDownloadTask {
+    } else {
+      // Cancelled (pause→cancel or explicit cancel): clear maps; don't fail the job.
       lock.lock()
-      hlsTasks[task.taskIdentifier] = nil
-      if let desc = task.taskDescription {
-        hlsTaskByJobId[desc] = nil
+      let id =
+        httpTasks[task.taskIdentifier]
+        ?? hlsTasks[task.taskIdentifier]
+        ?? task.taskDescription
+      if task is URLSessionDownloadTask {
+        httpTasks[task.taskIdentifier] = nil
+        if let id { httpTaskByJobId[id] = nil }
       }
+      if task is AVAssetDownloadTask {
+        hlsTasks[task.taskIdentifier] = nil
+        if let id { hlsTaskByJobId[id] = nil }
+      }
+      let cancelled = id.map { cancelFlags.contains($0) } ?? false
       lock.unlock()
+      if cancelled, let id {
+        finishCancelled(id: id)
+      }
     }
     bgCompletion?()
     bgCompletion = nil
@@ -772,9 +840,14 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     runningIds.remove(id)
     let engine = engines[id]
     engines[id] = nil
+    let httpTask = httpTaskByJobId[id]
+    httpTaskByJobId[id] = nil
+    if let httpTask { httpTasks[httpTask.taskIdentifier] = nil }
     let hlsTask = hlsTaskByJobId[id]
     hlsTaskByJobId[id] = nil
+    if let hlsTask { hlsTasks[hlsTask.taskIdentifier] = nil }
     lock.unlock()
+    httpTask?.cancel()
     hlsTask?.cancel()
     engine?.shutdownSession()
     removeWorkDir(id: id)
@@ -787,8 +860,11 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   private func finishCancelled(id: String) {
     lock.lock()
     runningIds.remove(id)
+    cancelFlags.remove(id)
     let engine = engines[id]
     engines[id] = nil
+    httpTaskByJobId[id] = nil
+    hlsTaskByJobId[id] = nil
     lock.unlock()
     engine?.shutdownSession()
     removeWorkDir(id: id)
@@ -832,14 +908,27 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   }
 
   private func emit() {
+    pendingEmitWorkItem?.cancel()
+    pendingEmitWorkItem = nil
     lastEmitAt = Date()
     let snap = queueSnapshot()
     DispatchQueue.main.async { self.onJobsUpdated?(snap) }
   }
 
+  /// Coalesce high-frequency HTTP/HLS progress ticks so Cap bridge / WebView don't flood.
   private func emitThrottled() {
-    if Date().timeIntervalSince(lastEmitAt) < 1 { return }
-    emit()
+    let elapsed = Date().timeIntervalSince(lastEmitAt)
+    if elapsed >= emitInterval {
+      emit()
+      return
+    }
+    pendingEmitWorkItem?.cancel()
+    let delay = max(0.05, emitInterval - elapsed)
+    let work = DispatchWorkItem { [weak self] in
+      self?.emit()
+    }
+    pendingEmitWorkItem = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
   }
 
   private func persist() {
@@ -970,7 +1059,12 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   private func beginAudioKeepAlive() {
     guard audioPlayer == nil else { return }
     do {
-      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+      // mixWithOthers so we don't steal the moviePlayback session from Watch.
+      try AVAudioSession.sharedInstance().setCategory(
+        .playback,
+        mode: .default,
+        options: [.mixWithOthers]
+      )
       try AVAudioSession.sharedInstance().setActive(true)
       // 1-sample silent WAV
       let wav: [UInt8] = [
@@ -993,7 +1087,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   private func endAudioKeepAlive() {
     audioPlayer?.stop()
     audioPlayer = nil
-    try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    // Never notifyOthersOnDeactivation — that pauses AVPlayer / VLC mid-watch.
   }
 
   private func requestNotificationPermission() {

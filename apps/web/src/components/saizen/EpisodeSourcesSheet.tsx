@@ -11,10 +11,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { SourceList, SourceRow } from '@/components/saizen/SourceRow'
+import { SourceList } from '@/components/saizen/SourceRow'
 import type { EpisodeItem } from '@/components/saizen/EpisodeRow'
-import type { ProviderResult } from '@/lib/providers'
-import { isLikelyFaster } from '@/lib/extensions'
 import { cn } from '@/lib/utils'
 import type { StreamCandidate } from '@saizen/shared'
 
@@ -34,16 +32,12 @@ export function EpisodeSourcesSheet({
   episode,
   durationMin,
   streamsSearching = false,
-  torrentsSearching = false,
   status,
   streamCandidates = [],
   moduleNames = {},
-  results,
   playing,
   onPlayStream,
-  onSaveStream,
-  onPlay,
-  onDownload
+  onSaveStream
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -51,23 +45,16 @@ export function EpisodeSourcesSheet({
   malId?: number | null
   durationMin?: number | null
   streamsSearching?: boolean
-  torrentsSearching?: boolean
   status: string
   streamCandidates?: StreamCandidate[]
   moduleNames?: Record<string, string>
-  results: ProviderResult[]
   playing: boolean
   onPlayStream?: (candidate: StreamCandidate) => void
-  /** Save CDN stream (HLS/MP4) for offline — separate from torrent Save. */
   onSaveStream?: (candidate: StreamCandidate) => void
-  onPlay?: (result: ProviderResult) => void
-  onDownload?: (result: ProviderResult) => void
 }) {
-  // Keep hooks stable; synopsis already on episode from AniZip/Jikan merge
   const [mounted, setMounted] = useState(false)
   const [dragY, setDragY] = useState(0)
   const [dragging, setDragging] = useState(false)
-  /** True after a swipe-dismiss — keep the sheet parked off-screen so Radix can’t flash it back. */
   const [gestureExit, setGestureExit] = useState(false)
   const gestureExitRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -93,90 +80,57 @@ export function EpisodeSourcesSheet({
       dragRef.current = null
       return
     }
-    // Closing: never snap dragY → 0 (that re-shows the sheet for a frame before exit anim).
     setDragging(false)
     dragRef.current = null
   }, [open])
 
-  const title = episode?.title || 'Episode'
-  const synopsis = episode?.synopsis || ''
+  const title = episode?.title?.trim() || (episode ? `Episode ${episode.number}` : 'Episode')
+  const synopsis = episode?.synopsis?.trim() || ''
   const durationLabel =
-    episode?.meta?.match(/\d+\s*min/)?.[0] ||
-    (durationMin ? `${durationMin} min` : null)
+    durationMin && durationMin > 0 ? `${durationMin} min` : null
 
-  const overlayOpacity = gestureExit
-    ? 0
-    : Math.max(0, 1 - dragY / OVERLAY_FADE_PX)
+  const overlayOpacity = Math.max(0, 1 - dragY / OVERLAY_FADE_PX)
   const sheetTransform =
-    dragY > 0 || dragging || gestureExit
-      ? `translate3d(0, ${dragY}px, 0)`
-      : undefined
+    dragY > 0 || gestureExit ? `translate3d(0, ${dragY}px, 0)` : undefined
 
-  function beginDrag(e: React.PointerEvent, force = false) {
-    if (e.button !== 0 || gestureExit) return
-    const scrollEl = scrollRef.current
-    if (!force && scrollEl && scrollEl.scrollTop > 2) return
-
+  function beginDrag(e: React.PointerEvent, force: boolean) {
+    if (e.button !== 0) return
+    const el = scrollRef.current
+    if (!force && el && el.scrollTop > 0) return
     dragRef.current = {
       pointerId: e.pointerId,
       startY: e.clientY,
       lastY: e.clientY,
       lastT: performance.now(),
-      active: false,
+      active: true,
       force
     }
-    setDragging(false)
-    if (force) {
-      ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    try {
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {
+      /* ignore */
     }
   }
 
   function moveDrag(e: React.PointerEvent) {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== e.pointerId) return
-
-    const dy = e.clientY - drag.startY
-    const now = performance.now()
-    drag.lastY = e.clientY
-    drag.lastT = now
-
-    if (!drag.active) {
-      if (dy < 10) return
-      if (dy < 0) {
-        dragRef.current = null
-        return
-      }
-      const scrollEl = scrollRef.current
-      if (!drag.force && scrollEl && scrollEl.scrollTop > 2) {
-        dragRef.current = null
-        return
-      }
-      drag.active = true
-      setDragging(true)
-      try {
-        ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-      } catch {
-        /* ignore */
-      }
-    }
-
-    e.preventDefault()
-    setDragY(Math.max(0, dy))
+    const d = dragRef.current
+    if (!d?.active || d.pointerId !== e.pointerId) return
+    const dy = Math.max(0, e.clientY - d.startY)
+    d.lastY = e.clientY
+    d.lastT = performance.now()
+    if (dy > 2) setDragging(true)
+    setDragY(dy)
   }
 
   function endDrag(e: React.PointerEvent) {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== e.pointerId) return
+    const d = dragRef.current
+    if (!d || d.pointerId !== e.pointerId) return
     dragRef.current = null
-
-    const dy = Math.max(0, e.clientY - drag.startY)
-    const dt = Math.max(16, performance.now() - drag.lastT)
-    const velocity = (e.clientY - drag.lastY) / dt
-    const shouldClose = drag.active && (dy > DISMISS_DISTANCE || velocity > DISMISS_VELOCITY)
-
     setDragging(false)
-    if (shouldClose) {
-      // Park fully off-screen and skip Radix’s close slide (avoids the ghost pop-back).
+    const dy = Math.max(0, e.clientY - d.startY)
+    const dt = Math.max(1, performance.now() - d.lastT)
+    const velocity = (e.clientY - d.lastY) / dt
+    if (dy > DISMISS_DISTANCE || velocity > DISMISS_VELOCITY) {
       const exitY = Math.max(dy, window.innerHeight)
       gestureExitRef.current = true
       setGestureExit(true)
@@ -189,18 +143,13 @@ export function EpisodeSourcesSheet({
 
   if (!mounted) return null
 
-  const showEmpty =
-    !streamsSearching &&
-    !torrentsSearching &&
-    streamCandidates.length === 0 &&
-    results.length === 0
+  const showEmpty = !streamsSearching && streamCandidates.length === 0
 
   return (
     <Sheet
       open={open}
       onOpenChange={(next) => {
         if (!next && !gestureExitRef.current) {
-          // X / overlay dismiss — normal path; clear any residual drag.
           setDragY(0)
           setGestureExit(false)
         }
@@ -251,7 +200,6 @@ export function EpisodeSourcesSheet({
           </SheetHeader>
         </div>
 
-        {/* Native overflow — Radix ScrollArea often eats touch events on iOS WKWebView */}
         <div
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+var(--safe-bottom))] [-webkit-overflow-scrolling:touch]"
@@ -301,10 +249,12 @@ export function EpisodeSourcesSheet({
                   </p>
                 ) : null}
 
-                {/* CDN streams from installed modules — primary Watch path */}
                 {streamCandidates.length > 0 || streamsSearching ? (
                   <div>
                     <h3 className="mb-2 text-sm font-semibold">Streams</h3>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Play now or Save for offline — from installed modules.
+                    </p>
                     {streamCandidates.length > 0 ? (
                       <SourceList>
                         {streamCandidates.map((c, i) => {
@@ -368,42 +318,10 @@ export function EpisodeSourcesSheet({
                   </div>
                 ) : null}
 
-                {/* Torrents / extensions — Save only for magnets; Watch is CDN */}
-                {results.length > 0 || torrentsSearching ? (
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold">Download via torrent</h3>
-                    {results.length > 0 ? (
-                      <SourceList>
-                        {results.map((r, i) => {
-                          const key = `${r.providerName}-${r.title}-${i}`
-                          const canStreamHttp = Boolean(r.httpUrl)
-                          return (
-                            <SourceRow
-                              key={key}
-                              result={r}
-                              likelyFaster={isLikelyFaster(r, i)}
-                              playing={playing}
-                              showPlay={canStreamHttp && Boolean(onPlay)}
-                              onPlay={
-                                canStreamHttp && onPlay ? () => onPlay(r) : undefined
-                              }
-                              onDownload={onDownload ? () => onDownload(r) : undefined}
-                            />
-                          )
-                        })}
-                      </SourceList>
-                    ) : (
-                      <div className="space-y-2">
-                        {Array.from({ length: 2 }).map((_, i) => (
-                          <Skeleton key={i} className="h-14 w-full rounded-xl" />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
                 {showEmpty ? (
-                  <p className="text-sm text-muted-foreground">No sources found.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No streams found. Install modules under Settings → Modules.
+                  </p>
                 ) : null}
               </div>
             </div>

@@ -23,6 +23,10 @@ import {
   type ContinueEntry
 } from '@/lib/watch/continue'
 import {
+  isIncognitoMode,
+  subscribeIncognitoMode
+} from '@/lib/privacy/incognito'
+import {
   readHomeSnapshot,
   writeHomeSnapshot,
   isHomeFresh,
@@ -66,6 +70,7 @@ export default function HomePage() {
   const [listLoading, setListLoading] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [incognito, setIncognito] = useState(false)
 
   const seasonInfo = useMemo(() => currentAniSeason(), [])
   const seasonLabel = useMemo(() => {
@@ -75,6 +80,21 @@ export default function HomePage() {
 
   const genreRailTitle =
     topGenres.length > 0 ? `For you · ${topGenres.slice(0, 2).join(' · ')}` : 'For your genres'
+
+  useEffect(() => {
+    setIncognito(isIncognitoMode())
+    return subscribeIncognitoMode((on) => {
+      setIncognito(on)
+      if (on) {
+        setContinueWatching(listContinueWatching())
+        setRelated([])
+        setGenrePicks([])
+        setTopGenres([])
+      } else {
+        setContinueWatching(listContinueWatching())
+      }
+    })
+  }, [])
 
   useEffect(() => {
     const unsubContinue = subscribeContinueWatching((entries) => {
@@ -137,7 +157,7 @@ export default function HomePage() {
           ready: true
         })
 
-        if (connected) {
+        if (connected && !isIncognitoMode()) {
           if (!hadData || !readHomeSnapshot().related.length) {
             setListLoading(true)
           }
@@ -192,7 +212,9 @@ export default function HomePage() {
   }, [])
 
   const heroItems = useMemo(() => {
-    const contIds = new Set(continueWatching.map((c) => c.anilistId))
+    const contIds = incognito
+      ? new Set<number>()
+      : new Set(continueWatching.map((c) => c.anilistId))
     const fromContinue = trending.filter((m) => contIds.has(m.id))
     const merged = [...fromContinue, ...trending, ...seasonal]
     const seen = new Set<number>()
@@ -201,7 +223,7 @@ export default function HomePage() {
       seen.add(m.id)
       return true
     })
-  }, [trending, seasonal, continueWatching])
+  }, [trending, seasonal, continueWatching, incognito])
 
   return (
     <div>
@@ -229,7 +251,22 @@ export default function HomePage() {
           </>
         ) : (
           <>
-            {continueWatching.length > 0 ? (
+            {incognito ? (
+              continueWatching.length > 0 ? (
+                <PosterRail title="This session">
+                  {continueWatching.map((entry) => (
+                    <ContinueCard key={entry.anilistId} entry={entry} />
+                  ))}
+                </PosterRail>
+              ) : (
+                <HomePlaceholderRail
+                  title="Incognito"
+                  description="Nothing here is tracked on AniList, MAL, or your main Home. Session resume clears when you leave Incognito."
+                  ctaHref="/app/search/"
+                  ctaLabel="Find something to watch"
+                />
+              )
+            ) : continueWatching.length > 0 ? (
               <PosterRail title="Continue watching">
                 {continueWatching.map((entry) => (
                   <ContinueCard key={entry.anilistId} entry={entry} />
@@ -290,9 +327,9 @@ export default function HomePage() {
               ))}
             </PosterRail>
 
-            {listLoading && related.length === 0 ? (
+            {!incognito && listLoading && related.length === 0 ? (
               <RailSkeleton />
-            ) : related.length > 0 ? (
+            ) : !incognito && related.length > 0 ? (
               <PosterRail title="Prequels & sequels" dense>
                 {related.map(({ media, relationType }) => (
                   <PosterCard
@@ -307,7 +344,7 @@ export default function HomePage() {
                   />
                 ))}
               </PosterRail>
-            ) : (
+            ) : !incognito ? (
               <HomePlaceholderRail
                 title="Prequels & sequels"
                 description={
@@ -318,11 +355,11 @@ export default function HomePage() {
                 ctaHref="/app/settings/"
                 ctaLabel={anilistOn ? 'Refresh after updating list' : 'Connect AniList'}
               />
-            )}
+            ) : null}
 
-            {listLoading && genrePicks.length === 0 ? (
+            {!incognito && listLoading && genrePicks.length === 0 ? (
               <RailSkeleton />
-            ) : genrePicks.length > 0 ? (
+            ) : !incognito && genrePicks.length > 0 ? (
               <PosterRail
                 title={genreRailTitle}
                 dense
@@ -346,7 +383,7 @@ export default function HomePage() {
                   />
                 ))}
               </PosterRail>
-            ) : (
+            ) : !incognito ? (
               <HomePlaceholderRail
                 title="For your genres"
                 description={
@@ -357,7 +394,7 @@ export default function HomePage() {
                 ctaHref="/app/settings/"
                 ctaLabel={anilistOn ? 'Open Settings' : 'Connect AniList'}
               />
-            )}
+            ) : null}
 
             <PosterRail
               title="Popular of all time"

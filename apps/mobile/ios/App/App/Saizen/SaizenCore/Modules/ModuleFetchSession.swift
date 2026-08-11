@@ -92,6 +92,12 @@ private final class SessionDelegate: NSObject, URLSessionTaskDelegate {
       completionHandler(nil)
       return
     }
+    // Follow HTTPS redirects onto newly discovered hosts (deny list still wins).
+    // Cancelling the redirect returns the 301 HTML body and breaks JSON parsers
+    // (AnimePahe / jakBa saw "301 Moved Permanently" as the fetch body).
+    if let host = url.host {
+      owner.allowHost(host)
+    }
     do {
       try owner.validateURL(url)
       completionHandler(request)

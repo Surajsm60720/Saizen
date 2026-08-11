@@ -319,7 +319,8 @@ public final class HTTPRangeServer: @unchecked Sendable {
         let end = min(rangeEnd, offset + chunkSize - 1)
         let slice = offset ..< (end + 1)
         if !store.isAvailable(range: slice) {
-          let aheadEnd = min(rangeEnd, offset + chunkSize * 32 - 1)
+          // ~32MB ahead keeps libtorrent feeding 1080p while the current chunk waits.
+          let aheadEnd = min(rangeEnd, offset + chunkSize * 128 - 1)
           onNeedRange?(offset ..< (aheadEnd + 1))
         }
         let bytes = try await store.read(range: slice, timeout: 180)

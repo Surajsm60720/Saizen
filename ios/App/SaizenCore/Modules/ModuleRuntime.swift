@@ -28,6 +28,9 @@ public final class ModuleResolveSession: @unchecked Sendable {
   private let contextQueue: DispatchQueue
   private let teardownLock = NSLock()
   private var didTeardown = false
+  private let timerLock = NSLock()
+  private var nextTimerId = 1
+  private var pendingTimers: [Int: DispatchWorkItem] = [:]
 
   public init(moduleId: String, scriptSource: String, baseURL: URL?) throws {
     self.moduleId = moduleId
@@ -44,6 +47,7 @@ public final class ModuleResolveSession: @unchecked Sendable {
       context.exceptionHandler = { _, exception in
         NSLog("[Saizen] Module JS exception: %@", exception?.toString() ?? "?")
       }
+      installTimers()
       installFetchBridge()
       installPromiseHelpers()
       context.evaluateScript(scriptSource)
@@ -58,12 +62,12 @@ public final class ModuleResolveSession: @unchecked Sendable {
 
   public func searchResults(_ query: String) async throws -> [[String: Any]] {
     let value = try await callModuleFunction("searchResults", argument: query)
-    return try Self.normalizedResultRows(from: value)
+    return try normalizedResultRows(from: value)
   }
 
   public func extractEpisodes(_ showUrl: String) async throws -> [[String: Any]] {
     let value = try await callModuleFunction("extractEpisodes", argument: showUrl)
-    return try Self.normalizedResultRows(from: value)
+    return try normalizedResultRows(from: value)
   }
 
   public func extractStreamUrl(_ episodeUrl: String) async throws -> [StreamCandidate] {
@@ -117,11 +121,118 @@ public final class ModuleResolveSession: @unchecked Sendable {
     teardownLock.unlock()
 
     guard shouldTeardown else { return }
+    cancelAllTimers()
     fetchSession.invalidate()
   }
 
   deinit {
     teardown()
+  }
+
+  /// JSContext has no browser timers; Animex and others use setTimeout for 429 backoff.
+  private func installTimers() {
+    let setTimeoutBlock: @convention(block) (JSValue?, Double) -> Int = { [weak self] callback, ms in
+      guard let self else { return 0 }
+      return self.scheduleTimer(callback: callback, delayMs: ms, repeating: false)
+    }
+    let setIntervalBlock: @convention(block) (JSValue?, Double) -> Int = { [weak self] callback, ms in
+      guard let self else { return 0 }
+      return self.scheduleTimer(callback: callback, delayMs: ms, repeating: true)
+    }
+    let clearBlock: @convention(block) (Int) -> Void = { [weak self] id in
+      self?.cancelTimer(id: id)
+    }
+    context.setObject(setTimeoutBlock, forKeyedSubscript: "__saizenSetTimeout" as NSString)
+    context.setObject(setIntervalBlock, forKeyedSubscript: "__saizenSetInterval" as NSString)
+    context.setObject(clearBlock, forKeyedSubscript: "__saizenClearTimer" as NSString)
+    context.evaluateScript(
+      """
+      this.setTimeout = function(fn, ms) {
+        var args = Array.prototype.slice.call(arguments, 2);
+        return __saizenSetTimeout(function() {
+          if (typeof fn === 'function') fn.apply(null, args);
+        }, Number(ms) || 0);
+      };
+      this.setInterval = function(fn, ms) {
+        var args = Array.prototype.slice.call(arguments, 2);
+        return __saizenSetInterval(function() {
+          if (typeof fn === 'function') fn.apply(null, args);
+        }, Number(ms) || 0);
+      };
+      this.clearTimeout = function(id) { __saizenClearTimer(Number(id) || 0); };
+      this.clearInterval = function(id) { __saizenClearTimer(Number(id) || 0); };
+      """
+    )
+  }
+
+  private func scheduleTimer(
+    callback: JSValue?,
+    delayMs: Double,
+    repeating: Bool,
+    existingId: Int? = nil
+  ) -> Int {
+    timerLock.lock()
+    let id: Int
+    if let existingId {
+      id = existingId
+    } else {
+      id = nextTimerId
+      nextTimerId += 1
+    }
+    timerLock.unlock()
+
+    // Cap delays so a bad Retry-After (e.g. 72774s) cannot stall resolve for hours.
+    let clampedMs = min(max(delayMs, 0), 30_000)
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, !self.isTornDown else { return }
+      self.contextQueue.async {
+        guard !self.isTornDown else { return }
+        callback?.call(withArguments: [])
+        if repeating, !self.isTornDown {
+          _ = self.scheduleTimer(
+            callback: callback,
+            delayMs: clampedMs,
+            repeating: true,
+            existingId: id
+          )
+        } else {
+          self.cancelTimer(id: id)
+        }
+      }
+    }
+
+    timerLock.lock()
+    pendingTimers[id]?.cancel()
+    pendingTimers[id] = work
+    timerLock.unlock()
+    DispatchQueue.global(qos: .userInitiated).asyncAfter(
+      deadline: .now() + .milliseconds(Int(clampedMs)),
+      execute: work
+    )
+    if delayMs > clampedMs + 1 {
+      NSLog(
+        "[Saizen] ModuleRuntime clamped setTimeout %.0fms → %.0fms module=%@",
+        delayMs,
+        clampedMs,
+        moduleId
+      )
+    }
+    return id
+  }
+
+  private func cancelTimer(id: Int) {
+    timerLock.lock()
+    let work = pendingTimers.removeValue(forKey: id)
+    timerLock.unlock()
+    work?.cancel()
+  }
+
+  private func cancelAllTimers() {
+    timerLock.lock()
+    let all = pendingTimers
+    pendingTimers.removeAll()
+    timerLock.unlock()
+    for (_, work) in all { work.cancel() }
   }
 
   private func installFetchBridge() {
@@ -158,7 +269,11 @@ public final class ModuleResolveSession: @unchecked Sendable {
     context.setObject(fetchBlock, forKeyedSubscript: "__saizenNativeFetch" as NSString)
 
     let logBlock: @convention(block) (JSValue?) -> Void = { args in
-      let message = args?.toString() ?? ""
+      var message = args?.toString() ?? ""
+      // Modules dump huge HTML/JSON into console; keep Xcode console usable.
+      if message.count > 400 {
+        message = String(message.prefix(400)) + "…"
+      }
       NSLog("[Saizen][module] %@", message)
     }
     context.setObject(logBlock, forKeyedSubscript: "__saizenConsoleLog" as NSString)
@@ -170,7 +285,7 @@ public final class ModuleResolveSession: @unchecked Sendable {
           __saizenNativeFetch(input, options || {}, resolve, reject);
         });
       };
-      // Sora/Luna host API: fetchv2(url, headers?, method?, body?)
+      // Sora/Luna host API: fetchv2(url, headers?, method?, body?, …extra ignored)
       this.fetchv2 = function(url, headers, method, body) {
         var opts = { method: method || 'GET', headers: headers || {} };
         if (body !== undefined && body !== null && String(opts.method).toUpperCase() !== 'GET') {
@@ -181,10 +296,22 @@ public final class ModuleResolveSession: @unchecked Sendable {
         }
         return this.fetch(url, opts);
       };
+      this.__saizenFormatLogArg = function(v) {
+        if (v === null || v === undefined) return String(v);
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        try { return JSON.stringify(v); } catch (e) { return String(v); }
+      };
       this.console = {
-        log: function() { __saizenConsoleLog(Array.prototype.slice.call(arguments).join(' ')); },
-        warn: function() { __saizenConsoleLog(Array.prototype.slice.call(arguments).join(' ')); },
-        error: function() { __saizenConsoleLog(Array.prototype.slice.call(arguments).join(' ')); }
+        log: function() {
+          __saizenConsoleLog(Array.prototype.map.call(arguments, __saizenFormatLogArg).join(' '));
+        },
+        warn: function() {
+          __saizenConsoleLog(Array.prototype.map.call(arguments, __saizenFormatLogArg).join(' '));
+        },
+        error: function() {
+          __saizenConsoleLog(Array.prototype.map.call(arguments, __saizenFormatLogArg).join(' '));
+        }
       };
       """
     )
@@ -240,8 +367,23 @@ public final class ModuleResolveSession: @unchecked Sendable {
 
   private func makeFetchResponse(data: Data, response: HTTPURLResponse) -> JSValue {
     let body = String(data: data, encoding: .utf8) ?? ""
-    let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, item in
+    var headers = response.allHeaderFields.reduce(into: [String: String]()) { result, item in
       result["\(item.key)".lowercased()] = "\(item.value)"
+    }
+    // Modules parse Retry-After as seconds; Cloudflare sometimes returns huge / date values.
+    // Cap to 30s so 429 backoff stays usable inside a resolve session.
+    if let raw = headers["retry-after"] {
+      if let seconds = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)), seconds > 30 {
+        headers["retry-after"] = "5"
+        NSLog(
+          "[Saizen] ModuleRuntime clamped Retry-After %d → 5 module=%@",
+          seconds,
+          moduleId
+        )
+      } else if Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)) == nil {
+        // HTTP-date form — modules' parseInt fails open to 5 already; normalize explicitly.
+        headers["retry-after"] = "5"
+      }
     }
 
     let payload: [String: Any] = [
@@ -338,8 +480,8 @@ public final class ModuleResolveSession: @unchecked Sendable {
   }
 
   /// Sora modules commonly `return JSON.stringify([...])` and use `href` instead of `url`.
-  private static func normalizedResultRows(from value: Any) throws -> [[String: Any]] {
-    let decoded = decodeModuleJSON(value) ?? value
+  private func normalizedResultRows(from value: Any) throws -> [[String: Any]] {
+    let decoded = Self.decodeModuleJSON(value) ?? value
     guard let array = decoded as? [Any] else {
       NSLog(
         "[Saizen] ModuleRuntime expected array, got %@",
@@ -348,15 +490,33 @@ public final class ModuleResolveSession: @unchecked Sendable {
       throw ModuleRuntimeError.invalidReturn
     }
     return try array.compactMap { item -> [String: Any]? in
-      guard var dictionary = dictionary(from: item) else {
+      guard var dictionary = Self.dictionary(from: item) else {
         throw ModuleRuntimeError.invalidReturn
       }
       if dictionary["url"] == nil, let href = dictionary["href"] as? String {
         dictionary["url"] = href
       }
-      let url = (dictionary["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      var url = (dictionary["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       // Modules return placeholder rows like { title: "Please wait...", href: "" } on failure.
       if url.isEmpty { return nil }
+      // AnimePahe (and others) return { href: "Error", number: "Error" } on failure —
+      // don't treat that as a relative path against baseURL.
+      let lower = url.lowercased()
+      if lower == "error" || lower == "null" || lower == "undefined" { return nil }
+      // Relative paths (e.g. "anime/178789/slug") must resolve against the module baseURL.
+      if let absoluteURL = URL(string: url, relativeTo: baseURL)?.absoluteURL {
+        let scheme = absoluteURL.scheme?.lowercased() ?? ""
+        // Keep absolute https (and rare http) only; drop junk that can't be fetched.
+        if scheme == "https" || scheme == "http" {
+          url = absoluteURL.absoluteString
+          dictionary["url"] = url
+          if dictionary["href"] != nil { dictionary["href"] = url }
+        } else if baseURL == nil {
+          // No base to resolve against — leave relative for the module's own fetch().
+        } else {
+          return nil
+        }
+      }
       return dictionary
     }
   }

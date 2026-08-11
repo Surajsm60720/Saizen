@@ -12,6 +12,10 @@ import {
 } from '@/lib/anilist'
 import { isAnilistConnected } from '@/lib/auth'
 import {
+  isIncognitoMode,
+  subscribeIncognitoMode
+} from '@/lib/privacy/incognito'
+import {
   bucketByLocalWeekday,
   formatWeekRangeLabel,
   getLocalWeekDays,
@@ -32,18 +36,25 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<AiringScheduleItem[]>([])
+  const [incognito, setIncognito] = useState(false)
+
+  useEffect(() => {
+    setIncognito(isIncognitoMode())
+    return subscribeIncognitoMode(setIncognito)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     void isAnilistConnected().then((on) => {
       if (cancelled) return
       setAnilistOn(on)
-      setMode(on ? 'watching' : 'season')
+      // Incognito never uses My list — stay on season.
+      setMode(on && !isIncognitoMode() ? 'watching' : 'season')
     })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [incognito])
 
   useEffect(() => {
     if (!mode) return
@@ -98,15 +109,24 @@ export default function SchedulePage() {
           type="button"
           role="tab"
           aria-selected={isMyList}
-          disabled={!anilistOn}
-          title={anilistOn ? undefined : 'Sign in with AniList to use My list'}
-          onClick={() => setMode('watching')}
+          disabled={!anilistOn || incognito}
+          title={
+            incognito
+              ? 'My list is unavailable in Incognito Mode'
+              : anilistOn
+                ? undefined
+                : 'Sign in with AniList to use My list'
+          }
+          onClick={() => {
+            if (incognito) return
+            setMode('watching')
+          }}
           className={cn(
             'min-h-9 rounded-lg px-3 text-sm font-medium transition-colors',
             ready && isMyList
               ? 'bg-card text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
-            !anilistOn && 'cursor-not-allowed opacity-45'
+            (!anilistOn || incognito) && 'cursor-not-allowed opacity-45'
           )}
         >
           My list

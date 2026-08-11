@@ -8,13 +8,22 @@ import type {
   ClientSettings,
   DownloadJob,
   EnqueueDownloadOptions,
+  InstallModuleFromUrlOptions,
+  InstallModuleOptions,
+  InstalledModule,
   LibraryEntry,
   MalAuthCodeResponse,
+  ModuleCatalogEntry,
   NativePlaybackProgress,
   NativePlayerAction,
+  PlayStreamOptions,
+  RecordModuleSuccessOptions,
+  ResolveAndPlayOptions,
+  ResolveStreamsOptions,
   SaizenNative,
   SpawnPlayerOptions,
   StorageUsage,
+  StreamCandidate,
   TorrentFile
 } from '@saizen/shared'
 
@@ -44,12 +53,13 @@ interface SaizenTorrentPlugin {
   playLibraryItem(o: { id: string }): Promise<void>
   addListener(
     event: 'downloadProgress',
-    cb: (p: { jobs: DownloadJob[] }) => void
+    cb: (p: { jobs: DownloadJob[]; library?: LibraryEntry[] }) => void
   ): Promise<{ remove: () => Promise<void> }>
 }
 
 interface SaizenPlayerPlugin {
   spawnPlayer(options: SpawnPlayerOptions): Promise<void>
+  playStream?(options: PlayStreamOptions): Promise<void>
   stopPlayer(): Promise<void>
   runModuleDay0Spike?(): Promise<{
     moduleId: string
@@ -101,6 +111,18 @@ interface SaizenAuthPlugin {
 const SaizenTorrent = registerPlugin<SaizenTorrentPlugin>('SaizenTorrent')
 const SaizenPlayer = registerPlugin<SaizenPlayerPlugin>('SaizenPlayer')
 const SaizenAuth = registerPlugin<SaizenAuthPlugin>('SaizenAuth')
+const SaizenModules = registerPlugin<{
+  listModules(): Promise<{ modules: InstalledModule[] }>
+  browseModuleCatalog(): Promise<{ entries: ModuleCatalogEntry[] }>
+  installModule(o: InstallModuleOptions): Promise<{ modules: InstalledModule[] }>
+  installModuleFromUrl(o: InstallModuleFromUrlOptions): Promise<{ modules: InstalledModule[] }>
+  setModuleEnabled(o: { id: string; enabled: boolean }): Promise<{ ok?: boolean }>
+  reorderModules(o: { ids: string[] }): Promise<{ modules: InstalledModule[] }>
+  removeModule(o: { id: string }): Promise<{ modules: InstalledModule[] }>
+  resolveStreams(o: ResolveStreamsOptions): Promise<{ candidates: StreamCandidate[] }>
+  resolveAndPlay(o: ResolveAndPlayOptions): Promise<{ candidate: StreamCandidate }>
+  recordModuleSuccess(o: RecordModuleSuccessOptions): Promise<{ ok?: boolean }>
+}>('SaizenModules')
 
 export function installSaizenBridge(): void {
   if (!Capacitor.isNativePlatform()) return
@@ -118,6 +140,12 @@ export function installSaizenBridge(): void {
     async spawnPlayer(options) {
       await SaizenPlayer.spawnPlayer(options)
     },
+    async playStream(options) {
+      if (!SaizenPlayer.playStream) {
+        throw new Error('playStream is not available in this build')
+      }
+      await SaizenPlayer.playStream(options)
+    },
     async stopPlayer() {
       await SaizenPlayer.stopPlayer()
     },
@@ -126,6 +154,44 @@ export function installSaizenBridge(): void {
         throw new Error('Day 0 spike is only available in a DEBUG iOS build')
       }
       return SaizenPlayer.runModuleDay0Spike()
+    },
+    async listModules() {
+      const { modules } = await SaizenModules.listModules()
+      return modules ?? []
+    },
+    async browseModuleCatalog() {
+      const { entries } = await SaizenModules.browseModuleCatalog()
+      return entries ?? []
+    },
+    async installModule(options) {
+      const { modules } = await SaizenModules.installModule(options)
+      return modules ?? []
+    },
+    async installModuleFromUrl(options) {
+      const { modules } = await SaizenModules.installModuleFromUrl(options)
+      return modules ?? []
+    },
+    async setModuleEnabled(id, enabled) {
+      await SaizenModules.setModuleEnabled({ id, enabled })
+    },
+    async reorderModules(ids) {
+      const { modules } = await SaizenModules.reorderModules({ ids })
+      return modules ?? []
+    },
+    async removeModule(id) {
+      const { modules } = await SaizenModules.removeModule({ id })
+      return modules ?? []
+    },
+    async resolveStreams(options) {
+      const { candidates } = await SaizenModules.resolveStreams(options)
+      return candidates ?? []
+    },
+    async resolveAndPlay(options) {
+      const { candidate } = await SaizenModules.resolveAndPlay(options)
+      return candidate
+    },
+    async recordModuleSuccess(options) {
+      await SaizenModules.recordModuleSuccess(options)
     },
     async onPlaybackProgress(cb) {
       const handle = await SaizenPlayer.addListener('playbackProgress', cb)
@@ -201,7 +267,7 @@ export function installSaizenBridge(): void {
     },
     async onDownloadProgress(cb) {
       const handle = await SaizenTorrent.addListener('downloadProgress', (p) => {
-        cb(p.jobs ?? [])
+        cb(p.jobs ?? [], Array.isArray(p.library) ? p.library : undefined)
       })
       return () => {
         void handle.remove()

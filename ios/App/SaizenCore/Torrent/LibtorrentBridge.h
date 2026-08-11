@@ -49,7 +49,8 @@ int saizen_lt_add_torrent_file(SaizenLTSession *session, const char *torrent_pat
 /// Prefer sequential download + raise priority for [start, end) byte range of the active file.
 void saizen_lt_prioritize_bytes(SaizenLTSession *session, int64_t start, int64_t end);
 
-/// Streaming kickoff: clear piece priorities, then only download the file head.
+/// Streaming kickoff: high-priority head + low-priority remainder of the video file.
+/// Remainder stays wanted (priority ≥ 1) so the torrent never "finishes" mid-stream.
 void saizen_lt_focus_head(SaizenLTSession *session, int64_t head_bytes);
 
 /// Offline download: skip head-focus on metadata and fetch the whole video file.

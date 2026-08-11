@@ -1,8 +1,22 @@
-# Saizen · v1.3.4
+# Saizen · v1.4.0
 
-Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Watch plays CDN HLS/MP4 via native modules → **AVPlayer**; libtorrent remains for optional offline downloads.
+Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Live Watch resolves installable CDN stream modules to **HLS/MP4** and plays them in a custom native **AVPlayer**. Libtorrent remains available for optional offline work — it is no longer the primary Watch path.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
+
+## What’s new in 1.4.0
+
+Saizen’s playback middleware moved from “search torrents → stream” to “install modules → resolve HTTPS streams → AVPlayer”:
+
+| Area | Before (≤1.3.x) | Now (1.4.0) |
+|------|-----------------|-------------|
+| **Watch** | Torrent / magnet candidates in the sources sheet | Module stream candidates (HLS/MP4) |
+| **Sources** | Extensions + built-in indexes for Play | Settings → **Modules** catalog (install / enable / order) |
+| **Player** | VLC-forward with glass chrome | Custom AVPlayer chrome (scrubber, OP/ED skip, gesture seek) |
+| **Downloads** | Primarily torrent Save | Module streams preferred; quality-aware batch Save |
+| **Privacy** | — | **Incognito Mode** (no list sync / Home continue while on) |
+
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 
 ## Features
 
@@ -10,19 +24,20 @@ Hayase is UX reference only — this repo does **not** fork Hayase.
 - **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar
 - **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names (tap to copy)
 - **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
-- **Player** — AVPlayer primary (HLS/MP4); MobileVLCKit probe fallback; ±seek / next episode; double/triple-tap seek; autoplay-next sources sheet; audio & subtitle tracks; AniSkip OP/ED skip + optional auto-skip
-- **Downloads** — Settings → Downloads: queue HLS/MP4 streams or torrents; lock-screen progress; offline library playback
-- **Transfers** — Settings: torrent download Mbps cap + max peers (applied live to libtorrent)
+- **Player** — Custom AVPlayer for CDN HLS/MP4; ±10s / play / next; double/triple-tap seek; speed + aspect; AniSkip OP/ED marks + Skip pill / optional auto-skip; MobileVLCKit only as a probe fallback
+- **Downloads** — Settings → Downloads: queue module HLS/MP4 (headers supported) or optional torrent Save; lock-screen progress; offline library playback
+- **Transfers** — Settings: torrent download Mbps cap + max peers (applied live when torrent paths are used)
 - **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
-- **Sources** — CDN Watch modules (Settings → Modules) + optional Hayase-compatible torrent extensions for Download; theme catalog fallbacks; Sukebei/Nyaa mirror failover after TLS failure
-- **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (wheel, hex, live preview); immersive Saizen chrome on Home only; swipe-down to dismiss sources
-- **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only extensions; CSP meta; secret-scanned IPA packaging
+- **Modules** — Settings → Modules: installable Watch/Save sources; HTTPS scripts only; theme catalog fallbacks elsewhere in the app
+- **Incognito** — Settings toggle: pause list sync and Home continue; session resume clears when leaving Incognito (downloads stay on disk)
+- **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance; immersive Saizen chrome on Home only; swipe-down to dismiss sources
+- **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only module/extension loads; CSP meta; secret-scanned IPA packaging
 
 Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
 
 ## Status
 
-Proven on a physical iPhone for browse → search filters → module streams → AVPlayer, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, and adult index mirror failover.
+Proven on a physical iPhone for browse → search filters → module streams → AVPlayer, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, Incognito, and Downloads enqueue.
 
 This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
@@ -33,11 +48,11 @@ This is a **personal sideload** project — not an App Store build. Packaging no
 | `apps/web` | Next.js static UI (Capacitor `webDir`) |
 | `apps/mobile` | Capacitor iOS shell + sync scripts |
 | `packages/shared` | Shared TS types / `window.saizen` contract |
-| `ios/App/SaizenCore` | Canonical Swift: torrent, HTTP, player, auth |
-| `ios/App/Plugins` | Capacitor plugins (`SaizenTorrent`, `SaizenPlayer`, `SaizenAuth`) |
+| `ios/App/SaizenCore` | Canonical Swift: modules, player, torrent, HTTP, auth |
+| `ios/App/Plugins` | Capacitor plugins (`SaizenModules`, `SaizenPlayer`, `SaizenTorrent`, `SaizenAuth`) |
 | `ios/vendor/` | **Gitignored** — build libtorrent here locally |
 | `scripts/` | Sync Swift into Cap, build libtorrent, Cap HTML fixups, IPA packaging |
-| `docs/` | Native contract, HTTP Range notes, extensions, security test plan |
+| `docs/` | Native contract, HTTP Range notes, architecture notes, security test plan |
 
 See [STRUCTURE.md](./STRUCTURE.md) for the full tree.
 
@@ -46,7 +61,7 @@ See [STRUCTURE.md](./STRUCTURE.md) for the full tree.
 - Node **≥ 20**, **pnpm** 10+
 - Xcode 15+ (iOS 15 deployment target)
 - CocoaPods (`pod` on PATH)
-- Physical device recommended (BitTorrent + VLC)
+- Physical device recommended
 - Optional: Boost + Xcode CLT to rebuild libtorrent (`scripts/build-libtorrent-ios.sh`)
 - OAuth (once, as the app developer): set **public** Client IDs in `apps/web/.env.local` — see `.env.example`. Users only **Sign in**; they never create API apps. MAL app type must be **iOS** or **other** (PKCE only). **Never** put a client secret in `NEXT_PUBLIC_*`.
 - AniList Authorization Code needs the Client Secret once on your machine: `bash scripts/set-anilist-secret.sh` (writes gitignored `AnilistSecret.local.swift`), then `pnpm sync:ios`. Redirect URL: `saizen://anilist/callback`.
@@ -105,7 +120,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, …). Patch marketing versions (`1.0.1`, `1.0.2`, `1.0.3`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.1.0** is the first minor IPA after v1.0.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** is a minor architecture release (IPA-eligible).
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 
@@ -121,7 +136,7 @@ Apple’s paid program is required for **App Store**, TestFlight, and long-lived
 ```bash
 pnpm sync:ios                 # rebuild web + sync Swift
 # Build/Run once on a device from Xcode (prefer Release when possible)
-pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.3.ipa
+pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.4.0.ipa
 ```
 
 ### IPA security warning (read before uploading a Release)
@@ -143,33 +158,34 @@ pnpm package:ipa              # secret preflight → packs dist/Saizen-v1.3.3.ip
 4. Always use `pnpm package:ipa` (or `bash scripts/preflight-release.sh` then `bash scripts/package-ipa.sh`). Do not zip an `.app` by hand for public releases.
 5. Re-scan before upload: `bash scripts/preflight-release.sh` and confirm the packaged IPA has no unexpected secret identifiers.
 
-**Last scanned:** `dist/Saizen-v1.1.0.ipa` (~19 MB, 2026-08-04 Release-iphoneos) — no `*_SECRET` / `client_secret` / `malClientSecret` identifiers; public Client IDs present (expected); token paths scrub `localStorage` and use Keychain; extension loads require `https://`.
-
 Your device build lives under DerivedData, e.g.:
 
 `~/Library/Developer/Xcode/DerivedData/App-…/Build/Products/Debug-iphoneos/App.app`
 
-There is **no `.ipa` until you package one** — Run in Xcode only produces `.app`. Upload `dist/Saizen-v1.1.0.ipa` as a GitHub Release asset; install with Sideloadly/AltStore (free Apple ID, ~7-day cert).
+There is **no `.ipa` until you package one** — Run in Xcode only produces `.app`. Upload `dist/Saizen-v1.4.0.ipa` as a GitHub Release asset; install with Sideloadly/AltStore (free Apple ID, ~7-day cert).
 
 Expect: no App Store listing, 7-day cert renewals on free IDs, and each installer must trust the certificate on their device.
 
 ## Playback path
 
 ```
-Module (JSContext) → StreamCandidate (HLS/MP4) → AVPlayer
+Module catalog (Settings → Modules)
+  → JS runtime resolves episode → StreamCandidate (HLS/MP4 + headers)
+  → playStream → custom AVPlayer chrome
 Optional: torrent/magnet → DownloadCoordinator (offline only)
 ```
 
-Live Watch resolves HTTPS module scripts (`searchResults` → `extractEpisodes` → `extractStreamUrl`), ranks candidates, and plays via `playStream` (AVPlayer primary). Magnet / `.torrent` rows are Save/download only — not the primary Watch path.
+Live Watch ranks module stream candidates and plays via `playStream`. Magnet / `.torrent` rows are not the primary Watch path.
+
+Architecture notes for contributors: [docs/REFERENCE.md](./docs/REFERENCE.md) (behavior-level; no third-party source).
 
 ## Providers
 
-**Watch** uses CDN modules (Settings → Modules; catalog `library.cufiy.net`). **Download** may still use **Hayase-compatible torrent extensions** (https://exten.pages.dev) under Settings → Extensions. NZB is not supported. Extension JS is fetched over **HTTPS only**. Adult indexes (Sukebei) may use public Nyaa mirrors when `nyaa.si` TLS is blocked on the device network.
+**Watch / Save** use **CDN modules** installed under Settings → Modules. NZB is not supported. Module scripts load over **HTTPS only**. Adult index mirrors (when used) may fail over after TLS failure on the device network.
 
 | Built-in | Notes |
 |----------|--------|
 | **Test Sample** | Offline / progressive pipeline check |
-| SubsPlease / Erai / Nyaa | Legacy — off by default |
 
 ## Scripts
 
@@ -190,7 +206,6 @@ Live Watch resolves HTTPS module scripts (`searchResults` → `extractEpisodes` 
 
 - [docs/NATIVE_CONTRACT.md](./docs/NATIVE_CONTRACT.md)
 - [docs/HTTP_RANGE_SERVER.md](./docs/HTTP_RANGE_SERVER.md)
-- [docs/EXTENSIONS.md](./docs/EXTENSIONS.md)
 - [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md)
 - [docs/REFERENCE.md](./docs/REFERENCE.md)
 

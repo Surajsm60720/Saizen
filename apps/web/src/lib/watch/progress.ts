@@ -1,5 +1,9 @@
 import { getWatchSettings } from './settings'
 import { recordProbedDuration } from './episodeMeta'
+import {
+  getIncognitoSessionProgressKey,
+  isIncognitoMode
+} from '@/lib/privacy/incognito'
 
 const KEY = 'saizen:watch-progress'
 
@@ -19,10 +23,15 @@ function storageKey(anilistId: number, episode: number) {
   return `${anilistId}:${episode}`
 }
 
+function activeKey(): string {
+  return isIncognitoMode() ? getIncognitoSessionProgressKey() : KEY
+}
+
 function readMap(): Record<string, WatchProgress> {
   if (typeof window === 'undefined') return {}
   try {
-    const raw = localStorage.getItem(KEY)
+    const store = isIncognitoMode() ? sessionStorage : localStorage
+    const raw = store.getItem(activeKey())
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, WatchProgress>
     return parsed && typeof parsed === 'object' ? parsed : {}
@@ -37,7 +46,12 @@ function writeMap(map: Record<string, WatchProgress>) {
     const entries = Object.entries(map)
       .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
       .slice(0, 400)
-    localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(entries)))
+    const payload = JSON.stringify(Object.fromEntries(entries))
+    if (isIncognitoMode()) {
+      sessionStorage.setItem(getIncognitoSessionProgressKey(), payload)
+    } else {
+      localStorage.setItem(KEY, payload)
+    }
   } catch {
     /* quota / private mode */
   }
@@ -107,7 +121,8 @@ export function updateWatchProgress(opts: {
   map[key] = progress
   writeMap(map)
 
-  if (justCompleted) {
+  // Incognito: never push completions to AniList/MAL or mark pending sync.
+  if (justCompleted && !isIncognitoMode()) {
     void import('@/lib/auth/sync')
       .then(({ syncListProgress }) =>
         syncListProgress({
@@ -125,6 +140,7 @@ export function updateWatchProgress(opts: {
 
 /** Pending local completions not yet synced (Phase 3 consumer). */
 export function listPendingSync(): WatchProgress[] {
+  if (isIncognitoMode()) return []
   return Object.values(readMap()).filter(
     (p) => p.completed && (p.syncedEpisode == null || p.syncedEpisode < p.episode)
   )
@@ -132,6 +148,7 @@ export function listPendingSync(): WatchProgress[] {
 
 /** Push any locally completed episodes that never reached AniList/MAL (e.g. watched while signed out). */
 export async function flushPendingListSync(): Promise<void> {
+  if (isIncognitoMode()) return
   const pending = listPendingSync()
   if (!pending.length) return
   const { syncListProgress } = await import('@/lib/auth/sync')

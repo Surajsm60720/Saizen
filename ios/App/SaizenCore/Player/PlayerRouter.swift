@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import MediaPlayer
 import UIKit
 
@@ -115,106 +115,29 @@ public final class PlayerRouter {
     let opts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": headers]
     let asset = AVURLAsset(url: url, options: opts)
     let item = AVPlayerItem(asset: asset)
-    item.externalMetadata = nowPlayingMetadata(title: title, episode: context.episode)
+    item.preferredForwardBufferDuration = 12
     let player = AVPlayer(playerItem: item)
-    let vc = DismissAwareAVPlayerViewController()
-    vc.player = player
-    vc.title = title
-    vc.updatesNowPlayingInfoCenter = true
-    vc.onDismiss = onDismiss
-    vc.playbackContext = context
+    player.automaticallyWaitsToMinimizeStalling = true
+    player.actionAtItemEnd = .pause
 
-    activatePlaybackSession()
+    let vc = SaizenAVPlayerViewController(player: player, title: title, context: context)
+    vc.onDismiss = onDismiss
+
+    SaizenPlaybackAudio.activate()
     NowPlayingSession.shared.bind(player: player, title: title, episode: context.episode)
 
-    var observer: NSKeyValueObservation?
-    observer = item.observe(\.status, options: [.new]) { item, _ in
-      switch item.status {
-      case .readyToPlay:
-        NSLog("[Saizen] AVPlayerItem readyToPlay")
-        NowPlayingSession.shared.refresh(from: player)
-        player.play()
-      case .failed:
-        NSLog(
-          "[Saizen] AVPlayerItem failed: %@ | log=%@",
-          String(describing: item.error),
-          String(describing: item.errorLog())
-        )
-      case .unknown:
-        break
-      @unknown default:
-        break
-      }
-      if item.status != .unknown {
-        observer?.invalidate()
-      }
-    }
-
-    do {
-      let interval = CMTime(seconds: 2, preferredTimescale: 600)
-      vc.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
-        [weak player] _ in
-        guard let player else { return }
-        NowPlayingSession.shared.refresh(from: player)
-        guard context.isValid else { return }
-        let pos = player.currentTime().seconds
-        let dur = player.currentItem?.duration.seconds ?? .nan
-        guard pos.isFinite, dur.isFinite, dur >= 30 else { return }
-        PlaybackProgressReporter.shared.emit(
-          anilistId: context.anilistId,
-          episode: context.episode,
-          idMal: context.idMal,
-          positionSec: pos,
-          durationSec: dur
-        )
-      }
-    }
-
-    if context.isValid {
-      vc.endObserver = NotificationCenter.default.addObserver(
-        forName: .AVPlayerItemDidPlayToEndTime,
-        object: item,
-        queue: .main
-      ) { [weak vc] _ in
-        guard let vc, let ctx = vc.playbackContext else { return }
-        guard ctx.options.autoplayNext, ctx.options.hasNextEpisode, ctx.isValid else { return }
-        PlaybackProgressReporter.shared.emitPlayerAction(
-          "nextEpisode",
-          anilistId: ctx.anilistId,
-          episode: ctx.episode
-        )
-        vc.dismiss(animated: true)
-      }
-    }
+    NSLog(
+      "[Saizen] custom AVPlayer present skip op=%@ ed=%@ autoSkip=%@",
+      context.options.op.map { "\($0.start)-\($0.end)" } ?? "nil",
+      context.options.ed.map { "\($0.start)-\($0.end)" } ?? "nil",
+      context.options.autoSkipOpEd ? "yes" : "no"
+    )
 
     presenter.present(vc, animated: true)
   }
 
   private static func activatePlaybackSession() {
-    let session = AVAudioSession.sharedInstance()
-    do {
-      try session.setCategory(.playback, mode: .moviePlayback, options: [])
-      try session.setActive(true)
-    } catch {
-      NSLog("[Saizen] AVAudioSession activate failed: %@", error.localizedDescription)
-    }
-  }
-
-  private static func nowPlayingMetadata(title: String?, episode: Int) -> [AVMetadataItem] {
-    var items: [AVMetadataItem] = []
-    if let title, !title.isEmpty {
-      let meta = AVMutableMetadataItem()
-      meta.identifier = .commonIdentifierTitle
-      meta.value = title as NSString
-      items.append(meta)
-    }
-    if episode > 0 {
-      let meta = AVMutableMetadataItem()
-      meta.identifier = .iTunesMetadataTrackSubTitle
-      meta.value = "Episode \(episode)" as NSString
-      items.append(meta)
-    }
-    return items
+    SaizenPlaybackAudio.activate()
   }
 
   #if canImport(MobileVLCKit)
@@ -285,7 +208,8 @@ final class NowPlayingSession {
     title = nil
     episode = 0
     removeRemoteCommands()
-    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    // Do not deactivate the shared audio session here — Cap / downloads may still need it,
+    // and notifyOthersOnDeactivation can pause a newly presented player mid-handoff.
   }
 
   private func installRemoteCommandsIfNeeded() {
@@ -340,52 +264,6 @@ final class NowPlayingSession {
     toggleTarget = nil
     changePositionTarget = nil
     commandsInstalled = false
-  }
-}
-
-/// AVPlayer sheet that notifies when the user dismisses it.
-final class DismissAwareAVPlayerViewController: AVPlayerViewController {
-  var onDismiss: (() -> Void)?
-  var playbackContext: PlaybackContext?
-  var timeObserver: Any?
-  var endObserver: NSObjectProtocol?
-  private var didNotify = false
-  private var hasAppeared = false
-
-  override func viewDidAppear(_ animated: Bool) {
-    super.viewDidAppear(animated)
-    hasAppeared = true
-  }
-
-  override func viewDidDisappear(_ animated: Bool) {
-    super.viewDidDisappear(animated)
-    // Avoid firing during presentation / transient hierarchy churn.
-    guard hasAppeared, isBeingDismissed || presentingViewController == nil else { return }
-    notifyDismiss()
-  }
-
-  deinit {
-    if let timeObserver, let player {
-      player.removeTimeObserver(timeObserver)
-    }
-    if let endObserver {
-      NotificationCenter.default.removeObserver(endObserver)
-    }
-  }
-
-  private func notifyDismiss() {
-    guard !didNotify else { return }
-    didNotify = true
-    if let timeObserver, let player {
-      player.removeTimeObserver(timeObserver)
-      self.timeObserver = nil
-    }
-    if let endObserver {
-      NotificationCenter.default.removeObserver(endObserver)
-      self.endObserver = nil
-    }
-    NowPlayingSession.shared.tearDown()
-    onDismiss?()
   }
 }
 

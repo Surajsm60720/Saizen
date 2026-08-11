@@ -13,6 +13,10 @@ import {
   setDownloadSettings,
   type DownloadUiSettings
 } from '@/lib/downloads/settings'
+import {
+  isIncognitoMode,
+  subscribeIncognitoMode
+} from '@/lib/privacy/incognito'
 import type { DownloadJob, DownloadQuality, LibraryEntry, StorageUsage } from '@saizen/shared'
 
 function formatBytes(n: number): string {
@@ -44,6 +48,31 @@ function formatFolderLabel(path: string): string {
   return shown.join(' / ') || 'On This iPhone · Saizen Downloads'
 }
 
+function jobKindLabel(job: DownloadJob): string {
+  const kind = (job.kind || '').toLowerCase()
+  if (kind === 'hls') return 'HLS'
+  if (kind === 'http' || kind === 'mp4') return 'MP4'
+  if (kind === 'torrent' || kind === 'magnet') return 'Legacy'
+  return kind ? kind.toUpperCase() : 'CDN'
+}
+
+function statusLabel(status: DownloadJob['status']): string {
+  switch (status) {
+    case 'downloading':
+      return 'Downloading'
+    case 'paused':
+      return 'Paused'
+    case 'queued':
+      return 'Queued'
+    case 'failed':
+      return 'Failed'
+    case 'completed':
+      return 'Done'
+    default:
+      return status
+  }
+}
+
 const QUALITIES: DownloadQuality[] = ['2160p', '1080p', '720p', '480p']
 
 export default function DownloadsPage() {
@@ -54,7 +83,13 @@ export default function DownloadsPage() {
   const [jobs, setJobs] = useState<DownloadJob[]>([])
   const [library, setLibrary] = useState<LibraryEntry[]>([])
   const [busy, setBusy] = useState<string | null>(null)
+  const [incognito, setIncognito] = useState(false)
   const librarySig = useRef('')
+
+  useEffect(() => {
+    setIncognito(isIncognitoMode())
+    return subscribeIncognitoMode(setIncognito)
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -78,19 +113,27 @@ export default function DownloadsPage() {
     setSettings(getDownloadSettings())
     void refresh()
     let unsub: (() => void) | undefined
+    let lastExtraRefresh = 0
     void (async () => {
-      const ret = await native.onDownloadProgress?.(async (next) => {
+      const ret = await native.onDownloadProgress?.(async (next, librarySnap) => {
         setJobs(next)
         const sig = next
           .filter((job) => job.status === 'completed')
           .map((job) => job.id)
           .sort()
           .join('|')
-        if (sig === librarySig.current) return
-        librarySig.current = sig
+        const completedChanged = sig !== librarySig.current
+        if (librarySnap) {
+          setLibrary(librarySnap)
+          librarySig.current = sig
+        }
+        const now = Date.now()
+        if (!completedChanged && now - lastExtraRefresh < 8000) return
+        if (completedChanged) librarySig.current = sig
+        lastExtraRefresh = now
         try {
           const [lib, u] = await Promise.all([
-            native.library(),
+            librarySnap ? Promise.resolve(librarySnap) : native.library(),
             native.storageUsage?.() ?? Promise.resolve(null)
           ])
           setLibrary(lib)
@@ -101,7 +144,16 @@ export default function DownloadsPage() {
       })
       unsub = typeof ret === 'function' ? ret : await ret
     })()
-    return () => unsub?.()
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onVis)
+    return () => {
+      unsub?.()
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('focus', onVis)
+    }
   }, [native, refresh])
 
   function patch(next: Partial<DownloadUiSettings>) {
@@ -111,22 +163,44 @@ export default function DownloadsPage() {
   const grouped = useMemo(() => {
     const map = new Map<string, LibraryEntry[]>()
     for (const item of library) {
+      if (item.isIncognito && !incognito) continue
       const key = item.seriesTitle || `Media ${item.mediaId}`
       const list = map.get(key) ?? []
       list.push(item)
       map.set(key, list)
     }
     return [...map.entries()]
-  }, [library])
+  }, [library, incognito])
 
-  const active = jobs.filter((j) => j.status !== 'completed')
+  const active = jobs.filter((j) => {
+    if (j.status === 'completed') return false
+    if (j.isIncognito && !incognito) return false
+    return true
+  })
+
+  const visibleLibraryBytes = useMemo(() => {
+    if (incognito) return usage.libraryBytes
+    const hidden = library
+      .filter((item) => item.isIncognito)
+      .reduce((sum, item) => sum + (item.size || 0), 0)
+    return Math.max(0, usage.libraryBytes - hidden)
+  }, [usage.libraryBytes, library, incognito])
+
+  const visibleEpisodeCount = useMemo(
+    () => library.filter((item) => !(item.isIncognito && !incognito)).length,
+    [library, incognito]
+  )
 
   return (
     <>
       <PageHeader
         title="Downloads"
         dense
-        description="Save on Wi‑Fi, then watch later — even without a connection."
+        description={
+          incognito
+            ? 'Incognito saves show here while Incognito is on.'
+            : 'Save CDN streams from modules — watch offline later.'
+        }
       />
 
       {!native.isApp ? (
@@ -138,7 +212,7 @@ export default function DownloadsPage() {
       <div className="space-y-5">
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: 'Library', value: formatBytes(usage.libraryBytes) },
+            { label: 'Library', value: formatBytes(visibleLibraryBytes) },
             { label: 'Cache', value: formatBytes(usage.cacheBytes) },
             { label: 'Free', value: formatBytes(usage.freeBytes) }
           ].map((stat) => (
@@ -151,7 +225,7 @@ export default function DownloadsPage() {
 
         <SettingsGroup
           title="Storage"
-          description="Downloads keep going while the phone is locked. Force-quitting Saizen pauses torrents until you open the app again."
+          description="HLS and MP4 saves continue while the phone is locked. Keep Saizen open or in the background."
         >
           <div className="px-3.5 py-2.5">
             <div className="flex items-center justify-between gap-3">
@@ -193,7 +267,7 @@ export default function DownloadsPage() {
           </div>
           <SettingsRow
             label="Clear cache"
-            hint="Stream leftovers and unfinished download data. Saved episodes stay."
+            hint="Temporary stream data. Saved episodes stay."
             showSeparator
           >
             <Button
@@ -216,7 +290,10 @@ export default function DownloadsPage() {
           </SettingsRow>
         </SettingsGroup>
 
-        <SettingsGroup title="Download settings">
+        <SettingsGroup
+          title="Preferences"
+          description="Used when you batch-download from a show."
+        >
           <SettingsRow label="Wi‑Fi only" hint="Pause on cellular">
             <Switch
               checked={settings.wifiOnly}
@@ -239,7 +316,7 @@ export default function DownloadsPage() {
               <span className="w-4 text-sm tabular-nums">{settings.maxParallelDownloads}</span>
             </div>
           </SettingsRow>
-          <SettingsRow label="Preferred quality" hint="Used when you tap Download on a show" showSeparator>
+          <SettingsRow label="Preferred quality" hint="Closest CDN stream wins" showSeparator>
             <select
               value={settings.preferredQuality}
               onChange={(e) => patch({ preferredQuality: e.target.value as DownloadQuality })}
@@ -255,33 +332,98 @@ export default function DownloadsPage() {
           </SettingsRow>
         </SettingsGroup>
 
-        <SettingsGroup title="Queue" description={active.length ? `${active.length} in progress` : undefined}>
+        <SettingsGroup
+          title="Queue"
+          description={active.length ? `${active.length} in progress` : undefined}
+        >
           {active.length === 0 ? (
-            <div className="px-3.5 py-3 text-sm text-muted-foreground">Nothing downloading.</div>
+            <div className="px-3.5 py-3 text-sm text-muted-foreground">
+              Nothing downloading. Open a show → episode → Save, or use Download for a batch.
+            </div>
           ) : (
-            active.map((job, i) => (
-              <SettingsRow
-                key={job.id}
-                label={`${job.seriesTitle} · Ep ${job.episode}`}
-                hint={`${job.status} · ${Math.round(job.progress * 100)}% · ${formatBytes(job.downloaded)}`}
-                showSeparator={i > 0}
-              >
-                <div className="flex gap-1.5">
-                  {job.status === 'paused' ? (
-                    <Button size="sm" variant="outline" onClick={() => void native.resumeDownload?.(job.id)}>
-                      Resume
+            active.map((job, i) => {
+              const pct = Math.round(Math.max(0, Math.min(1, job.progress)) * 100)
+              const speed =
+                job.speed > 0 && job.status === 'downloading'
+                  ? ` · ${formatBytes(job.speed)}/s`
+                  : ''
+              return (
+                <SettingsRow
+                  key={job.id}
+                  label={`${job.seriesTitle} · Ep ${job.episode}`}
+                  hint={`${statusLabel(job.status)} · ${jobKindLabel(job)} · ${pct}% · ${formatBytes(job.downloaded)}${speed}`}
+                  showSeparator={i > 0}
+                >
+                  <div className="flex gap-1.5">
+                    {job.status === 'paused' || job.status === 'failed' ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy === job.id}
+                        onClick={() => {
+                          setBusy(job.id)
+                          setJobs((prev) =>
+                            prev.map((j) =>
+                              j.id === job.id ? { ...j, status: 'downloading' } : j
+                            )
+                          )
+                          void native
+                            .resumeDownload?.(job.id)
+                            .then(() => refresh())
+                            .catch((e) =>
+                              toast.error(e instanceof Error ? e.message : String(e))
+                            )
+                            .finally(() => setBusy(null))
+                        }}
+                      >
+                        Resume
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy === job.id}
+                        onClick={() => {
+                          setBusy(job.id)
+                          setJobs((prev) =>
+                            prev.map((j) =>
+                              j.id === job.id ? { ...j, status: 'paused', speed: 0 } : j
+                            )
+                          )
+                          void native
+                            .pauseDownload?.(job.id)
+                            .then(() => refresh())
+                            .catch((e) =>
+                              toast.error(e instanceof Error ? e.message : String(e))
+                            )
+                            .finally(() => setBusy(null))
+                        }}
+                      >
+                        Pause
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy === job.id}
+                      onClick={() => {
+                        setBusy(job.id)
+                        setJobs((prev) => prev.filter((j) => j.id !== job.id))
+                        void native
+                          .cancelDownload?.(job.id)
+                          .then(() => refresh())
+                          .catch((e) =>
+                            toast.error(e instanceof Error ? e.message : String(e))
+                          )
+                          .finally(() => setBusy(null))
+                      }}
+                    >
+                      Cancel
                     </Button>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => void native.pauseDownload?.(job.id)}>
-                      Pause
-                    </Button>
-                  )}
-                  <Button size="sm" variant="ghost" onClick={() => void native.cancelDownload?.(job.id)}>
-                    Cancel
-                  </Button>
-                </div>
-              </SettingsRow>
-            ))
+                  </div>
+                </SettingsRow>
+              )
+            })
           )}
         </SettingsGroup>
 
@@ -289,13 +431,13 @@ export default function DownloadsPage() {
           title="Library"
           description={
             grouped.length
-              ? `${library.length} episode${library.length === 1 ? '' : 's'} · ${formatBytes(usage.libraryBytes)}`
+              ? `${visibleEpisodeCount} episode${visibleEpisodeCount === 1 ? '' : 's'} · ${formatBytes(visibleLibraryBytes)}`
               : 'Episodes saved on this device.'
           }
         >
           {grouped.length === 0 ? (
             <div className="px-3.5 py-3 text-sm text-muted-foreground">
-              No downloads yet. Open a show and tap Download.
+              No downloads yet. Open a show, pick a stream, tap Save.
             </div>
           ) : (
             grouped.map(([title, items]) => (
@@ -309,7 +451,17 @@ export default function DownloadsPage() {
                   )
                 }}
                 onDelete={(ids) => {
-                  void native.deleteTorrents(ids).then(() => refresh())
+                  const idSet = new Set(ids)
+                  setLibrary((prev) =>
+                    prev.filter((e) => !idSet.has(e.id) && !idSet.has(e.hash))
+                  )
+                  void native
+                    .deleteTorrents(ids)
+                    .then(() => refresh())
+                    .catch((e) => {
+                      toast.error(e instanceof Error ? e.message : String(e))
+                      void refresh()
+                    })
                 }}
               />
             ))
@@ -389,7 +541,7 @@ function LibraryShow({
                 <SettingsRow
                   key={item.id}
                   label={item.episodeTitle?.trim() || `Episode ${item.episode}`}
-                  hint={`${seasons.length > 1 ? '' : `${item.seasonLabel || 'Season'} · `}${formatBytes(item.size)}${
+                  hint={`${formatBytes(item.size)}${
                     item.resolution ? ` · ${item.resolution}` : ''
                   }`}
                   showSeparator

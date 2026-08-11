@@ -173,7 +173,9 @@ export interface SaizenNative {
 
   enqueueDownload?(options: EnqueueDownloadOptions): Promise<{ id: string }>
   downloadQueue?(): Promise<DownloadJob[]>
-  onDownloadProgress?(cb: (jobs: DownloadJob[]) => void): Promise<() => void> | (() => void)
+  onDownloadProgress?(
+    cb: (jobs: DownloadJob[], library?: LibraryEntry[]) => void
+  ): Promise<() => void> | (() => void)
   pauseDownload?(id: string): Promise<void>
   resumeDownload?(id: string): Promise<void>
   cancelDownload?(id: string): Promise<void>

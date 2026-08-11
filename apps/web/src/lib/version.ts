@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.3.4'
+export const APP_VERSION = '1.4.0'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -11,15 +11,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '1.3.4',
+    version: '1.4.0',
     date: '2026-08-11',
-    title: 'CDN Watch middleware',
+    title: 'CDN Watch architecture',
     highlights: [
-      'Watch resolves HTTPS modules (JSContext) to HLS/MP4 StreamCandidates and plays via AVPlayer — live torrent Watch removed',
-      'Sources sheet lists module streams first; magnet/torrent rows are Save/download only',
-      'Downloads: enqueue HLS/MP4 (with headers) or keep torrent Save through DownloadCoordinator',
-      'Settings → Modules for catalog install / enable / order; torrent extensions remain optional for Download',
-      'Player defaults CDN HTTPS to AVPlayer with Now Playing; MobileVLCKit stays probe-only for non-AVF candidates'
+      'Watch path rebuilt around installable stream modules (HLS/MP4) instead of live torrent playback',
+      'Settings → Modules: browse a catalog, install, enable, and reorder sources used for Play and Save',
+      'Episode sources list module streams; Play opens a custom native AVPlayer (compact chrome, OP/ED skip, gesture seek)',
+      'Downloads / batch Save resolve module streams and prefer your quality setting; Downloads UI is CDN-focused',
+      'Incognito Mode: pause list sync and Home continue; session resume clears when you leave Incognito',
+      'Module runtime hardened for redirects, timers, and empty-stream cases; torrent tooling remains for optional offline use'
     ]
   },
   {

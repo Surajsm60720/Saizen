@@ -2,11 +2,45 @@ import UIKit
 import WebKit
 import Capacitor
 
+/// Forwards Cap's WKNavigationDelegate and reloads when the WebContent process dies.
+/// Without this, Capacitor leaves a zombie page (no CSS / dead JS) until a full app restart.
+final class SaizenWebContentReloadProxy: NSObject, WKNavigationDelegate {
+    weak var forward: WKNavigationDelegate?
+    private var reloading = false
+
+    override func responds(to aSelector: Selector!) -> Bool {
+        if super.responds(to: aSelector) { return true }
+        return forward?.responds(to: aSelector) ?? false
+    }
+
+    override func forwardingTarget(for aSelector: Selector!) -> Any? {
+        if let forward, forward.responds(to: aSelector) { return forward }
+        return super.forwardingTarget(for: aSelector)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        NSLog("[Saizen] WKWebView content process terminated — reloading to restore CSS/JS")
+        forward?.webViewWebContentProcessDidTerminate?(webView)
+        guard !reloading else { return }
+        reloading = true
+        DispatchQueue.main.async { [weak self, weak webView] in
+            defer { self?.reloading = false }
+            guard let webView else { return }
+            if let url = webView.url {
+                webView.load(URLRequest(url: url))
+            } else {
+                webView.reload()
+            }
+        }
+    }
+}
+
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
     private var webViewConfigObserver: NSObjectProtocol?
+    private var webContentReloadProxy: SaizenWebContentReloadProxy?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         SaizenStorage.ensureDirectories()
@@ -100,11 +134,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         // Edge swipe ↔ history (SPA pushState entries) — replaces in-app Back buttons
         webView.allowsBackForwardNavigationGestures = true
+        installWebContentReloadProxy(on: webView)
         #if DEBUG
         if #available(iOS 16.4, *) {
             webView.isInspectable = true
         }
         #endif
+    }
+
+    private func installWebContentReloadProxy(on webView: WKWebView) {
+        if let existing = webContentReloadProxy, webView.navigationDelegate === existing {
+            return
+        }
+        let proxy = SaizenWebContentReloadProxy()
+        // Keep Cap's handler (bridge reset, scheme policy) as the forward target.
+        if let current = webView.navigationDelegate, !(current is SaizenWebContentReloadProxy) {
+            proxy.forward = current
+        } else if let existing = webContentReloadProxy?.forward {
+            proxy.forward = existing
+        }
+        webContentReloadProxy = proxy
+        webView.navigationDelegate = proxy
     }
 
     private func findWebView(in view: UIView) -> WKWebView? {

@@ -13,11 +13,7 @@ import {
   setWatchSettings,
   type WatchSettings
 } from '@/lib/watch/settings'
-import {
-  getDownloadSettings,
-  setDownloadSettings,
-  type DownloadUiSettings
-} from '@/lib/downloads/settings'
+import { getDownloadSettings, setDownloadSettings } from '@/lib/downloads/settings'
 import type { DownloadQuality } from '@saizen/shared'
 import { getAppearance, resolveAccentHex } from '@/lib/theme/appearance'
 import {
@@ -30,6 +26,11 @@ import {
   isAnilistConnected,
   isMalConnected
 } from '@/lib/auth'
+import {
+  isIncognitoMode,
+  setIncognitoMode,
+  subscribeIncognitoMode
+} from '@/lib/privacy/incognito'
 import { clearViewerListCache, fetchViewerAnimeList } from '@/lib/anilist'
 import { flushPendingListSync } from '@/lib/watch/progress'
 import getNative from '@/lib/native'
@@ -41,18 +42,13 @@ import { subscribeAuthChanged } from '@/lib/auth/tokens'
 export default function SettingsPage() {
   const [settings, setSettings] = useState<WatchSettings>(() => getWatchSettings())
   const [accentHex, setAccentHex] = useState(() => resolveAccentHex(getAppearance()))
-  const [transfers, setTransfers] = useState<Pick<DownloadUiSettings, 'torrentSpeed' | 'maxConns'>>(
-    () => {
-      const d = getDownloadSettings()
-      return { torrentSpeed: d.torrentSpeed, maxConns: d.maxConns }
-    }
-  )
   const [anilistOn, setAnilistOn] = useState(false)
   const [malOn, setMalOn] = useState(false)
   const [busy, setBusy] = useState<'anilist' | 'mal' | 'refresh' | null>(null)
   const [isApp, setIsApp] = useState(false)
   const [creds, setCreds] = useState(() => getOAuthCredentials())
   const [quality, setQuality] = useState<DownloadQuality>('1080p')
+  const [incognito, setIncognito] = useState(false)
   const day0PressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const canAnilist = Boolean(creds.anilistClientId)
   const canMal = Boolean(creds.malClientId)
@@ -64,7 +60,7 @@ export default function SettingsPage() {
     setAccentHex(resolveAccentHex(getAppearance()))
     const d = getDownloadSettings()
     setQuality(d.preferredQuality)
-    setTransfers({ torrentSpeed: d.torrentSpeed, maxConns: d.maxConns })
+    setIncognito(isIncognitoMode())
 
     const refreshAuth = () => {
       void whenBridgeReady().then(async () => {
@@ -75,7 +71,12 @@ export default function SettingsPage() {
       })
     }
     refreshAuth()
-    return subscribeAuthChanged(refreshAuth)
+    const unsubAuth = subscribeAuthChanged(refreshAuth)
+    const unsubIncognito = subscribeIncognitoMode(setIncognito)
+    return () => {
+      unsubAuth()
+      unsubIncognito()
+    }
   }, [])
 
   function patch(next: Partial<WatchSettings>) {
@@ -177,6 +178,34 @@ export default function SettingsPage() {
       />
 
       <div className="space-y-5">
+        <SettingsGroup
+          title="Incognito"
+          description="Watch and save without touching AniList, MAL, or your main Home. Session resume clears when you leave."
+        >
+          <SettingsRow
+            label="Incognito Mode"
+            hint={
+              incognito
+                ? 'On — lists and Home stay clean'
+                : 'Off — normal tracking resumes'
+            }
+          >
+            <Switch
+              checked={incognito}
+              onCheckedChange={(v) => {
+                if (!v && incognito) {
+                  const ok = window.confirm(
+                    'Leave Incognito Mode? Session resume will be cleared. Downloads stay in your folder.'
+                  )
+                  if (!ok) return
+                }
+                setIncognito(setIncognitoMode(v))
+              }}
+              aria-label="Incognito Mode"
+            />
+          </SettingsRow>
+        </SettingsGroup>
+
         <SettingsGroup title="Appearance" description="Deep black chrome and accent color.">
           <Link
             href="/app/appearance/"
@@ -325,51 +354,6 @@ export default function SettingsPage() {
         </SettingsGroup>
 
         <SettingsGroup
-          title="Transfers"
-          description="Live torrent download cap and peer limit. Upload stays unlimited."
-        >
-          <SettingsRow
-            label="Download speed"
-            hint={transfers.torrentSpeed === 0 ? 'Unlimited' : `${transfers.torrentSpeed} Mbps`}
-          >
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={transfers.torrentSpeed}
-              onChange={(e) => {
-                const torrentSpeed = Number(e.target.value)
-                setTransfers((prev) => ({ ...prev, torrentSpeed }))
-                setDownloadSettings({ torrentSpeed })
-              }}
-              className="w-28 accent-[var(--primary)]"
-              aria-label="Torrent download speed in megabits per second"
-            />
-          </SettingsRow>
-          <SettingsRow
-            label="Max peers"
-            hint={`${transfers.maxConns} connections`}
-            showSeparator
-          >
-            <input
-              type="range"
-              min={20}
-              max={300}
-              step={10}
-              value={transfers.maxConns}
-              onChange={(e) => {
-                const maxConns = Number(e.target.value)
-                setTransfers((prev) => ({ ...prev, maxConns }))
-                setDownloadSettings({ maxConns })
-              }}
-              className="w-28 accent-[var(--primary)]"
-              aria-label="Maximum torrent connections"
-            />
-          </SettingsRow>
-        </SettingsGroup>
-
-        <SettingsGroup
           title="Accounts"
           description={
             isApp
@@ -440,18 +424,6 @@ export default function SettingsPage() {
             <div>
               <div className="text-sm font-medium">Downloads</div>
               <div className="text-xs text-muted-foreground">Offline library, folder & storage</div>
-            </div>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-          <Link
-            href="/app/extensions/"
-            scroll={false}
-            onClick={() => rememberCurrentScroll()}
-            className="flex min-h-12 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
-          >
-            <div>
-              <div className="text-sm font-medium">Extensions</div>
-              <div className="text-xs text-muted-foreground">Torrent catalogs</div>
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>

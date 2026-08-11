@@ -38,9 +38,14 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
 
   private static func parseSkipInterval(_ raw: Any?) -> SkipInterval? {
     guard let dict = raw as? [String: Any] else { return nil }
-    let start = (dict["start"] as? Double) ?? (dict["start"] as? Int).map(Double.init)
-    let end = (dict["end"] as? Double) ?? (dict["end"] as? Int).map(Double.init)
-    guard let start, let end else { return nil }
+    func num(_ key: String) -> Double? {
+      if let d = dict[key] as? Double { return d }
+      if let i = dict[key] as? Int { return Double(i) }
+      if let n = dict[key] as? NSNumber { return n.doubleValue }
+      if let s = dict[key] as? String { return Double(s) }
+      return nil
+    }
+    guard let start = num("start"), let end = num("end") else { return nil }
     return SkipInterval(start: start, end: end)
   }
 
