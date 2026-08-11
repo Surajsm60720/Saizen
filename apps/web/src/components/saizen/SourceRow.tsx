@@ -11,13 +11,16 @@ export function SourceRow({
   playing,
   onPlay,
   onDownload,
+  showPlay = true,
   className
 }: {
   result: ProviderResult
   likelyFaster?: boolean
   playing?: boolean
-  onPlay: () => void
+  onPlay?: () => void
   onDownload?: () => void
+  /** When false, hide Play (e.g. torrent download-only rows). */
+  showPlay?: boolean
   className?: string
 }) {
   return (
@@ -54,15 +57,17 @@ export function SourceRow({
           Save
         </Button>
       ) : null}
-      <Button
-        size="lg"
-        className="min-h-11 shrink-0 px-4"
-        disabled={playing}
-        haptic="medium"
-        onClick={onPlay}
-      >
-        Play
-      </Button>
+      {showPlay && onPlay ? (
+        <Button
+          size="lg"
+          className="min-h-11 shrink-0 px-4"
+          disabled={playing}
+          haptic="medium"
+          onClick={onPlay}
+        >
+          Play
+        </Button>
+      ) : null}
     </li>
   )
 }

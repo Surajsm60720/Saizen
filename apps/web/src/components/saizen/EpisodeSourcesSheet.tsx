@@ -9,16 +9,24 @@ import {
   SheetTitle
 } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SourceList, SourceRow } from '@/components/saizen/SourceRow'
 import type { EpisodeItem } from '@/components/saizen/EpisodeRow'
 import type { ProviderResult } from '@/lib/providers'
 import { isLikelyFaster } from '@/lib/extensions'
 import { cn } from '@/lib/utils'
+import type { StreamCandidate } from '@saizen/shared'
 
 const DISMISS_DISTANCE = 110
 const DISMISS_VELOCITY = 0.85
 const OVERLAY_FADE_PX = 280
+
+function streamKindLabel(kind: StreamCandidate['kind']): string {
+  if (kind === 'hls') return 'HLS'
+  if (kind === 'mp4') return 'MP4'
+  return 'Stream'
+}
 
 export function EpisodeSourcesSheet({
   open,
@@ -27,8 +35,11 @@ export function EpisodeSourcesSheet({
   durationMin,
   searching,
   status,
+  streamCandidates = [],
+  moduleNames = {},
   results,
   playing,
+  onPlayStream,
   onPlay,
   onDownload
 }: {
@@ -39,9 +50,12 @@ export function EpisodeSourcesSheet({
   durationMin?: number | null
   searching: boolean
   status: string
+  streamCandidates?: StreamCandidate[]
+  moduleNames?: Record<string, string>
   results: ProviderResult[]
   playing: boolean
-  onPlay: (result: ProviderResult) => void
+  onPlayStream?: (candidate: StreamCandidate) => void
+  onPlay?: (result: ProviderResult) => void
   onDownload?: (result: ProviderResult) => void
 }) {
   // Keep hooks stable; synopsis already on episode from AniZip/Jikan merge
@@ -170,6 +184,9 @@ export function EpisodeSourcesSheet({
 
   if (!mounted) return null
 
+  const showEmpty =
+    !searching && streamCandidates.length === 0 && results.length === 0
+
   return (
     <Sheet
       open={open}
@@ -269,36 +286,103 @@ export function EpisodeSourcesSheet({
                 </div>
               </div>
 
-              <div>
-                <h3 className="mb-2 text-sm font-semibold">Sources</h3>
+              <div className="space-y-4">
                 {status ? (
-                  <p className="mb-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-xs">
+                  <p className="rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-xs">
                     {status}
                   </p>
                 ) : null}
-                {searching && results.length === 0 ? (
+
+                {searching && streamCandidates.length === 0 && results.length === 0 ? (
                   <div className="space-y-2">
                     {Array.from({ length: 3 }).map((_, i) => (
                       <Skeleton key={i} className="h-14 w-full rounded-xl" />
                     ))}
                   </div>
-                ) : results.length > 0 ? (
-                  <SourceList>
-                    {results.map((r, i) => {
-                      const key = `${r.providerName}-${r.title}-${i}`
-                      return (
-                        <SourceRow
-                          key={key}
-                          result={r}
-                          likelyFaster={isLikelyFaster(r, i)}
-                          playing={playing}
-                          onPlay={() => onPlay(r)}
-                          onDownload={onDownload ? () => onDownload(r) : undefined}
-                        />
-                      )
-                    })}
-                  </SourceList>
-                ) : !searching ? (
+                ) : null}
+
+                {/* CDN streams from installed modules — primary Watch path */}
+                {streamCandidates.length > 0 || searching ? (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold">Streams</h3>
+                    {streamCandidates.length > 0 ? (
+                      <SourceList>
+                        {streamCandidates.map((c, i) => {
+                          const moduleName = moduleNames[c.moduleId] || c.moduleId
+                          const label =
+                            c.title ||
+                            [c.quality, streamKindLabel(c.kind)].filter(Boolean).join(' · ') ||
+                            'Stream'
+                          return (
+                            <li
+                              key={`${c.moduleId}-${c.url}-${i}`}
+                              className={cn(
+                                'flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5',
+                                'transition-colors hover:border-primary/30'
+                              )}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium leading-snug">
+                                  {label}
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                  <span>{moduleName}</span>
+                                  {c.quality ? <span>· {c.quality}</span> : null}
+                                  <Badge variant="secondary">{streamKindLabel(c.kind)}</Badge>
+                                </div>
+                              </div>
+                              {onPlayStream ? (
+                                <Button
+                                  size="lg"
+                                  className="min-h-11 shrink-0 px-4"
+                                  disabled={playing}
+                                  haptic="medium"
+                                  onClick={() => onPlayStream(c)}
+                                >
+                                  Play
+                                </Button>
+                              ) : null}
+                            </li>
+                          )
+                        })}
+                      </SourceList>
+                    ) : searching ? (
+                      <div className="space-y-2">
+                        {Array.from({ length: 2 }).map((_, i) => (
+                          <Skeleton key={i} className="h-14 w-full rounded-xl" />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Torrents / extensions — Save only for magnets; Watch is CDN */}
+                {results.length > 0 ? (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold">Download via torrent</h3>
+                    <SourceList>
+                      {results.map((r, i) => {
+                        const key = `${r.providerName}-${r.title}-${i}`
+                        const canStreamHttp = Boolean(r.httpUrl)
+                        return (
+                          <SourceRow
+                            key={key}
+                            result={r}
+                            likelyFaster={isLikelyFaster(r, i)}
+                            playing={playing}
+                            showPlay={canStreamHttp && Boolean(onPlay)}
+                            onPlay={
+                              canStreamHttp && onPlay ? () => onPlay(r) : undefined
+                            }
+                            onDownload={onDownload ? () => onDownload(r) : undefined}
+                          />
+                        )
+                      })}
+                    </SourceList>
+                  </div>
+                ) : null}
+
+                {showEmpty ? (
                   <p className="text-sm text-muted-foreground">No sources found.</p>
                 ) : null}
               </div>
