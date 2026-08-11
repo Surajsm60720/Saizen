@@ -58,35 +58,52 @@ public final class ModuleResolveSession: @unchecked Sendable {
 
   public func searchResults(_ query: String) async throws -> [[String: Any]] {
     let value = try await callModuleFunction("searchResults", argument: query)
-    return try Self.arrayOfDictionaries(from: value)
+    return try Self.normalizedResultRows(from: value)
   }
 
   public func extractEpisodes(_ showUrl: String) async throws -> [[String: Any]] {
     let value = try await callModuleFunction("extractEpisodes", argument: showUrl)
-    return try Self.arrayOfDictionaries(from: value)
+    return try Self.normalizedResultRows(from: value)
   }
 
   public func extractStreamUrl(_ episodeUrl: String) async throws -> [StreamCandidate] {
     let value = try await callModuleFunction("extractStreamUrl", argument: episodeUrl)
-    guard let object = Self.dictionary(from: value),
+    let decoded = Self.decodeModuleJSON(value) ?? value
+    guard let object = Self.dictionary(from: decoded),
           let streams = object["streams"] as? [Any] else {
+      NSLog(
+        "[Saizen] ModuleRuntime extractStreamUrl invalid type=%@",
+        String(describing: type(of: value))
+      )
       throw ModuleRuntimeError.invalidReturn
     }
 
-    return try streams.compactMap { item in
-      guard let stream = Self.dictionary(from: item),
-            let urlString = stream["url"] as? String,
+    return try streams.compactMap { item -> StreamCandidate? in
+      guard var stream = Self.dictionary(from: item) else {
+        throw ModuleRuntimeError.invalidReturn
+      }
+      // Sora/Luna modules often use `streamUrl` instead of `url`.
+      if stream["url"] == nil, let streamUrl = stream["streamUrl"] as? String {
+        stream["url"] = streamUrl
+      }
+      guard let urlString = stream["url"] as? String,
+            !urlString.isEmpty,
             let url = URL(string: urlString, relativeTo: baseURL)?.absoluteURL,
             url.scheme?.lowercased() == "https" else {
-        throw ModuleRuntimeError.invalidReturn
+        return nil
       }
 
       let headers = Self.stringDictionary(from: stream["headers"]) ?? [:]
+      let title = stream["title"] as? String
+      let quality =
+        (stream["quality"] as? String)
+        ?? (stream["resolution"] as? String)
+        ?? Self.qualityFromTitle(title)
       return StreamCandidate(
         url: url,
         headers: headers,
-        quality: stream["quality"] as? String,
-        title: stream["title"] as? String,
+        quality: quality,
+        title: title,
         moduleId: moduleId,
         kind: StreamCandidate.kind(for: url)
       )
@@ -139,6 +156,13 @@ public final class ModuleResolveSession: @unchecked Sendable {
     }
 
     context.setObject(fetchBlock, forKeyedSubscript: "__saizenNativeFetch" as NSString)
+
+    let logBlock: @convention(block) (JSValue?) -> Void = { args in
+      let message = args?.toString() ?? ""
+      NSLog("[Saizen][module] %@", message)
+    }
+    context.setObject(logBlock, forKeyedSubscript: "__saizenConsoleLog" as NSString)
+
     context.evaluateScript(
       """
       this.fetch = function(input, options) {
@@ -146,10 +170,21 @@ public final class ModuleResolveSession: @unchecked Sendable {
           __saizenNativeFetch(input, options || {}, resolve, reject);
         });
       };
-      this.console = this.console || {
-        log: function() {},
-        warn: function() {},
-        error: function() {}
+      // Sora/Luna host API: fetchv2(url, headers?, method?, body?)
+      this.fetchv2 = function(url, headers, method, body) {
+        var opts = { method: method || 'GET', headers: headers || {} };
+        if (body !== undefined && body !== null && String(opts.method).toUpperCase() !== 'GET') {
+          opts.body = (typeof body === 'string') ? body : JSON.stringify(body);
+          if (!opts.headers['Content-Type'] && !opts.headers['content-type']) {
+            opts.headers['Content-Type'] = 'application/json';
+          }
+        }
+        return this.fetch(url, opts);
+      };
+      this.console = {
+        log: function() { __saizenConsoleLog(Array.prototype.slice.call(arguments).join(' ')); },
+        warn: function() { __saizenConsoleLog(Array.prototype.slice.call(arguments).join(' ')); },
+        error: function() { __saizenConsoleLog(Array.prototype.slice.call(arguments).join(' ')); }
       };
       """
     )
@@ -180,6 +215,12 @@ public final class ModuleResolveSession: @unchecked Sendable {
     guard let url = URL(string: urlString, relativeTo: baseURL)?.absoluteURL else {
       throw ModuleRuntimeError.invalidURL(urlString)
     }
+    guard url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty else {
+      throw ModuleRuntimeError.invalidURL(urlString)
+    }
+    // Installed modules are user-trusted for the session: allow HTTPS hosts they request
+    // (AnimePahe baseUrl is .si but fetches .pw + worker solvers).
+    fetchSession.allowHost(host)
 
     var request = URLRequest(url: url)
     let optionObject = options?.toObject() as? [String: Any] ?? [:]
@@ -296,17 +337,59 @@ public final class ModuleResolveSession: @unchecked Sendable {
     return value
   }
 
-  private static func arrayOfDictionaries(from value: Any) throws -> [[String: Any]] {
-    guard let array = value as? [Any] else { throw ModuleRuntimeError.invalidReturn }
-    return try array.map {
-      guard let dictionary = dictionary(from: $0) else { throw ModuleRuntimeError.invalidReturn }
+  /// Sora modules commonly `return JSON.stringify([...])` and use `href` instead of `url`.
+  private static func normalizedResultRows(from value: Any) throws -> [[String: Any]] {
+    let decoded = decodeModuleJSON(value) ?? value
+    guard let array = decoded as? [Any] else {
+      NSLog(
+        "[Saizen] ModuleRuntime expected array, got %@",
+        String(describing: type(of: decoded))
+      )
+      throw ModuleRuntimeError.invalidReturn
+    }
+    return try array.compactMap { item -> [String: Any]? in
+      guard var dictionary = dictionary(from: item) else {
+        throw ModuleRuntimeError.invalidReturn
+      }
+      if dictionary["url"] == nil, let href = dictionary["href"] as? String {
+        dictionary["url"] = href
+      }
+      let url = (dictionary["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      // Modules return placeholder rows like { title: "Please wait...", href: "" } on failure.
+      if url.isEmpty { return nil }
       return dictionary
     }
   }
 
+  private static func decodeModuleJSON(_ value: Any) -> Any? {
+    if let string = value as? String {
+      let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard let data = trimmed.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) else {
+        return nil
+      }
+      return json
+    }
+    return nil
+  }
+
+  private static func qualityFromTitle(_ title: String?) -> String? {
+    guard let title else { return nil }
+    if let match = title.range(of: #"(\d{3,4})p"#, options: .regularExpression) {
+      return String(title[match])
+    }
+    return nil
+  }
+
   private static func dictionary(from value: Any?) -> [String: Any]? {
     if let dictionary = value as? [String: Any] { return dictionary }
-    if let dictionary = value as? NSDictionary { return dictionary as? [String: Any] }
+    if let dictionary = value as? NSDictionary {
+      var out: [String: Any] = [:]
+      for (key, val) in dictionary {
+        out["\(key)"] = val
+      }
+      return out
+    }
     return nil
   }
 

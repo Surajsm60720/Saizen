@@ -13,11 +13,21 @@ extractStreamUrl(episodeUrl) -> {
 
 ## Functions
 
-`searchResults(query)` receives the user's search text and returns an array of search result objects. Each result must include enough module-owned data for a later `extractEpisodes(showUrl)` call, usually a title and a show URL.
+`searchResults(query)` receives the user's search text and returns an array of search result objects (or a JSON string of that array — Sora/Luna compatible). Each result must include a show URL as `url` or `href`.
 
-`extractEpisodes(showUrl)` receives a show URL from a previous search result and returns an array of episode objects. Each episode must include enough module-owned data for a later `extractStreamUrl(episodeUrl)` call, usually an episode title/number and an episode URL.
+`extractEpisodes(showUrl)` receives a show URL from a previous search result and returns an array of episode objects (or a JSON string). Each episode must include an episode URL as `url` or `href`, and ideally `number` / `episode`.
 
-`extractStreamUrl(episodeUrl)` receives an episode URL from a previous episode object and returns an object with a `streams` array. Each stream must include `url`; `headers`, `quality`, and `title` are optional. Saizen maps each stream to a native `StreamCandidate` with `moduleId` and inferred `kind` (`hls`, `mp4`, or `other`).
+`extractStreamUrl(episodeUrl)` returns `{ streams, subtitle? }` (or a JSON string). Each stream must include `url` or Sora-style `streamUrl`; `headers`, `quality`/`resolution`, and `title` are optional.
+
+## Host helpers (Sora-compatible)
+
+The runtime exposes:
+
+- `fetch(input, options?)` — sandboxed HTTPS fetch
+- `fetchv2(url, headers?, method?, body?)` — Sora-style helper used by many community modules
+- `console.log/warn/error` — forwarded to native logs
+
+During a resolve session, HTTPS hosts requested by the module via bridged fetch are allowlisted for that session (deny list still wins).
 
 ## Resolve Session Lifetime
 
