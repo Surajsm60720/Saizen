@@ -29,6 +29,7 @@ import { fetchJikanEpisodeList, type JikanEpisodeDetail } from '@/lib/jikan/epis
 import getNative from '@/lib/native'
 import { whenBridgeReady } from '@/lib/native/ready'
 import type {
+  LibraryEntry,
   NativePlayerAction,
   PlayStreamOptions,
   StreamCandidate
@@ -44,6 +45,7 @@ import { getDownloadSettings } from '@/lib/downloads/settings'
 import { seasonFolderLabel } from '@/lib/downloads/season'
 import { isIncognitoMode, subscribeIncognitoMode } from '@/lib/privacy/incognito'
 import { pickStreamForQuality } from '@/lib/downloads/resolve'
+import { subscribeLibraryForMedia } from '@/lib/downloads/store'
 import { toast } from 'sonner'
 import {
   consumePendingPlayerAction,
@@ -257,16 +259,13 @@ function AnimeDetail() {
 
   useEffect(() => {
     if (!id) return
-    let cancelled = false
-    const native = getNative()
-    const apply = (entries: Awaited<ReturnType<typeof native.library>>) => {
-      if (cancelled) return
+    const apply = (entries: LibraryEntry[]) => {
       const eps = new Set<number>()
       const byEp = new Map<number, string>()
       const showIncognito = isIncognitoMode()
       for (const e of entries) {
         if (e.isIncognito && !showIncognito) continue
-        if (e.mediaId === id && (e.status === 'completed' || e.progress >= 1)) {
+        if (e.status === 'completed' || e.progress >= 1) {
           eps.add(e.episode)
           byEp.set(e.episode, e.id)
         }
@@ -274,37 +273,7 @@ function AnimeDetail() {
       setDownloadedEps(eps)
       setDownloadedByEp(byEp)
     }
-    void native.library().then(apply).catch(() => {})
-    let unsub: (() => void) | undefined
-    let lastLibraryRefresh = 0
-    void (async () => {
-      // Avoid Cap bridge storms: do not call library() on every progress tick.
-      const ret = await native.onDownloadProgress?.(async (jobs, librarySnap) => {
-        if (cancelled || !id) return
-        if (librarySnap) {
-          apply(librarySnap)
-          lastLibraryRefresh = Date.now()
-          return
-        }
-        const relevant = jobs.filter((j) => j.mediaId === id)
-        const completedChanged = relevant.some(
-          (j) => j.status === 'completed' || (j.progress ?? 0) >= 1
-        )
-        const now = Date.now()
-        if (!completedChanged && now - lastLibraryRefresh < 8000) return
-        lastLibraryRefresh = now
-        try {
-          apply(await native.library())
-        } catch {
-          /* ignore */
-        }
-      })
-      unsub = typeof ret === 'function' ? ret : await ret
-    })()
-    return () => {
-      cancelled = true
-      unsub?.()
-    }
+    return subscribeLibraryForMedia(id, apply)
   }, [id])
 
   useEffect(() => {
@@ -799,7 +768,7 @@ function AnimeDetail() {
   async function queueEpisodes(targets: EpisodeItem[]) {
     if (!media || !targets.length) return
     const native = getNative()
-    if (!native.isApp || !native.enqueueDownload || !native.resolveStreams) {
+    if (!native.isApp || !native.enqueueDownload) {
       toast.error('Downloads require the iOS app with modules')
       return
     }
@@ -807,31 +776,72 @@ function AnimeDetail() {
     const quality = getDownloadSettings().preferredQuality
     const query =
       media.title.romaji || media.title.english || displayTitle(media)
+    const pending = targets.filter((ep) => !downloadedEps.has(ep.number))
+    if (!pending.length) {
+      toast.message('Selected episodes are already saved')
+      setDownloadBusy(false)
+      return
+    }
+
     let ok = 0
     let failed = 0
+    const total = pending.length
+
     try {
-      for (const ep of targets) {
-        if (downloadedEps.has(ep.number)) continue
-        try {
-          const candidates =
-            (await native.resolveStreams({
-              title: displayTitle(media),
-              anilistId: media.id,
-              episode: ep.number,
-              idMal: media.idMal ?? null,
-              query
-            })) ?? []
+      if (native.resolveStreamsBatch) {
+        toast.message(`Finding streams for ${total} episode${total === 1 ? '' : 's'}…`)
+        const batch = await native.resolveStreamsBatch({
+          title: displayTitle(media),
+          anilistId: media.id,
+          episodes: pending.map((ep) => ep.number),
+          idMal: media.idMal ?? null,
+          query
+        })
+        const byEp = new Map(batch.map((row) => [row.episode, row.candidates]))
+        for (const ep of pending) {
+          const candidates = byEp.get(ep.number) ?? []
           const pick = pickStreamForQuality(candidates, quality)
           if (!pick) {
             failed += 1
             continue
           }
-          await enqueueStreamCandidate(pick, ep)
-          ok += 1
-        } catch {
-          failed += 1
+          try {
+            await enqueueStreamCandidate(pick, ep)
+            ok += 1
+            toast.message(`Queued ${ok}/${total}…`)
+          } catch {
+            failed += 1
+          }
         }
+      } else if (native.resolveStreams) {
+        for (const ep of pending) {
+          try {
+            const candidates =
+              (await native.resolveStreams({
+                title: displayTitle(media),
+                anilistId: media.id,
+                episode: ep.number,
+                idMal: media.idMal ?? null,
+                query,
+                fast: true
+              })) ?? []
+            const pick = pickStreamForQuality(candidates, quality)
+            if (!pick) {
+              failed += 1
+              continue
+            }
+            await enqueueStreamCandidate(pick, ep)
+            ok += 1
+            toast.message(`Queued ${ok}/${total}…`)
+          } catch {
+            failed += 1
+          }
+        }
+      } else {
+        toast.error('Downloads require stream modules')
+        return
       }
+
       if (ok) toast.success(`Queued ${ok} episode${ok === 1 ? '' : 's'}`)
       if (failed) toast.error(`${failed} episode${failed === 1 ? '' : 's'} had no stream`)
       setDownloadOpen(false)
@@ -1118,10 +1128,11 @@ function AnimeDetail() {
             <PosterRail title="Source material" dense>
               {sourceMaterials.map(({ media: m, relationType }) => {
                 const kind = (m as { type?: string | null }).type
-                const href =
-                  kind === 'MANGA'
-                    ? `https://anilist.co/manga/${m.id}`
-                    : `/app/anime/?id=${m.id}`
+                const isMangaLike =
+                  kind === 'MANGA' || kind === 'NOVEL' || kind === 'ONE_SHOT'
+                const href = isMangaLike
+                  ? `/app/manga/?id=${m.id}&from=${media.id}`
+                  : `/app/anime/?id=${m.id}`
                 return (
                   <PosterCard
                     key={m.id}

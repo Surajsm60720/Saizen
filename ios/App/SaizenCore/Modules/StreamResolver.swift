@@ -39,6 +39,55 @@ public struct SpawnContext: Sendable {
   }
 }
 
+/// Caches per-module show search + episode lists for batch offline queue (avoids 9× search per ep).
+private final class ShowResolveCache: @unchecked Sendable {
+  static let shared = ShowResolveCache()
+
+  private struct Entry<T> {
+    var value: T
+    var at: Date
+  }
+
+  private let lock = NSLock()
+  private var showURLs: [String: Entry<String>] = [:]
+  private var episodeLists: [String: Entry<[[String: Any]]>] = [:]
+  private let ttl: TimeInterval = 600
+
+  private func showKey(moduleId: String, query: String) -> String {
+    "\(moduleId)|\(query.lowercased())"
+  }
+
+  private func episodeKey(moduleId: String, showURL: String) -> String {
+    "\(moduleId)|\(showURL)"
+  }
+
+  func cachedShowURL(moduleId: String, query: String) -> String? {
+    lock.lock(); defer { lock.unlock() }
+    let key = showKey(moduleId: moduleId, query: query)
+    guard let entry = showURLs[key], Date().timeIntervalSince(entry.at) < ttl else { return nil }
+    return entry.value
+  }
+
+  func storeShowURL(moduleId: String, query: String, url: String) {
+    lock.lock()
+    showURLs[showKey(moduleId: moduleId, query: query)] = Entry(value: url, at: Date())
+    lock.unlock()
+  }
+
+  func cachedEpisodes(moduleId: String, showURL: String) -> [[String: Any]]? {
+    lock.lock(); defer { lock.unlock() }
+    let key = episodeKey(moduleId: moduleId, showURL: showURL)
+    guard let entry = episodeLists[key], Date().timeIntervalSince(entry.at) < ttl else { return nil }
+    return entry.value
+  }
+
+  func storeEpisodes(moduleId: String, showURL: String, episodes: [[String: Any]]) {
+    lock.lock()
+    episodeLists[episodeKey(moduleId: moduleId, showURL: showURL)] = Entry(value: episodes, at: Date())
+    lock.unlock()
+  }
+}
+
 /// Fan-out enabled modules → rank `StreamCandidate`s → play with AVPlayer fallback.
 public final class StreamResolver: @unchecked Sendable {
   public static let shared = StreamResolver()
@@ -142,6 +191,239 @@ public final class StreamResolver: @unchecked Sendable {
       lastGood ?? "-"
     )
     return ranked
+  }
+
+  /// Download path: try lastGood module first, then others sequentially — stop at first module with streams.
+  public func resolveForDownload(
+    title: String,
+    anilistId: Int,
+    episode: Int,
+    query: String?
+  ) async throws -> [StreamCandidate] {
+    let modules = ModuleStore.shared.list().filter(\.enabled)
+    guard !modules.isEmpty else { throw StreamResolverError.noEnabledModules }
+
+    let searchQuery = (query?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+      ?? title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lastGood = ModuleStore.shared.lastGoodModule(anilistId: anilistId)
+    let ordered = Self.orderModulesForDownload(modules, lastGood: lastGood)
+
+    var collected: [StreamCandidate] = []
+    for module in ordered {
+      let found = await Self.resolveModuleCached(
+        module: module,
+        query: searchQuery,
+        episode: episode
+      )
+      if !found.isEmpty {
+        collected = found
+        break
+      }
+    }
+
+    let ranked = Self.rankCandidates(collected, lastGood: lastGood)
+    NSLog(
+      "[Saizen] StreamResolver resolveForDownload anilistId=%d ep=%d tried=%d candidates=%d lastGood=%@",
+      anilistId,
+      episode,
+      ordered.count,
+      ranked.count,
+      lastGood ?? "-"
+    )
+    return ranked
+  }
+
+  /// Batch offline queue: one show lookup per module, then only `extractStreamUrl` per episode.
+  public func resolveBatchForDownload(
+    title: String,
+    anilistId: Int,
+    episodes: [Int],
+    query: String?
+  ) async throws -> [[String: Any]] {
+    let modules = ModuleStore.shared.list().filter(\.enabled)
+    guard !modules.isEmpty else { throw StreamResolverError.noEnabledModules }
+    let wanted = episodes.filter { $0 > 0 }
+    guard !wanted.isEmpty else { throw StreamResolverError.noCandidates }
+
+    let searchQuery = (query?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+      ?? title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lastGood = ModuleStore.shared.lastGoodModule(anilistId: anilistId)
+    let ordered = Self.orderModulesForDownload(modules, lastGood: lastGood)
+
+    for module in ordered {
+      guard let batch = await Self.resolveBatchOnModule(
+        module: module,
+        query: searchQuery,
+        episodes: wanted,
+        lastGood: lastGood
+      ), !batch.isEmpty else { continue }
+
+      NSLog(
+        "[Saizen] StreamResolver resolveBatchForDownload anilistId=%d module=%@ eps=%d/%d lastGood=%@",
+        anilistId,
+        module.id,
+        batch.count,
+        wanted.count,
+        lastGood ?? "-"
+      )
+      return batch
+    }
+
+    throw StreamResolverError.noCandidates
+  }
+
+  private static func orderModulesForDownload(
+    _ modules: [InstalledModule],
+    lastGood: String?
+  ) -> [InstalledModule] {
+    guard let lastGood, !lastGood.isEmpty else { return modules }
+    var out: [InstalledModule] = []
+    if let first = modules.first(where: { $0.id == lastGood }) {
+      out.append(first)
+    }
+    for module in modules where module.id != lastGood {
+      out.append(module)
+    }
+    return out
+  }
+
+  private static func resolveBatchOnModule(
+    module: InstalledModule,
+    query: String,
+    episodes: [Int],
+    lastGood: String?
+  ) async -> [[String: Any]]? {
+    let scriptSource: String
+    do {
+      scriptSource = try await ModuleStore.shared.loadScriptSource(for: module.id)
+    } catch {
+      return nil
+    }
+
+    let baseURL = module.baseUrl.flatMap(URL.init(string:))
+    let session: ModuleResolveSession
+    do {
+      session = try ModuleResolveSession(
+        moduleId: module.id,
+        scriptSource: scriptSource,
+        baseURL: baseURL
+      )
+    } catch {
+      return nil
+    }
+
+    defer { session.teardown() }
+
+    do {
+      let cache = ShowResolveCache.shared
+      let showURL: String
+      if let cached = cache.cachedShowURL(moduleId: module.id, query: query) {
+        showURL = cached
+      } else {
+        let results = try await session.searchResults(query)
+        guard let found = firstURLString(in: results) else { return nil }
+        showURL = found
+        cache.storeShowURL(moduleId: module.id, query: query, url: found)
+      }
+
+      let episodeRows: [[String: Any]]
+      if let cached = cache.cachedEpisodes(moduleId: module.id, showURL: showURL) {
+        episodeRows = cached
+      } else {
+        episodeRows = try await session.extractEpisodes(showURL)
+        cache.storeEpisodes(moduleId: module.id, showURL: showURL, episodes: episodeRows)
+      }
+
+      var payload: [[String: Any]] = []
+      for ep in episodes {
+        guard let episodeURL = pickEpisodeURL(from: episodeRows, episode: ep) else { continue }
+        let streams = try await session.extractStreamUrl(episodeURL)
+        guard !streams.isEmpty else { continue }
+        let ranked = rankCandidates(streams, lastGood: lastGood)
+        payload.append([
+          "episode": ep,
+          "candidates": ranked.map { encodeCandidateDict($0) }
+        ])
+      }
+      return payload.isEmpty ? nil : payload
+    } catch {
+      NSLog(
+        "[Saizen] StreamResolver batch module=%@ error=%@",
+        module.id,
+        errorMessage(error)
+      )
+      return nil
+    }
+  }
+
+  private static func resolveModuleCached(
+    module: InstalledModule,
+    query: String,
+    episode: Int
+  ) async -> [StreamCandidate] {
+    let scriptSource: String
+    do {
+      scriptSource = try await ModuleStore.shared.loadScriptSource(for: module.id)
+    } catch {
+      return []
+    }
+
+    let baseURL = module.baseUrl.flatMap(URL.init(string:))
+    let session: ModuleResolveSession
+    do {
+      session = try ModuleResolveSession(
+        moduleId: module.id,
+        scriptSource: scriptSource,
+        baseURL: baseURL
+      )
+    } catch {
+      return []
+    }
+
+    defer { session.teardown() }
+
+    do {
+      let cache = ShowResolveCache.shared
+      let showURL: String
+      if let cached = cache.cachedShowURL(moduleId: module.id, query: query) {
+        showURL = cached
+      } else {
+        let results = try await session.searchResults(query)
+        guard let found = firstURLString(in: results) else { return [] }
+        showURL = found
+        cache.storeShowURL(moduleId: module.id, query: query, url: found)
+      }
+
+      let episodeRows: [[String: Any]]
+      if let cached = cache.cachedEpisodes(moduleId: module.id, showURL: showURL) {
+        episodeRows = cached
+      } else {
+        episodeRows = try await session.extractEpisodes(showURL)
+        cache.storeEpisodes(moduleId: module.id, showURL: showURL, episodes: episodeRows)
+      }
+
+      guard let episodeURL = pickEpisodeURL(from: episodeRows, episode: episode) else { return [] }
+      return try await session.extractStreamUrl(episodeURL)
+    } catch {
+      NSLog(
+        "[Saizen] StreamResolver module=%@ chain error=%@",
+        module.id,
+        errorMessage(error)
+      )
+      return []
+    }
+  }
+
+  private static func encodeCandidateDict(_ candidate: StreamCandidate) -> [String: Any] {
+    var d: [String: Any] = [
+      "url": candidate.url.absoluteString,
+      "moduleId": candidate.moduleId,
+      "kind": candidate.kind.rawValue
+    ]
+    if let quality = candidate.quality { d["quality"] = quality }
+    if let title = candidate.title { d["title"] = title }
+    if !candidate.headers.isEmpty { d["headers"] = candidate.headers }
+    return d
   }
 
   public func playBest(

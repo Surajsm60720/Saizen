@@ -6,6 +6,8 @@ import type {
   PlayStreamOptions,
   RecordModuleSuccessOptions,
   ResolveAndPlayOptions,
+  ResolveStreamsBatchEntry,
+  ResolveStreamsBatchOptions,
   ResolveStreamsOptions,
   StreamCandidate
 } from './stream'
@@ -143,11 +145,23 @@ export interface SaizenNative {
   browseModuleCatalog?(): Promise<ModuleCatalogEntry[]>
   installModule?(options: InstallModuleOptions): Promise<InstalledModule[]>
   installModuleFromUrl?(options: InstallModuleFromUrlOptions): Promise<InstalledModule[]>
+  testModule?(options: {
+    id: string
+    query?: string
+  }): Promise<{
+    ok: boolean
+    message: string
+    searchResults?: number
+  }>
   setModuleEnabled?(id: string, enabled: boolean): Promise<void>
   reorderModules?(ids: string[]): Promise<InstalledModule[]>
   removeModule?(id: string): Promise<InstalledModule[]>
   /** Ranked CDN stream candidates from enabled modules. */
   resolveStreams?(options: ResolveStreamsOptions): Promise<StreamCandidate[]>
+  /** Batch resolve for offline queue — one show lookup, many episodes. */
+  resolveStreamsBatch?(
+    options: ResolveStreamsBatchOptions
+  ): Promise<ResolveStreamsBatchEntry[]>
   /** Resolve + native AVPlayer fallback; records lastGoodModule on success. */
   resolveAndPlay?(options: ResolveAndPlayOptions): Promise<StreamCandidate>
   /**
@@ -213,6 +227,8 @@ export type {
   ModuleCatalogEntry,
   RecordModuleSuccessOptions,
   ResolveAndPlayOptions,
+  ResolveStreamsBatchEntry,
+  ResolveStreamsBatchOptions,
   ResolveStreamsOptions,
   StreamCandidate
 } from './stream'

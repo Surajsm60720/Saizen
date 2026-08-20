@@ -61,6 +61,7 @@ export interface LibraryEntry {
   poster?: string
   resolution?: string
   seasonLabel?: string
+  sourceLabel?: string
   status?: DownloadStatus
   kind?: DownloadKind
   relativePath?: string

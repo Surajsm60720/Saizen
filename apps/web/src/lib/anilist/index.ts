@@ -6,6 +6,7 @@ export {
   fetchAllTimePopular,
   currentAniSeason,
   fetchAnime,
+  fetchMedia,
   searchAnime,
   fetchAniListGenres,
   searchYearOptions,

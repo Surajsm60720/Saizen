@@ -15,7 +15,6 @@ import {
 } from '@/lib/watch/settings'
 import { getDownloadSettings, setDownloadSettings } from '@/lib/downloads/settings'
 import type { DownloadQuality } from '@saizen/shared'
-import { getAppearance, resolveAccentHex } from '@/lib/theme/appearance'
 import {
   connectAnilist,
   connectMal,
@@ -41,7 +40,6 @@ import { subscribeAuthChanged } from '@/lib/auth/tokens'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<WatchSettings>(() => getWatchSettings())
-  const [accentHex, setAccentHex] = useState(() => resolveAccentHex(getAppearance()))
   const [anilistOn, setAnilistOn] = useState(false)
   const [malOn, setMalOn] = useState(false)
   const [busy, setBusy] = useState<'anilist' | 'mal' | 'refresh' | null>(null)
@@ -57,7 +55,6 @@ export default function SettingsPage() {
     clearOAuthCredentialOverrides()
     setCreds(getOAuthCredentials())
     setSettings(getWatchSettings())
-    setAccentHex(resolveAccentHex(getAppearance()))
     const d = getDownloadSettings()
     setQuality(d.preferredQuality)
     setIncognito(isIncognitoMode())
@@ -222,7 +219,7 @@ export default function SettingsPage() {
             <span className="flex shrink-0 items-center gap-2">
               <span
                 className="size-6 rounded-md ring-1 ring-border"
-                style={{ background: accentHex }}
+                style={{ backgroundColor: 'var(--primary)' }}
                 aria-hidden
               />
               <ChevronRight className="size-4 text-muted-foreground" />

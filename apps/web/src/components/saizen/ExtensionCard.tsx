@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,8 @@ export function ExtensionCard({
   className?: string
 }) {
   const id = `ext-${ext.manifest.id}`
+  const isAdult = ext.manifest.catalogId === 'hentai' || ext.manifest.media === 'hentai'
+  const languages = ext.manifest.languages ?? []
 
   return (
     <li
@@ -49,6 +52,25 @@ export function ExtensionCard({
             {ext.manifest.languages?.length
               ? ` · ${ext.manifest.languages.join(',')}`
               : ''}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Badge variant={isAdult ? 'destructive' : 'secondary'}>
+              {isAdult ? 'Adult' : 'Safe'}
+            </Badge>
+            {ext.manifest.catalogName ? (
+              <Badge variant="outline">{ext.manifest.catalogName}</Badge>
+            ) : null}
+            {ext.manifest.media ? (
+              <Badge variant="outline">{ext.manifest.media}</Badge>
+            ) : null}
+            {ext.manifest.accuracy ? (
+              <Badge variant="outline">{ext.manifest.accuracy}</Badge>
+            ) : null}
+            {languages.slice(0, 3).map((lang) => (
+              <Badge key={lang} variant="outline">
+                {lang}
+              </Badge>
+            ))}
           </div>
           {ext.loadError ? (
             <div className="mt-1 text-xs text-destructive">{ext.loadError}</div>

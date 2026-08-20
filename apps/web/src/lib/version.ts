@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.4.0'
+export const APP_VERSION = '1.4.1'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,19 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.1',
+    date: '2026-08-20',
+    title: 'Downloads reliability & faster batch queue',
+    highlights: [
+      'Downloads: single app-wide store for queue + library — leaving and returning no longer blanks the page or stacks Cap listeners',
+      'Pause / Resume / Cancel / Delete run off the Cap UI thread with timeouts so the WebView stays responsive',
+      'Progress UI: HTTP shows speed + downloaded/total; HLS shows percent without fake byte totals; source labels stay visible',
+      'Batch Save uses resolveStreamsBatch — one show lookup, lastGood module first — so queuing many episodes no longer waits on every module for every episode',
+      'Clear cache also sweeps failed jobs, orphan .movpkg / partial saves, and leftover UserManagedAssets HLS packs',
+      'Modules and Extensions screens refreshed; manga detail page for relations; appearance polish'
+    ]
+  },
   {
     version: '1.4.0',
     date: '2026-08-11',

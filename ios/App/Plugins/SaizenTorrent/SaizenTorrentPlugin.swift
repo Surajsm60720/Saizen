@@ -182,8 +182,10 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("Missing id")
       return
     }
-    DownloadCoordinator.shared.pause(id: id)
-    call.resolve()
+    DispatchQueue.global(qos: .userInitiated).async {
+      DownloadCoordinator.shared.pause(id: id)
+      call.resolve()
+    }
   }
 
   @objc func resumeDownload(_ call: CAPPluginCall) {
@@ -191,8 +193,10 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("Missing id")
       return
     }
-    DownloadCoordinator.shared.resume(id: id)
-    call.resolve()
+    DispatchQueue.global(qos: .userInitiated).async {
+      DownloadCoordinator.shared.resume(id: id)
+      call.resolve()
+    }
   }
 
   @objc func cancelDownload(_ call: CAPPluginCall) {
@@ -200,8 +204,10 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("Missing id")
       return
     }
-    DownloadCoordinator.shared.cancel(id: id)
-    call.resolve()
+    DispatchQueue.global(qos: .userInitiated).async {
+      DownloadCoordinator.shared.cancel(id: id)
+      call.resolve()
+    }
   }
 
   @objc func library(_ call: CAPPluginCall) {

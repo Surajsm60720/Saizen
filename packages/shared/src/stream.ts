@@ -25,6 +25,21 @@ export interface ResolveStreamsOptions {
   episode: number
   idMal?: number | null
   query?: string
+  /** When true, resolve via lastGood module first (for offline queue). Watch keeps parallel fan-out. */
+  fast?: boolean
+}
+
+export interface ResolveStreamsBatchOptions {
+  title: string
+  anilistId: number
+  episodes: number[]
+  idMal?: number | null
+  query?: string
+}
+
+export interface ResolveStreamsBatchEntry {
+  episode: number
+  candidates: StreamCandidate[]
 }
 
 /** Native resolve + AVPlayer fallback loop (`SaizenModules.resolveAndPlay`). */

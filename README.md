@@ -1,8 +1,23 @@
-# Saizen · v1.4.0
+# Saizen · v1.4.1
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Live Watch resolves installable CDN stream modules to **HLS/MP4** and plays them in a custom native **AVPlayer**. Libtorrent remains available for optional offline work — it is no longer the primary Watch path.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
+
+## What’s new in 1.4.1
+
+Patch release focused on **Downloads** stability and faster offline queueing (in-app / local sideload — not a new GitHub Release IPA):
+
+| Area | Change |
+|------|--------|
+| **Downloads store** | One app-wide queue/library listener — navigate away and back without blank pages or Cap bridge floods |
+| **Controls** | Pause / Resume / Cancel / Delete stay responsive (native work off the Cap UI thread + JS timeouts) |
+| **Progress** | HTTP: speed + bytes; HLS: percent only (no fake totals); source labels kept |
+| **Batch Save** | `resolveStreamsBatch` — cached show lookup, **lastGood** module first — far fewer module searches per episode |
+| **Storage cleanup** | Clear cache also removes failed jobs, orphan `.movpkg` / partials, and leftover managed HLS assets |
+| **Also** | Modules / Extensions UI refresh, manga detail for relations, appearance polish |
+
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 
 ## What’s new in 1.4.0
 
@@ -16,8 +31,6 @@ Saizen’s playback middleware moved from “search torrents → stream” to �
 | **Downloads** | Primarily torrent Save | Module streams preferred; quality-aware batch Save |
 | **Privacy** | — | **Incognito Mode** (no list sync / Home continue while on) |
 
-In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
-
 ## Features
 
 - **Browse & Home** — Discover rails with View more → Search filters, continue watching, and list-backed shelves after AniList / MAL sign-in
@@ -25,7 +38,7 @@ In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 - **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names (tap to copy)
 - **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
 - **Player** — Custom AVPlayer for CDN HLS/MP4; ±10s / play / next; double/triple-tap seek; speed + aspect; AniSkip OP/ED marks + Skip pill / optional auto-skip; MobileVLCKit only as a probe fallback
-- **Downloads** — Settings → Downloads: queue module HLS/MP4 (headers supported) or optional torrent Save; lock-screen progress; offline library playback
+- **Downloads** — Settings → Downloads: resilient queue (pause/resume/cancel), accurate progress, fast batch Save via `resolveStreamsBatch`, lock-screen progress, offline library playback; Clear cache sweeps orphan/partial HLS packs
 - **Transfers** — Settings: torrent download Mbps cap + max peers (applied live when torrent paths are used)
 - **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Modules** — Settings → Modules: installable Watch/Save sources; HTTPS scripts only; theme catalog fallbacks elsewhere in the app
@@ -37,7 +50,7 @@ Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md)
 
 ## Status
 
-Proven on a physical iPhone for browse → search filters → module streams → AVPlayer, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, Incognito, and Downloads enqueue.
+Proven on a physical iPhone for browse → search filters → module streams → AVPlayer, AniList/MAL sign-in and list sync, Schedule (local airing calendar), continue-watching, Incognito, and Downloads (pause/resume/cancel, batch queue, offline library).
 
 This is a **personal sideload** project — not an App Store build. Packaging notes below.
 
@@ -120,7 +133,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** is a minor architecture release (IPA-eligible).
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1** is a Downloads patch (local sideload).
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

@@ -1,5 +1,3 @@
-import type { CatalogId } from './catalogs'
-
 export interface ExtensionOptionDef {
   type: 'boolean' | 'string' | 'select'
   description?: string
@@ -24,7 +22,7 @@ export interface ExtensionManifest {
   code: string
   options?: Record<string, ExtensionOptionDef>
   /** Catalog this entry was loaded from */
-  catalogId?: CatalogId
+  catalogId?: string
   catalogName?: string
 }
 

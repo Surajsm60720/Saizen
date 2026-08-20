@@ -1,13 +1,31 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp, SlidersHorizontal, X } from 'lucide-react'
 import type { InstalledModule, ModuleCatalogEntry } from '@saizen/shared'
 import { PageHeader } from '@/components/saizen'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
+} from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getNative } from '@/lib/native'
+
+const selectClass =
+  'h-11 w-full appearance-none rounded-lg border border-white/10 bg-[#1c1c1e] bg-[length:1rem] bg-[right_0.65rem_center] bg-no-repeat px-3 pr-9 text-base text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25'
+
+const selectChevron = {
+  backgroundImage:
+    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9a9a' stroke-width='2'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E\")"
+} as const
 
 export default function ModulesPage() {
   const [installed, setInstalled] = useState<InstalledModule[]>([])
@@ -16,6 +34,14 @@ export default function ModulesPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [testQuery, setTestQuery] = useState('Naruto')
+  const [tab, setTab] = useState<'installed' | 'browse'>('installed')
+  const [enabledOnly, setEnabledOnly] = useState(false)
+  const [streamTypeFilter, setStreamTypeFilter] = useState('all')
+  const [qualityFilter, setQualityFilter] = useState('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(true)
   const [customUrl, setCustomUrl] = useState('')
   const [customName, setCustomName] = useState('')
 
@@ -35,26 +61,18 @@ export default function ModulesPage() {
     setLoading(true)
     setError('')
     try {
-      let installedCount = 0
       if (native.listModules) {
-        const list = await native.listModules()
-        setInstalled(list)
-        installedCount = list.length
+        setInstalled(await native.listModules())
       } else {
         setInstalled([])
       }
       if (native.browseModuleCatalog) {
         try {
-          const entries = await native.browseModuleCatalog()
-          setCatalog(entries)
-          setStatus(`Installed ${installedCount} · catalog ${entries.length}`)
+          setCatalog(await native.browseModuleCatalog())
         } catch (e) {
           setCatalog([])
-          setStatus('Installed modules loaded · catalog unavailable')
           setError(e instanceof Error ? e.message : String(e))
         }
-      } else {
-        setStatus('Module bridge unavailable (web stub)')
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -79,6 +97,118 @@ export default function ModulesPage() {
     )
   }, [catalog])
 
+  const normalizedQuery = useMemo(() => search.trim().toLowerCase(), [search])
+
+  const filteredInstalled = useMemo(() => {
+    const base = installed.filter((m) => !enabledOnly || m.enabled)
+    if (!normalizedQuery) return base
+    return base.filter((m) => {
+      const hay = [m.name, m.id, m.baseUrl ?? ''].filter(Boolean).join(' · ').toLowerCase()
+      return hay.includes(normalizedQuery)
+    })
+  }, [enabledOnly, installed, normalizedQuery])
+
+  const filteredCatalog = useMemo(() => {
+    const base = catalogVisible.filter((e) => {
+      const streamOk =
+        streamTypeFilter === 'all' ||
+        (e.streamType ?? '').toLowerCase().includes(streamTypeFilter.toLowerCase())
+      const qualityOk =
+        qualityFilter === 'all' ||
+        (e.quality ?? '').toLowerCase().includes(qualityFilter.toLowerCase())
+      return streamOk && qualityOk
+    })
+    if (!normalizedQuery) return base
+    return base.filter((e) => {
+      let host = ''
+      try {
+        host = e.baseUrl ? new URL(e.baseUrl).host : ''
+      } catch {
+        host = e.baseUrl ?? ''
+      }
+      const hay = [e.sourceName, e.id, host].filter(Boolean).join(' · ').toLowerCase()
+      return hay.includes(normalizedQuery)
+    })
+  }, [catalogVisible, normalizedQuery, qualityFilter, streamTypeFilter])
+
+  const streamTypeOptions = useMemo(() => {
+    const values = new Set<string>()
+    for (const entry of catalogVisible) {
+      const value = entry.streamType?.trim()
+      if (value) values.add(value)
+    }
+    return [...values].sort((a, b) => a.localeCompare(b))
+  }, [catalogVisible])
+
+  const qualityOptions = useMemo(() => {
+    const values = new Set<string>()
+    for (const entry of catalogVisible) {
+      const value = entry.quality?.trim()
+      if (value) values.add(value)
+    }
+    return [...values].sort((a, b) => a.localeCompare(b))
+  }, [catalogVisible])
+
+  const filterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; clear: () => void }> = []
+    if (enabledOnly) {
+      chips.push({
+        key: 'enabled',
+        label: 'Enabled only',
+        clear: () => setEnabledOnly(false)
+      })
+    }
+    if (streamTypeFilter !== 'all') {
+      chips.push({
+        key: 'stream',
+        label: streamTypeFilter,
+        clear: () => setStreamTypeFilter('all')
+      })
+    }
+    if (qualityFilter !== 'all') {
+      chips.push({
+        key: 'quality',
+        label: qualityFilter,
+        clear: () => setQualityFilter('all')
+      })
+    }
+    return chips
+  }, [enabledOnly, qualityFilter, streamTypeFilter])
+
+  function clearFilters() {
+    setEnabledOnly(false)
+    setStreamTypeFilter('all')
+    setQualityFilter('all')
+  }
+
+  async function quickAddFromCatalog() {
+    if (!native.installModule) return
+    if (filteredCatalog.length !== 1) return
+    setTab('browse')
+    await installEntry(filteredCatalog[0]!)
+  }
+
+  async function testModule(id: string, name: string) {
+    if (!native.testModule) {
+      setStatus('Module testing needs the iOS app')
+      return
+    }
+    setBusyId(id)
+    setError('')
+    setStatus(`Testing ${name}…`)
+    try {
+      const result = await native.testModule({
+        id,
+        query: testQuery.trim() || undefined
+      })
+      setStatus(`${name}: ${result.message}`)
+    } catch (e) {
+      setStatus(`${name}: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function toggle(id: string, enabled: boolean) {
     if (!native.setModuleEnabled) return
     setBusyId(id)
@@ -86,7 +216,6 @@ export default function ModulesPage() {
     try {
       await native.setModuleEnabled(id, enabled)
       await refreshInstalled()
-      setStatus(`${id} ${enabled ? 'enabled' : 'disabled'}`)
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e))
     } finally {
@@ -99,9 +228,7 @@ export default function ModulesPage() {
     setBusyId(id)
     setStatus('')
     try {
-      const list = await native.removeModule(id)
-      setInstalled(list)
-      setStatus(`Removed ${id}`)
+      setInstalled(await native.removeModule(id))
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e))
     } finally {
@@ -118,8 +245,7 @@ export default function ModulesPage() {
     ;[ids[idx], ids[swap]] = [ids[swap], ids[idx]]
     setBusyId(id)
     try {
-      const list = await native.reorderModules(ids)
-      setInstalled(list)
+      setInstalled(await native.reorderModules(ids))
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e))
     } finally {
@@ -144,6 +270,7 @@ export default function ModulesPage() {
         quality: entry.quality ?? undefined
       })
       setInstalled(list)
+      setTab('installed')
       setStatus(`Installed ${entry.sourceName}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -163,13 +290,16 @@ export default function ModulesPage() {
     setError('')
     setStatus('Installing custom module…')
     try {
-      const list = await native.installModuleFromUrl({
-        url,
-        name: customName.trim() || undefined
-      })
-      setInstalled(list)
+      setInstalled(
+        await native.installModuleFromUrl({
+          url,
+          name: customName.trim() || undefined
+        })
+      )
       setCustomUrl('')
       setCustomName('')
+      setAddOpen(false)
+      setTab('installed')
       setStatus('Installed custom module')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -183,30 +313,41 @@ export default function ModulesPage() {
       <PageHeader
         title="Modules"
         dense
-        description={
-          <>
-            CDN stream modules from{' '}
-            <a href="https://library.cufiy.net" target="_blank" rel="noreferrer">
-              library.cufiy.net
-            </a>
-            . Scripts are HTTPS-only and cached on device.
-          </>
-        }
+        description="Install and test stream sources. HTTPS scripts only."
         action={
-          <Button
-            variant="outline"
-            className="min-h-10"
-            onClick={() => void loadAll()}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="relative mt-0.5 shrink-0 gap-1.5"
+              onClick={() => setFiltersOpen(true)}
+              aria-label="Open filters"
+            >
+              <SlidersHorizontal className="size-3.5" />
+              Filters
+              {filterChips.length > 0 ? (
+                <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                  {filterChips.length}
+                </span>
+              ) : null}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-0.5 min-h-8"
+              onClick={() => void loadAll()}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          </div>
         }
       />
 
       {!isApp ? (
         <p className="mb-3 text-sm text-muted-foreground">
-          Module install runs in the iOS app. Open Saizen on device to manage modules.
+          Install and test run in the iOS app.
         </p>
       ) : null}
 
@@ -214,145 +355,317 @@ export default function ModulesPage() {
         <p className="mb-3 whitespace-pre-wrap text-sm text-destructive">{error}</p>
       ) : null}
       {status ? (
-        <p className="mb-3 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-sm">
-          {status}
-        </p>
+        <p className="mb-3 text-sm text-muted-foreground">{status}</p>
       ) : null}
-      {loading ? <p className="text-sm text-muted-foreground">Loading modules…</p> : null}
 
-      <section className="mt-6 space-y-2.5">
-        <h2 className="text-base font-semibold">
-          Installed{' '}
-          <span className="font-normal text-muted-foreground">({installed.length})</span>
-        </h2>
-        {installed.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No modules installed yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {installed.map((mod, index) => (
-              <li
-                key={mod.id}
-                className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+      <div className="flex gap-2">
+        <Input
+          className="min-h-11"
+          placeholder="Search by name or provider"
+          value={search}
+          enterKeyHint="search"
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return
+            void quickAddFromCatalog()
+          }}
+        />
+      </div>
+
+      {filterChips.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {filterChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.clear}
+              className="outline-none"
+              aria-label={`Remove filter ${chip.label}`}
+            >
+              <Badge
+                variant="outline"
+                className="gap-1 rounded-full border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] text-foreground"
               >
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{mod.name}</div>
-                  <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {mod.id}
-                    {mod.baseUrl ? ` · ${mod.baseUrl}` : ''}
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2 self-end sm:self-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-9"
-                    disabled={busyId === mod.id || index === 0}
-                    onClick={() => void move(mod.id, -1)}
-                  >
-                    Up
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-9"
-                    disabled={busyId === mod.id || index === installed.length - 1}
-                    onClick={() => void move(mod.id, 1)}
-                  >
-                    Down
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id={`mod-${mod.id}`}
-                      checked={mod.enabled}
-                      disabled={busyId === mod.id}
-                      onCheckedChange={(enabled) => void toggle(mod.id, enabled)}
-                    />
-                    <Label htmlFor={`mod-${mod.id}`} className="text-xs text-muted-foreground">
-                      On
-                    </Label>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-9"
-                    disabled={busyId === mod.id}
-                    onClick={() => void remove(mod.id)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mt-8 space-y-2.5">
-        <h2 className="text-base font-semibold">Add from URL</h2>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            className="min-h-10"
-            placeholder="https://…/module.js"
-            value={customUrl}
-            onChange={(e) => setCustomUrl(e.target.value)}
-          />
-          <Input
-            className="min-h-10 sm:max-w-[12rem]"
-            placeholder="Name"
-            value={customName}
-            onChange={(e) => setCustomName(e.target.value)}
-          />
-          <Button
-            className="min-h-10"
-            disabled={!isApp || busyId === 'custom' || !customUrl.trim()}
-            onClick={() => void installCustom()}
+                {chip.label}
+                <X className="size-3 opacity-70" />
+              </Badge>
+            </button>
+          ))}
+          <button
+            type="button"
+            className="px-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            onClick={clearFilters}
           >
-            Install
-          </Button>
+            Clear
+          </button>
         </div>
-      </section>
+      ) : null}
 
-      <section className="mt-8 space-y-2.5">
-        <h2 className="text-base font-semibold">
-          Catalog{' '}
-          <span className="font-normal text-muted-foreground">({catalogVisible.length})</span>
-        </h2>
-        {catalogVisible.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {isApp ? 'No active anime modules in catalog.' : 'Catalog loads in the iOS app.'}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {catalogVisible.map((entry) => {
-              const already = installedIds.has(entry.id)
-              return (
-                <li
-                  key={entry.id}
-                  className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{entry.sourceName}</div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {entry.id}
-                      {entry.streamType ? ` · ${entry.streamType}` : ''}
-                      {entry.quality ? ` · ${entry.quality}` : ''}
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-9 self-end sm:self-center"
-                    disabled={!isApp || busyId === entry.id}
-                    onClick={() => void installEntry(entry)}
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTab(value === 'browse' ? 'browse' : 'installed')}
+        className="mt-4"
+      >
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="installed">
+            Installed ({filteredInstalled.length})
+          </TabsTrigger>
+          <TabsTrigger value="browse">Browse ({filteredCatalog.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="installed" className="mt-4 space-y-2.5">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading modules…</p>
+          ) : filteredInstalled.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {normalizedQuery || enabledOnly
+                ? 'No matching installed modules.'
+                : 'Nothing installed yet. Switch to Browse to add a source.'}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {filteredInstalled.map((mod) => {
+                const fullIndex = installed.findIndex((m) => m.id === mod.id)
+                return (
+                  <li
+                    key={mod.id}
+                    className="rounded-xl border border-border/60 bg-card px-3 py-3"
                   >
-                    {already ? 'Reinstall' : 'Install'}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{mod.name}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {mod.baseUrl || mod.id}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Switch
+                          id={`mod-${mod.id}`}
+                          checked={mod.enabled}
+                          disabled={busyId === mod.id}
+                          onCheckedChange={(enabled) => void toggle(mod.id, enabled)}
+                        />
+                        <Label htmlFor={`mod-${mod.id}`} className="text-xs text-muted-foreground">
+                          On
+                        </Label>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-9"
+                        disabled={!isApp || busyId === mod.id}
+                        onClick={() => void testModule(mod.id, mod.name)}
+                      >
+                        Test
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-9 p-0"
+                          disabled={busyId === mod.id || fullIndex === 0}
+                          aria-label="Move up"
+                          onClick={() => void move(mod.id, -1)}
+                        >
+                          <ChevronUp className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-9 p-0"
+                          disabled={busyId === mod.id || fullIndex === installed.length - 1}
+                          aria-label="Move down"
+                          onClick={() => void move(mod.id, 1)}
+                        >
+                          <ChevronDown className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="min-h-9 text-destructive"
+                          disabled={busyId === mod.id}
+                          onClick={() => void remove(mod.id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </TabsContent>
+
+        <TabsContent value="browse" className="mt-4 space-y-4">
+          <div className="rounded-xl border border-border/50 px-3 py-2">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between py-1 text-sm font-medium"
+              onClick={() => setAddOpen((open) => !open)}
+            >
+              Add from URL
+              <ChevronDown className={`size-4 transition-transform ${addOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {addOpen ? (
+              <div className="mt-2 flex flex-col gap-2 pb-1">
+                <Input
+                  className="min-h-10"
+                  placeholder="https://…/module.js"
+                  value={customUrl}
+                  onChange={(e) => setCustomUrl(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Input
+                    className="min-h-10"
+                    placeholder="Name (optional)"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                  />
+                  <Button
+                    className="min-h-10 shrink-0"
+                    disabled={!isApp || busyId === 'custom' || !customUrl.trim()}
+                    onClick={() => void installCustom()}
+                  >
+                    Install
                   </Button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading catalog…</p>
+          ) : filteredCatalog.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {normalizedQuery || streamTypeFilter !== 'all' || qualityFilter !== 'all'
+                ? 'No matching catalog modules.'
+                : isApp
+                  ? 'No active anime modules in catalog.'
+                  : 'Catalog loads in the iOS app.'}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {filteredCatalog.map((entry) => {
+                const already = installedIds.has(entry.id)
+                return (
+                  <li
+                    key={entry.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{entry.sourceName}</div>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {entry.streamType ? (
+                          <Badge variant="outline">{entry.streamType}</Badge>
+                        ) : null}
+                        {entry.quality ? <Badge variant="outline">{entry.quality}</Badge> : null}
+                        {already ? <Badge variant="secondary">Installed</Badge> : null}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-9 shrink-0"
+                      disabled={!isApp || busyId === entry.id}
+                      onClick={() => void installEntry(entry)}
+                    >
+                      {already ? 'Reinstall' : 'Install'}
+                    </Button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <SheetContent side="bottom" className="max-h-[80dvh] rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle>Filters</SheetTitle>
+            <SheetDescription>
+              Narrow installed sources and the catalog. Test uses the sample title below.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 px-4 pb-[calc(1rem+var(--safe-bottom))]">
+            <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
+              <Label htmlFor="enabled-only" className="text-sm">
+                Enabled only
+              </Label>
+              <Switch
+                id="enabled-only"
+                checked={enabledOnly}
+                onCheckedChange={setEnabledOnly}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="stream-type" className="text-xs text-muted-foreground">
+                Stream type
+              </Label>
+              <select
+                id="stream-type"
+                className={selectClass}
+                style={selectChevron}
+                value={streamTypeFilter}
+                onChange={(e) => setStreamTypeFilter(e.target.value)}
+              >
+                <option value="all">Any</option>
+                {streamTypeOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="quality" className="text-xs text-muted-foreground">
+                Quality
+              </Label>
+              <select
+                id="quality"
+                className={selectClass}
+                style={selectChevron}
+                value={qualityFilter}
+                onChange={(e) => setQualityFilter(e.target.value)}
+              >
+                <option value="all">Any</option>
+                {qualityOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="test-query" className="text-xs text-muted-foreground">
+                Test title
+              </Label>
+              <Input
+                id="test-query"
+                className="min-h-11"
+                placeholder="Naruto"
+                value={testQuery}
+                onChange={(e) => setTestQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="min-h-11 flex-1" onClick={clearFilters}>
+                Reset
+              </Button>
+              <Button className="min-h-11 flex-1" onClick={() => setFiltersOpen(false)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </>
   )
 }

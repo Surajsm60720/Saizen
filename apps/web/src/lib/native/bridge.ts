@@ -14,6 +14,8 @@ import type {
   PlayStreamOptions,
   RecordModuleSuccessOptions,
   ResolveAndPlayOptions,
+  ResolveStreamsBatchEntry,
+  ResolveStreamsBatchOptions,
   ResolveStreamsOptions,
   SaizenNative,
   SpawnPlayerOptions,
@@ -133,10 +135,18 @@ export async function installSaizenBridge(): Promise<void> {
     browseModuleCatalog(): Promise<{ entries: ModuleCatalogEntry[] }>
     installModule(o: InstallModuleOptions): Promise<{ modules: InstalledModule[] }>
     installModuleFromUrl(o: InstallModuleFromUrlOptions): Promise<{ modules: InstalledModule[] }>
+    testModule(o: { id: string; query?: string }): Promise<{
+      ok: boolean
+      message: string
+      searchResults?: number
+    }>
     setModuleEnabled(o: { id: string; enabled: boolean }): Promise<{ ok?: boolean }>
     reorderModules(o: { ids: string[] }): Promise<{ modules: InstalledModule[] }>
     removeModule(o: { id: string }): Promise<{ modules: InstalledModule[] }>
     resolveStreams(o: ResolveStreamsOptions): Promise<{ candidates: StreamCandidate[] }>
+    resolveStreamsBatch(
+      o: ResolveStreamsBatchOptions
+    ): Promise<{ results: ResolveStreamsBatchEntry[] }>
     resolveAndPlay(o: ResolveAndPlayOptions): Promise<{ candidate: StreamCandidate }>
     recordModuleSuccess(o: RecordModuleSuccessOptions): Promise<{ ok?: boolean }>
   }>('SaizenModules')
@@ -203,6 +213,9 @@ export async function installSaizenBridge(): Promise<void> {
       const { modules } = await SaizenModules.installModuleFromUrl(options)
       return modules ?? []
     },
+    async testModule(options) {
+      return SaizenModules.testModule(options)
+    },
     async setModuleEnabled(id, enabled) {
       await SaizenModules.setModuleEnabled({ id, enabled })
     },
@@ -217,6 +230,10 @@ export async function installSaizenBridge(): Promise<void> {
     async resolveStreams(options) {
       const { candidates } = await SaizenModules.resolveStreams(options)
       return candidates ?? []
+    },
+    async resolveStreamsBatch(options) {
+      const { results } = await SaizenModules.resolveStreamsBatch(options)
+      return results ?? []
     },
     async resolveAndPlay(options) {
       const { candidate } = await SaizenModules.resolveAndPlay(options)

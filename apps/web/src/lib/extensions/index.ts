@@ -1,4 +1,11 @@
-export { EXTENSION_CATALOGS, DEFAULT_ENABLED_IDS } from './catalogs'
+export {
+  EXTENSION_CATALOGS,
+  DEFAULT_ENABLED_IDS,
+  getExtensionCatalogName,
+  listUserExtensionCatalogs,
+  removeUserExtensionCatalog,
+  upsertUserExtensionCatalog
+} from './catalogs'
 export { saizenFetch, saizenFetchJson } from './fetch'
 export {
   initExtensions,

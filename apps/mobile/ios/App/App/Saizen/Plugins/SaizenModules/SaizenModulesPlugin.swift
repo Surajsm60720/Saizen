@@ -12,10 +12,12 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "browseModuleCatalog", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "installModule", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "installModuleFromUrl", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "testModule", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "setModuleEnabled", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "reorderModules", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "removeModule", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "resolveStreams", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "resolveStreamsBatch", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "resolveAndPlay", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "recordModuleSuccess", returnType: CAPPluginReturnPromise)
   ]
@@ -99,6 +101,23 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
+  @objc func testModule(_ call: CAPPluginCall) {
+    guard let id = call.getString("id")?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
+      call.reject("Missing id")
+      return
+    }
+    let query = call.getString("query")?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    Task {
+      do {
+        let result = try await Self.runModuleTest(id: id, query: query)
+        call.resolve(result)
+      } catch {
+        call.reject(error.localizedDescription)
+      }
+    }
+  }
+
   @objc func setModuleEnabled(_ call: CAPPluginCall) {
     guard let id = call.getString("id")?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
       call.reject("Missing id")
@@ -156,16 +175,59 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
       return
     }
     let query = call.getString("query")
+    let fast = call.getBool("fast") ?? false
 
     Task {
       do {
-        let candidates = try await StreamResolver.shared.resolve(
+        let candidates: [StreamCandidate]
+        if fast {
+          candidates = try await StreamResolver.shared.resolveForDownload(
+            title: title,
+            anilistId: anilistId,
+            episode: episode,
+            query: query
+          )
+        } else {
+          candidates = try await StreamResolver.shared.resolve(
+            title: title,
+            anilistId: anilistId,
+            episode: episode,
+            query: query
+          )
+        }
+        call.resolve(["candidates": candidates.map { Self.encodeCandidate($0) }])
+      } catch {
+        call.reject(error.localizedDescription)
+      }
+    }
+  }
+
+  @objc func resolveStreamsBatch(_ call: CAPPluginCall) {
+    guard let title = call.getString("title")?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
+      call.reject("Missing title")
+      return
+    }
+    let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
+    guard anilistId > 0 else {
+      call.reject("Missing anilistId")
+      return
+    }
+    let episodes = call.getArray("episodes", Int.self) ?? []
+    guard !episodes.isEmpty else {
+      call.reject("Missing episodes")
+      return
+    }
+    let query = call.getString("query")
+
+    Task {
+      do {
+        let results = try await StreamResolver.shared.resolveBatchForDownload(
           title: title,
           anilistId: anilistId,
-          episode: episode,
+          episodes: episodes,
           query: query
         )
-        call.resolve(["candidates": candidates.map { Self.encodeCandidate($0) }])
+        call.resolve(["results": results])
       } catch {
         call.reject(error.localizedDescription)
       }
@@ -280,6 +342,45 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     if let quality = c.quality { dict["quality"] = quality }
     if let title = c.title { dict["title"] = title }
     return dict
+  }
+
+  private static func runModuleTest(id: String, query: String?) async throws -> [String: Any] {
+    guard let module = ModuleStore.shared.list().first(where: { $0.id == id }) else {
+      throw ModuleStoreError.notFound(id)
+    }
+
+    let scriptSource = try await ModuleStore.shared.loadScriptSource(for: id)
+    let baseURL = module.baseUrl.flatMap(URL.init(string:))
+    let session = try ModuleResolveSession(
+      moduleId: module.id,
+      scriptSource: scriptSource,
+      baseURL: baseURL
+    )
+    defer { session.teardown() }
+
+    let trimmed = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if trimmed.isEmpty {
+      return [
+        "ok": true,
+        "message": "Module script loaded successfully"
+      ]
+    }
+
+    let results = try await session.searchResults(trimmed)
+    let count = results.count
+    if count > 0 {
+      return [
+        "ok": true,
+        "message": "Search OK (\(count) result\(count == 1 ? "" : "s"))",
+        "searchResults": count
+      ]
+    }
+
+    return [
+      "ok": false,
+      "message": "No search results for \"\(trimmed)\"",
+      "searchResults": 0
+    ]
   }
 
   private static func parseSpawnContext(_ call: CAPPluginCall, fallbackTitle: String, idMal: Int?) -> SpawnContext {

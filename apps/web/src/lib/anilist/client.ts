@@ -449,6 +449,32 @@ export async function fetchAnime(id: number): Promise<AnimeMedia | null> {
   return media
 }
 
+/**
+ * Fetch AniList Media details without forcing the type (ANIME vs MANGA vs NOVEL).
+ * Used for rendering “Source material” items fully in-app.
+ */
+export async function fetchMedia(id: number): Promise<AnimeMedia | null> {
+  if (detailMemory.has(id)) return detailMemory.get(id)!
+
+  const query = `
+    query ($id: Int) {
+      Media(id: $id) {
+        ${DETAIL_FIELDS}
+      }
+    }
+  `
+  const result = await anilist.query(query, { id }).toPromise()
+  if (result.error) throw result.error
+  const media = (result.data?.Media ?? null) as AnimeMedia | null
+  if (media) detailMemory.set(id, media)
+  // Bound memory for long sessions
+  if (detailMemory.size > 40) {
+    const first = detailMemory.keys().next().value
+    if (first != null) detailMemory.delete(first)
+  }
+  return media
+}
+
 export type SearchAnimeOpts = {
   includeAdult?: boolean
   genres?: string[]

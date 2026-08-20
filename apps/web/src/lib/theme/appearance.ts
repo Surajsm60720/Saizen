@@ -238,6 +238,25 @@ export function getAppearance(): AppearanceState {
   }
 }
 
+const appearanceListeners = new Set<(state: AppearanceState) => void>()
+
+export function subscribeAppearance(listener: (state: AppearanceState) => void): () => void {
+  appearanceListeners.add(listener)
+  return () => {
+    appearanceListeners.delete(listener)
+  }
+}
+
+function emitAppearance(state: AppearanceState): void {
+  for (const listener of appearanceListeners) {
+    try {
+      listener(state)
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export function setAppearance(patch: Partial<AppearanceState>): AppearanceState {
   const current = getAppearance()
   const next: AppearanceState = {
@@ -250,6 +269,7 @@ export function setAppearance(patch: Partial<AppearanceState>): AppearanceState 
     localStorage.setItem(KEY, JSON.stringify(next))
   }
   applyAppearance(next)
+  emitAppearance(next)
   return next
 }
 
@@ -258,6 +278,7 @@ export function resetAppearance(): AppearanceState {
     localStorage.removeItem(KEY)
   }
   applyAppearance(DEFAULT_APPEARANCE)
+  emitAppearance(DEFAULT_APPEARANCE)
   return { ...DEFAULT_APPEARANCE }
 }
 

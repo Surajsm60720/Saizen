@@ -89,6 +89,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   private var lastNotifBody = ""
   private var lastEmitAt = Date.distantPast
   private var pendingEmitWorkItem: DispatchWorkItem?
+  private var speedSamples: [String: (bytes: Int64, at: Date)] = [:]
   private let emitInterval: TimeInterval = 2.0
 
   public var onJobsUpdated: (([[String: Any]]) -> Void)?
@@ -119,6 +120,8 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
       delegateQueue: hlsQueue
     )
     startPathMonitor()
+    purgeFailedJobs()
+    purgeOrphanLibraryFiles()
     pumpQueue()
   }
 
@@ -366,6 +369,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     httpTask?.cancel()
     hlsTask?.cancel()
     engine?.shutdownSession()
+    clearSpeedSample(id: id)
     removeWorkDir(id: id)
     persist()
     emit()
@@ -414,6 +418,8 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
 
   public func clearCache() {
     SaizenStorage.purgePlaybackData()
+    purgeFailedJobs()
+    purgeOrphanLibraryFiles()
     sweepOrphanWorkDirs()
     lock.lock()
     let active = Set(
@@ -609,7 +615,8 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     guard let id else { return }
     let total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : 0
     let progress = total > 0 ? Double(totalBytesWritten) / Double(total) : 0
-    updateProgress(id: id, progress: progress, downloaded: totalBytesWritten, total: total, speed: 0)
+    let speed = measuredSpeed(id: id, downloaded: totalBytesWritten)
+    updateProgress(id: id, progress: progress, downloaded: totalBytesWritten, total: total, speed: speed)
   }
 
   public func urlSession(
@@ -703,12 +710,12 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     }
     let expected = timeRangeExpectedToLoad.duration.seconds
     let progress = expected > 0 ? min(1, loaded / expected) : 0
-    // Byte totals unknown for HLS asset downloads — report progress fraction only.
+    // HLS offline packs have no reliable byte totals — progress fraction only.
     updateProgress(
       id: id,
       progress: progress,
-      downloaded: Int64(loaded * 1000),
-      total: Int64(max(expected, 0) * 1000),
+      downloaded: 0,
+      total: 0,
       speed: 0
     )
   }
@@ -805,6 +812,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
       manifest.jobs[idx].date = Date().timeIntervalSince1970
     }
     lock.unlock()
+    clearSpeedSample(id: jobId)
     persist()
     emit()
     pumpQueue()
@@ -820,7 +828,9 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
         return
       }
       manifest.jobs[idx].progress = progress
-      manifest.jobs[idx].downloaded = downloaded
+      if downloaded > 0 || manifest.jobs[idx].kind != "hls" {
+        manifest.jobs[idx].downloaded = downloaded
+      }
       if total > 0 { manifest.jobs[idx].size = total }
       manifest.jobs[idx].speed = speed
       manifest.jobs[idx].status = "downloading"
@@ -828,6 +838,28 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     lock.unlock()
     emitThrottled()
     updateNotificationSummary(force: false)
+  }
+
+  private func measuredSpeed(id: String, downloaded: Int64) -> Int64 {
+    let now = Date()
+    lock.lock()
+    defer { lock.unlock() }
+    guard let sample = speedSamples[id] else {
+      speedSamples[id] = (downloaded, now)
+      return 0
+    }
+    let dt = now.timeIntervalSince(sample.at)
+    guard dt >= 0.25 else { return 0 }
+    let delta = downloaded - sample.bytes
+    speedSamples[id] = (downloaded, now)
+    guard delta > 0 else { return 0 }
+    return Int64(Double(delta) / dt)
+  }
+
+  private func clearSpeedSample(id: String) {
+    lock.lock()
+    speedSamples[id] = nil
+    lock.unlock()
   }
 
   private func fail(id: String, message: String) {
@@ -850,6 +882,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     httpTask?.cancel()
     hlsTask?.cancel()
     engine?.shutdownSession()
+    clearSpeedSample(id: id)
     removeWorkDir(id: id)
     persist()
     emit()
@@ -867,6 +900,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
     hlsTaskByJobId[id] = nil
     lock.unlock()
     engine?.shutdownSession()
+    clearSpeedSample(id: id)
     removeWorkDir(id: id)
     updateKeepAlive()
     pumpQueue()
@@ -875,6 +909,83 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
   private func removeWorkDir(id: String) {
     let dir = SaizenStorage.downloadsWorkDir.appendingPathComponent(id, isDirectory: true)
     try? FileManager.default.removeItem(at: dir)
+  }
+
+  /// Drop failed queue rows and scrub partial work dirs.
+  private func purgeFailedJobs() {
+    lock.lock()
+    let failed = manifest.jobs.filter { $0.status == "failed" }.map(\.id)
+    manifest.jobs.removeAll { $0.status == "failed" }
+    lock.unlock()
+    for id in failed {
+      removeWorkDir(id: id)
+    }
+    if !failed.isEmpty {
+      persist()
+      emit()
+    }
+  }
+
+  /// Remove on-disk episodes not referenced by completed manifest rows (partial HLS / stale saves).
+  private func purgeOrphanLibraryFiles() {
+    lock.lock()
+    let referenced = Set(
+      manifest.jobs
+        .filter { $0.status == "completed" }
+        .compactMap { $0.relativePath?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    )
+    let activeHls = manifest.jobs.contains {
+      $0.kind == "hls" && ($0.status == "downloading" || $0.status == "queued" || $0.status == "paused")
+    }
+    lock.unlock()
+
+    let root = activeRoot()
+    guard let enumerator = FileManager.default.enumerator(
+      at: root,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ) else { return }
+
+    var removed = 0
+    for case let url as URL in enumerator {
+      let ext = url.pathExtension.lowercased()
+      guard ext == "movpkg" || ext == "mp4" || ext == "mkv" else { continue }
+      let rel = Self.relativePath(of: url, under: root)
+      if let rel, referenced.contains(rel) { continue }
+      try? FileManager.default.removeItem(at: url)
+      removed += 1
+    }
+
+    if removed > 0 {
+      NSLog("[Saizen][dl] purged %d orphan library file(s)", removed)
+    }
+
+    if !activeHls {
+      purgeManagedAssetOrphans()
+    }
+  }
+
+  /// AVFoundation HLS offline packs when cancelled before finalize — iOS may still count them toward app size.
+  private func purgeManagedAssetOrphans() {
+    guard let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+      return
+    }
+    let managed = library.appendingPathComponent("com.apple.UserManagedAssets", isDirectory: true)
+    guard FileManager.default.fileExists(atPath: managed.path),
+          let items = try? FileManager.default.contentsOfDirectory(
+            at: managed,
+            includingPropertiesForKeys: nil
+          )
+    else { return }
+    var removed = 0
+    for item in items {
+      try? FileManager.default.removeItem(at: item)
+      removed += 1
+    }
+    if removed > 0 {
+      NSLog("[Saizen][dl] purged %d managed HLS asset(s)", removed)
+    }
   }
 
   private func sweepOrphanWorkDirs() {

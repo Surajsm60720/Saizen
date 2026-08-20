@@ -1,4 +1,8 @@
-import { DEFAULT_ENABLED_IDS, EXTENSION_CATALOGS, type CatalogId } from './catalogs'
+import {
+  DEFAULT_ENABLED_IDS,
+  EXTENSION_CATALOGS,
+  getAllExtensionCatalogs
+} from './catalogs'
 import { saizenFetchJson } from './fetch'
 import { clearExtensionCache, loadExtensionInstance, unloadExtension } from './loader'
 import type {
@@ -62,7 +66,7 @@ function writeState(): void {
   }
 }
 
-function isEnabled(id: string, catalogId?: CatalogId, media?: string): boolean {
+function isEnabled(id: string, catalogId?: string, media?: string): boolean {
   if (id in state.enabled) return state.enabled[id]!
   if ((DEFAULT_ENABLED_IDS as readonly string[]).includes(id)) return true
   // Adult catalogs / media stay off until the user opts in
@@ -89,14 +93,14 @@ export function getExtensionOptions(id: string): Record<string, unknown> {
 
 export async function refreshCatalogs(): Promise<ExtensionManifest[]> {
   const results = await Promise.all(
-    EXTENSION_CATALOGS.map(async (cat) => {
+    getAllExtensionCatalogs().map(async (cat) => {
       try {
         const list = await saizenFetchJson<ExtensionManifest[]>(cat.url)
         return list
           .filter((m) => m && m.type === 'torrent' && m.code && m.id)
           .map((m) => ({
             ...m,
-            catalogId: cat.id as CatalogId,
+            catalogId: cat.id,
             catalogName: cat.name,
             // Remote hentai catalog often tags media as "sub" — normalize for gating/UI.
             media: cat.id === 'hentai' ? 'hentai' : m.media

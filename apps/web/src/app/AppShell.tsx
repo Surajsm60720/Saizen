@@ -12,6 +12,7 @@ import { PaneErrorBoundary } from '@/components/saizen/PaneErrorBoundary'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 import { applyAppearance } from '@/lib/theme/appearance'
+import { initDownloadStore } from '@/lib/downloads/store'
 import { setDownloadSettings } from '@/lib/downloads/settings'
 import {
   noteScrollY,
@@ -69,6 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       await hydrateTokenMirrors()
       markBridgeReady()
       setDownloadSettings({})
+      initDownloadStore()
     })()
   }, [])
 

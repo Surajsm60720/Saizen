@@ -8,6 +8,8 @@ import type {
   PlayStreamOptions,
   RecordModuleSuccessOptions,
   ResolveAndPlayOptions,
+  ResolveStreamsBatchEntry,
+  ResolveStreamsBatchOptions,
   ResolveStreamsOptions,
   SaizenNative,
   SpawnPlayerOptions,
@@ -94,6 +96,9 @@ const webFallback: SaizenNative = {
   async installModuleFromUrl() {
     throw new Error('Module install requires the iOS app')
   },
+  async testModule() {
+    throw new Error('Module testing requires the iOS app')
+  },
   async setModuleEnabled() {
     throw new Error('Module settings require the iOS app')
   },
@@ -104,6 +109,9 @@ const webFallback: SaizenNative = {
     throw new Error('Module settings require the iOS app')
   },
   async resolveStreams(_options: ResolveStreamsOptions): Promise<StreamCandidate[]> {
+    throw new Error('Stream resolve requires the iOS app')
+  },
+  async resolveStreamsBatch(_options: ResolveStreamsBatchOptions): Promise<ResolveStreamsBatchEntry[]> {
     throw new Error('Stream resolve requires the iOS app')
   },
   async resolveAndPlay(_options: ResolveAndPlayOptions): Promise<StreamCandidate> {
