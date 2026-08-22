@@ -15,6 +15,17 @@ function shortTitle(title: string, max = 34) {
   return `${t.slice(0, Math.max(1, max - 1)).trimEnd()}…`
 }
 
+/** Prefer portrait covers — they fill the tall hero with far less crop than banners. */
+function heroPosterSrc(media: AnimeMedia): string {
+  return (
+    media.coverImage?.extraLarge ||
+    media.coverImage?.large ||
+    media.coverImage?.medium ||
+    media.bannerImage ||
+    ''
+  )
+}
+
 export function HeroCarousel({
   items,
   intervalMs = 6500
@@ -48,10 +59,10 @@ export function HeroCarousel({
 
   return (
     <section className="relative overflow-hidden">
-      {/* Image runs under the fixed header — no gap / seam */}
-      <div className="relative h-[min(48vh,420px)] min-h-[300px] w-full sm:h-[min(52vh,460px)]">
+      {/* Full-bleed under the fixed header — no letterbox bars */}
+      <div className="relative h-[min(70vh,620px)] min-h-[380px] w-full sm:h-[min(72vh,660px)]">
         {slides.map((media, i) => {
-          const src = media.bannerImage || media.coverImage?.large || ''
+          const src = heroPosterSrc(media)
           return (
             <div
               key={media.id}
@@ -67,10 +78,7 @@ export function HeroCarousel({
                   src={src}
                   alt=""
                   draggable={false}
-                  className={cn(
-                    'size-full object-cover object-[center_20%] transition-transform duration-[6.5s] ease-out motion-reduce:transition-none',
-                    i === index && 'scale-[1.04]'
-                  )}
+                  className="size-full object-cover object-[center_18%]"
                 />
               ) : (
                 <div className="size-full bg-background" />
@@ -79,12 +87,14 @@ export function HeroCarousel({
           )
         })}
 
-        {/* Only bottom fade into page content — no top black band */}
-        <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-background via-background/50 to-transparent" />
+        {/* Light top wash for status bar / brand — not a black band */}
+        <div className="absolute inset-x-0 top-0 z-[1] h-[18%] bg-gradient-to-b from-background/35 to-transparent" />
 
-        {/* Spacer keeps copy clear of the translucent header */}
+        {/* Bottom fade into page content */}
+        <div className="absolute inset-x-0 bottom-0 z-[1] h-[38%] bg-gradient-to-t from-background via-background/50 to-transparent" />
+
         <div
-          className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-4 pb-5 sm:px-5 sm:pb-6"
+          className="absolute inset-x-0 bottom-0 z-[2] flex flex-col justify-end px-4 pb-4 sm:px-5 sm:pb-5"
           style={{
             paddingTop: 'calc(var(--safe-top) + 4.75rem)'
           }}
@@ -108,7 +118,7 @@ export function HeroCarousel({
           <p className="mt-2 max-w-md text-xs leading-relaxed text-white/65 line-clamp-2 sm:text-sm">
             {stripHtml(featured.description) || 'Pick a title. Stream episode-by-episode.'}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2 saizen-enter">
+          <div className="mt-3.5 flex flex-wrap items-center gap-2.5 saizen-enter">
             <Button asChild size="lg" className="min-h-10 gap-2 px-4" haptic="medium">
               <Link
                 href={`/app/anime/?id=${featured.id}`}
@@ -134,7 +144,7 @@ export function HeroCarousel({
           </div>
 
           {slides.length > 1 ? (
-            <div className="mt-3.5 flex gap-1.5">
+            <div className="mt-3 flex gap-1.5">
               {slides.map((media, i) => (
                 <button
                   key={media.id}

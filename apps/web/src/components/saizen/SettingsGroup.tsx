@@ -13,13 +13,13 @@ export function SettingsGroup({
   className?: string
 }) {
   return (
-    <section className={cn('space-y-3', className)}>
+    <section className={cn('space-y-3.5', className)}>
       <div>
         <h2 className="text-subhead !text-muted-foreground uppercase tracking-[0.08em]">
           {title}
         </h2>
         {description ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
         ) : null}
       </div>
       <div className="overflow-hidden rounded-2xl border border-white/8 bg-card">

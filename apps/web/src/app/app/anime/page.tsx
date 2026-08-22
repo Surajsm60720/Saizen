@@ -964,11 +964,11 @@ function AnimeDetail() {
 
   if (loading) {
     return (
-      <div className="-mx-4 space-y-5 sm:-mx-5">
-        <Skeleton className="h-[240px] w-full rounded-none bg-white/5 sm:h-[280px]" />
-        <div className="flex gap-4 px-4 sm:px-5">
-          <Skeleton className="h-44 w-[7.25rem] shrink-0 rounded-xl bg-white/8" />
-          <div className="flex-1 space-y-2.5 pt-8">
+      <div className="-mx-4 space-y-6 sm:-mx-5">
+        <Skeleton className="h-[280px] w-full rounded-none bg-white/5 sm:h-[320px]" />
+        <div className="flex gap-5 px-4 sm:px-5">
+          <Skeleton className="h-48 w-[7.75rem] shrink-0 rounded-xl bg-white/8" />
+          <div className="flex-1 space-y-3 pt-8">
             <Skeleton className="h-3 w-24 bg-white/8" />
             <Skeleton className="h-8 w-3/4 bg-white/10" />
             <Skeleton className="h-5 w-1/2 bg-white/8" />
@@ -1002,7 +1002,7 @@ function AnimeDetail() {
   const trailerUrl = trailerWatchUrl(media.trailer)
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-9">
       <AnimeHeader
         title={displayTitle(media)}
         cover={media.coverImage?.large}
@@ -1042,21 +1042,21 @@ function AnimeDetail() {
           setDetailTab(tab)
           if (id) setAnimeSession(id, { tab })
         }}
-        className="gap-5"
+        className="gap-6"
       >
         <TabsList variant="line" className="w-full max-w-md">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="franchise">Relations</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-7">
-          <section className="space-y-3.5">
+        <TabsContent value="overview" className="space-y-9">
+          <section className="space-y-4">
             <div className="flex items-end justify-between gap-2">
               <div>
                 <h2 className="text-section">
                   Episodes
                 </h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Tap an episode to hunt sources, or download for offline
                 </p>
               </div>
@@ -1182,7 +1182,7 @@ function AnimeDetail() {
           ) : null}
         </TabsContent>
 
-        <TabsContent value="franchise" className="space-y-5">
+        <TabsContent value="franchise" className="space-y-7">
           <div>
             <h2 className="text-section">
               Relations

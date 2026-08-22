@@ -56,9 +56,9 @@ export function PosterCard({
         'bg-card ring-1 ring-white/8',
         'saizen-press',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-        size === 'lg' && 'w-[8.5rem] sm:w-[9.75rem]',
-        size === 'md' && 'w-[7.25rem] sm:w-[8.25rem]',
-        size === 'sm' && 'w-[6.25rem]',
+        size === 'lg' && 'w-[9rem] sm:w-[10.25rem]',
+        size === 'md' && 'w-[7.75rem] sm:w-[8.75rem]',
+        size === 'sm' && 'w-[6.5rem]',
         className
       )}
     >

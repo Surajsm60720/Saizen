@@ -129,6 +129,8 @@ export default function SettingsPage() {
         ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED', 'PLANNING'],
         { force: true }
       )
+      const { refreshHomePersonalization } = await import('@/lib/home/personalize')
+      await refreshHomePersonalization({ force: false })
       await flushPendingListSync()
       toast.success('Pulled AniList progress into Saizen')
     } catch (e) {
@@ -170,11 +172,10 @@ export default function SettingsPage() {
     <>
       <PageHeader
         title="Settings"
-        dense
         description="Sign in with your AniList or MAL account — Saizen handles the rest."
       />
 
-      <div className="space-y-5">
+      <div className="space-y-7">
         <SettingsGroup
           title="Incognito"
           description="Watch and save without touching AniList, MAL, or your main Home. Session resume clears when you leave."
@@ -203,7 +204,7 @@ export default function SettingsPage() {
           </SettingsRow>
         </SettingsGroup>
 
-        <SettingsGroup title="Appearance" description="Deep black chrome and accent color.">
+        <SettingsGroup title="Appearance" description="Accent color and liquid-glass intensity.">
           <Link
             href="/app/appearance/"
             scroll={false}
@@ -211,9 +212,9 @@ export default function SettingsPage() {
             className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
           >
             <div className="min-w-0">
-              <div className="text-sm font-medium">Color customization</div>
+              <div className="text-sm font-medium">Color & glass</div>
               <div className="text-xs text-muted-foreground">
-                Presets, color wheel, saturation, brightness, contrast
+                Presets, color wheel, and tab bar transparency
               </div>
             </div>
             <span className="flex shrink-0 items-center gap-2">

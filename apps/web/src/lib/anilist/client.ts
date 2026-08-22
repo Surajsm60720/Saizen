@@ -13,8 +13,10 @@ export interface AnimeTitle {
 }
 
 export interface AnimeCover {
+  extraLarge?: string | null
   large?: string | null
   medium?: string | null
+  color?: string | null
 }
 
 export interface AnimeFuzzyDate {
@@ -150,7 +152,7 @@ const MEDIA_FIELDS = `
   startDate { year month day }
   endDate { year month day }
   title { romaji english native userPreferred }
-  coverImage { large medium }
+  coverImage { extraLarge large medium color }
 `
 
 const DETAIL_FIELDS = `
@@ -198,7 +200,7 @@ const DETAIL_FIELDS = `
         averageScore
         seasonYear
         title { romaji english native userPreferred }
-        coverImage { large medium }
+        coverImage { extraLarge large medium color }
       }
     }
   }
@@ -215,7 +217,7 @@ const DETAIL_FIELDS = `
         startDate { year month day }
         endDate { year month day }
         title { romaji english native userPreferred }
-        coverImage { large medium }
+        coverImage { extraLarge large medium color }
       }
     }
   }
@@ -687,7 +689,7 @@ export async function fetchMediaRelations(id: number): Promise<AnimeRelationNode
         startDate { year month day }
         endDate { year month day }
         title { romaji english native userPreferred }
-        coverImage { large medium }
+        coverImage { extraLarge large medium color }
         relations {
           edges {
             relationType
@@ -701,7 +703,7 @@ export async function fetchMediaRelations(id: number): Promise<AnimeRelationNode
               startDate { year month day }
               endDate { year month day }
               title { romaji english native userPreferred }
-              coverImage { large medium }
+              coverImage { extraLarge large medium color }
             }
           }
         }
@@ -739,7 +741,7 @@ export async function fetchCharacter(id: number): Promise<AniCharacter | null> {
               averageScore
               seasonYear
               title { romaji english native userPreferred }
-              coverImage { large medium }
+              coverImage { extraLarge large medium color }
             }
           }
         }
@@ -779,7 +781,7 @@ export async function fetchStaff(id: number): Promise<AniStaff | null> {
               format
               seasonYear
               title { romaji english native userPreferred }
-              coverImage { large medium }
+              coverImage { extraLarge large medium color }
             }
           }
         }
@@ -794,7 +796,7 @@ export async function fetchStaff(id: number): Promise<AniStaff | null> {
               averageScore
               seasonYear
               title { romaji english native userPreferred }
-              coverImage { large medium }
+              coverImage { extraLarge large medium color }
             }
           }
         }

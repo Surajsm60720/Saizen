@@ -15,6 +15,10 @@ export type AppearanceState = {
   saturation: number
   brightness: number
   contrast: number
+  /** 0 = solid chrome, 100 = max see-through (tab bar + top chrome). */
+  glass: number
+  /** When on, blur scales with transparency (iOS frosted glass). Off = clear tint only. */
+  frosted: boolean
 }
 
 export const ACCENT_SWATCHES: { id: AccentSwatchId; label: string; hex: string }[] = [
@@ -32,7 +36,9 @@ export const DEFAULT_APPEARANCE: AppearanceState = {
   hue: 41,
   saturation: 71,
   brightness: 69,
-  contrast: 50
+  contrast: 50,
+  glass: 55,
+  frosted: false
 }
 
 const DEEP_BLACK_TOKENS: Record<string, string> = {
@@ -165,7 +171,12 @@ export function accentForeground(hex: string): string {
   return luminance > 0.45 ? '#141416' : '#f4f0e8'
 }
 
-export function appearanceFromHex(hex: string, contrast = 50): AppearanceState | null {
+export function appearanceFromHex(
+  hex: string,
+  contrast = 50,
+  glass = DEFAULT_APPEARANCE.glass,
+  frosted = DEFAULT_APPEARANCE.frosted
+): AppearanceState | null {
   const rgb = hexToRgb(hex)
   if (!rgb) return null
   const hsl = rgbToHsl(...rgb)
@@ -178,7 +189,50 @@ export function appearanceFromHex(hex: string, contrast = 50): AppearanceState |
     hue: clampHue(hsl.h),
     saturation: clampPercent(sat * 100, 71),
     brightness: clampPercent(bri * 100, 69),
-    contrast: c
+    contrast: c,
+    glass: clampPercent(glass, DEFAULT_APPEARANCE.glass),
+    frosted: Boolean(frosted)
+  }
+}
+
+/** Map transparency + frosted toggle → CSS material tokens. */
+export function resolveGlassTokens(
+  glass: number,
+  frosted = DEFAULT_APPEARANCE.frosted
+): {
+  tabFill: string
+  tabFillSupported: string
+  topFill: string
+  topFillSupported: string
+  tabBlur: string
+  topBlur: string
+  saturate: string
+} {
+  const g = clampPercent(glass, DEFAULT_APPEARANCE.glass) / 100
+  // Opacity: solid → nearly clear (always)
+  const tabFillA = 0.94 - g * 0.88
+  const tabFillSupportedA = 0.9 - g * 0.86
+  const topFillA = 0.92 - g * 0.84
+  const topFillSupportedA = 0.88 - g * 0.82
+
+  let tabBlurPx = 0
+  let topBlurPx = 0
+  let saturatePct = 100
+  if (frosted) {
+    // More transparent → stronger frost (iOS liquid-glass feel)
+    tabBlurPx = Math.round(g * 48)
+    topBlurPx = Math.round(g * 36)
+    saturatePct = Math.round(100 + g * 80)
+  }
+
+  return {
+    tabFill: `rgba(18, 18, 22, ${tabFillA.toFixed(3)})`,
+    tabFillSupported: `rgba(12, 12, 16, ${tabFillSupportedA.toFixed(3)})`,
+    topFill: `rgba(12, 12, 16, ${topFillA.toFixed(3)})`,
+    topFillSupported: `rgba(8, 8, 12, ${topFillSupportedA.toFixed(3)})`,
+    tabBlur: `${tabBlurPx}px`,
+    topBlur: `${topBlurPx}px`,
+    saturate: `${saturatePct}%`
   }
 }
 
@@ -212,24 +266,40 @@ export function getAppearance(): AppearanceState {
         hue: clampHue(parsed.hue),
         saturation: clampPercent(parsed.saturation, DEFAULT_APPEARANCE.saturation),
         brightness: clampPercent(parsed.brightness, DEFAULT_APPEARANCE.brightness),
-        contrast: clampPercent(parsed.contrast ?? 50, 50)
+        contrast: clampPercent(parsed.contrast ?? 50, 50),
+        glass: clampPercent(parsed.glass ?? DEFAULT_APPEARANCE.glass, DEFAULT_APPEARANCE.glass),
+        frosted:
+          typeof parsed.frosted === 'boolean' ? parsed.frosted : DEFAULT_APPEARANCE.frosted
       }
     }
     if (isSwatchId(parsed.swatchId)) {
       const fromSwatch = appearanceFromHex(
         ACCENT_SWATCHES.find((s) => s.id === parsed.swatchId)!.hex,
-        typeof parsed.contrast === 'number' ? parsed.contrast : 50
+        typeof parsed.contrast === 'number' ? parsed.contrast : 50,
+        typeof parsed.glass === 'number' ? parsed.glass : DEFAULT_APPEARANCE.glass,
+        typeof parsed.frosted === 'boolean' ? parsed.frosted : DEFAULT_APPEARANCE.frosted
       )
       if (fromSwatch) return fromSwatch
     }
-    const fromHex = typeof parsed.accentHex === 'string' ? appearanceFromHex(parsed.accentHex) : null
+    const fromHex =
+      typeof parsed.accentHex === 'string'
+        ? appearanceFromHex(
+            parsed.accentHex,
+            50,
+            typeof parsed.glass === 'number' ? parsed.glass : DEFAULT_APPEARANCE.glass,
+            typeof parsed.frosted === 'boolean' ? parsed.frosted : DEFAULT_APPEARANCE.frosted
+          )
+        : null
     if (fromHex) return fromHex
     if (typeof parsed.accentHue === 'number' && Number.isFinite(parsed.accentHue)) {
       return {
         hue: clampHue(parsed.accentHue),
         saturation: 72,
         brightness: 62,
-        contrast: 50
+        contrast: 50,
+        glass: clampPercent(parsed.glass ?? DEFAULT_APPEARANCE.glass, DEFAULT_APPEARANCE.glass),
+        frosted:
+          typeof parsed.frosted === 'boolean' ? parsed.frosted : DEFAULT_APPEARANCE.frosted
       }
     }
     return { ...DEFAULT_APPEARANCE }
@@ -263,7 +333,9 @@ export function setAppearance(patch: Partial<AppearanceState>): AppearanceState 
     hue: clampHue(patch.hue ?? current.hue),
     saturation: clampPercent(patch.saturation ?? current.saturation, current.saturation),
     brightness: clampPercent(patch.brightness ?? current.brightness, current.brightness),
-    contrast: clampPercent(patch.contrast ?? current.contrast, current.contrast)
+    contrast: clampPercent(patch.contrast ?? current.contrast, current.contrast),
+    glass: clampPercent(patch.glass ?? current.glass, current.glass),
+    frosted: typeof patch.frosted === 'boolean' ? patch.frosted : current.frosted
   }
   if (typeof window !== 'undefined') {
     localStorage.setItem(KEY, JSON.stringify(next))
@@ -287,6 +359,7 @@ export function applyAppearance(state: AppearanceState = getAppearance()): void 
   const root = document.documentElement
   const hex = resolveAccentHex(state)
   const fg = accentForeground(hex)
+  const glass = resolveGlassTokens(state.glass, state.frosted)
 
   for (const [key, value] of Object.entries(DEEP_BLACK_TOKENS)) {
     root.style.setProperty(key, value)
@@ -300,6 +373,13 @@ export function applyAppearance(state: AppearanceState = getAppearance()): void 
   root.style.setProperty('--sidebar-primary-foreground', fg)
   root.style.setProperty('--sidebar-ring', hex)
   root.style.setProperty('--chart-1', hex)
+  root.style.setProperty('--saizen-tab-glass-fill', glass.tabFill)
+  root.style.setProperty('--saizen-tab-glass-fill-supported', glass.tabFillSupported)
+  root.style.setProperty('--saizen-top-glass-fill', glass.topFill)
+  root.style.setProperty('--saizen-top-glass-fill-supported', glass.topFillSupported)
+  root.style.setProperty('--saizen-tab-glass-blur', glass.tabBlur)
+  root.style.setProperty('--saizen-top-glass-blur', glass.topBlur)
+  root.style.setProperty('--saizen-glass-saturate', glass.saturate)
   root.dataset.theme = 'trueBlack'
 
   const meta = document.querySelector('meta[name="theme-color"]')

@@ -83,6 +83,8 @@ export async function connectAnilist(): Promise<void> {
       ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED', 'PLANNING'],
       { force: true }
     )
+    const { refreshHomePersonalization } = await import('@/lib/home/personalize')
+    await refreshHomePersonalization({ force: false })
   } catch {
     /* rate limit — cache stays empty until Home retries */
   }
@@ -92,6 +94,12 @@ export async function connectAnilist(): Promise<void> {
 export async function disconnectAnilist(): Promise<void> {
   await clearAnilistToken()
   clearViewerListCache()
+  try {
+    const { refreshHomePersonalization } = await import('@/lib/home/personalize')
+    await refreshHomePersonalization({ force: false })
+  } catch {
+    /* ignore */
+  }
 }
 
 /** MAL OAuth2 + PKCE (plain challenge = verifier, per MAL docs). Public client — no secret. */

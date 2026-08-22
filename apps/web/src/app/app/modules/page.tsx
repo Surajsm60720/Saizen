@@ -312,7 +312,6 @@ export default function ModulesPage() {
     <>
       <PageHeader
         title="Modules"
-        dense
         description="Install and test stream sources. HTTPS scripts only."
         action={
           <div className="flex items-center gap-2">
@@ -413,7 +412,7 @@ export default function ModulesPage() {
           <TabsTrigger value="browse">Browse ({filteredCatalog.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="installed" className="mt-4 space-y-2.5">
+        <TabsContent value="installed" className="mt-5 space-y-3.5">
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading modules…</p>
           ) : filteredInstalled.length === 0 ? (
@@ -429,7 +428,7 @@ export default function ModulesPage() {
                 return (
                   <li
                     key={mod.id}
-                    className="rounded-xl border border-border/60 bg-card px-3 py-3"
+                    className="rounded-xl border border-border/60 bg-card px-3.5 py-3.5"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -499,7 +498,7 @@ export default function ModulesPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="browse" className="mt-4 space-y-4">
+        <TabsContent value="browse" className="mt-5 space-y-5">
           <div className="rounded-xl border border-border/50 px-3 py-2">
             <button
               type="button"

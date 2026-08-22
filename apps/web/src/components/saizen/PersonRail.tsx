@@ -28,15 +28,15 @@ export function PersonRail({
   if (!people.length) return null
 
   return (
-    <section className={cn('space-y-3.5', className)}>
+    <section className={cn('space-y-4', className)}>
       <div>
         <h2 className="text-section">{title}</h2>
         {subtitle ? (
-          <p className="text-meta mt-0.5">{subtitle}</p>
+          <p className="text-meta mt-1">{subtitle}</p>
         ) : null}
       </div>
-      <div className="scrollbar-hide -mx-4 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:px-5">
-        <ul className="flex gap-3">
+      <div className="scrollbar-hide -mx-4 overflow-x-auto px-4 pb-1.5 sm:-mx-5 sm:px-5">
+        <ul className="flex gap-3.5">
           {people.map((p) => {
             const card = (
               <div

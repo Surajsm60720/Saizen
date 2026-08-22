@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.4.1'
+export const APP_VERSION = '1.4.2'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.2',
+    date: '2026-08-22',
+    title: 'Airier UI, Home auth rails & liquid-glass controls',
+    highlights: [
+      'Home hero uses a taller carousel with portrait covers that fill edge-to-edge; quieter chrome spacing across browse surfaces',
+      'Prequels & sequels and For your genres rails match Popular/Trending card size',
+      'Settings, Appearance, Downloads, Modules, Extensions, and Schedule get the same airy section rhythm',
+      'AniList personalization loads after Keychain hydrate and paints from cache first — no Settings hop to fill Home rails',
+      'Appearance → Liquid glass: transparency slider plus optional Frosted blur for the tab bar and top chrome'
+    ]
+  },
   {
     version: '1.4.1',
     date: '2026-08-20',

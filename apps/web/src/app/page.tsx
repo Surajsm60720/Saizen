@@ -7,18 +7,12 @@ import {
   fetchAllTimePopular,
   currentAniSeason,
   displayTitle,
-  fetchViewerAnimeList,
-  fetchGenrePopular,
-  derivePrequelsSequels,
-  deriveTopGenres,
-  continueEntriesFromList,
   type AnimeMedia
 } from '@/lib/anilist'
-import { isAnilistConnected } from '@/lib/auth'
+import { subscribeAuthChanged } from '@/lib/auth'
 import { whenBridgeReady } from '@/lib/native/ready'
 import {
   listContinueWatching,
-  mergeContinueWatching,
   subscribeContinueWatching,
   type ContinueEntry
 } from '@/lib/watch/continue'
@@ -32,6 +26,7 @@ import {
   isHomeFresh,
   subscribeHomeSnapshot
 } from '@/lib/home/store'
+import { refreshHomePersonalizationSWR } from '@/lib/home/personalize'
 import {
   PosterCard,
   PosterRail,
@@ -43,9 +38,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 function RailSkeleton() {
   return (
-    <div className="mt-8 flex gap-3.5 overflow-hidden">
+    <div className="mt-4 flex gap-3.5 overflow-hidden">
       {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="min-w-[9.5rem] space-y-2">
+        <div key={i} className="min-w-[10rem] space-y-2">
           <Skeleton className="aspect-[2/3] w-full rounded-xl" />
           <Skeleton className="h-4 w-[80%]" />
           <Skeleton className="h-3 w-1/2" />
@@ -92,11 +87,37 @@ export default function HomePage() {
         setTopGenres([])
       } else {
         setContinueWatching(listContinueWatching())
+        void refreshHomePersonalizationSWR().catch((e) => {
+          console.warn('[saizen] AniList list personalization failed', e)
+        })
       }
     })
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
+    const applyPersonal = async () => {
+      if (cancelled || isIncognitoMode()) return
+      const snap = readHomeSnapshot()
+      const showSkeleton =
+        snap.related.length === 0 && snap.genrePicks.length === 0
+      if (showSkeleton) setListLoading(true)
+      try {
+        const result = await refreshHomePersonalizationSWR()
+        if (cancelled) return
+        setAnilistOn(result.anilistOn)
+        setContinueWatching(result.continueWatching)
+        setRelated(result.related)
+        setTopGenres(result.topGenres)
+        setGenrePicks(result.genrePicks)
+      } catch (e) {
+        console.warn('[saizen] AniList list personalization failed', e)
+      } finally {
+        if (!cancelled) setListLoading(false)
+      }
+    }
+
     const unsubContinue = subscribeContinueWatching((entries) => {
       setContinueWatching(entries)
     })
@@ -105,6 +126,11 @@ export default function HomePage() {
       if (snap.related) setRelated(snap.related)
       if (snap.genrePicks) setGenrePicks(snap.genrePicks)
       if (snap.topGenres) setTopGenres(snap.topGenres)
+      setAnilistOn(snap.anilistOn)
+    })
+    // Keychain hydrate / sign-in / Settings list refresh → reload personalized rails.
+    const unsubAuth = subscribeAuthChanged(() => {
+      void applyPersonal()
     })
 
     // Hydrate from snapshot after mount (client-only).
@@ -119,85 +145,46 @@ export default function HomePage() {
     setAnilistOn(initial.anilistOn)
     if (initial.ready) setLoading(false)
 
-    // Keep-alive / back-nav: don't refetch if we just loaded Home
+    // Keep-alive / back-nav: skip public refetch, but always (re)check personalization
+    // after the bridge — isHomeFresh used to skip this and left rails empty until Settings.
     if (isHomeFresh()) {
       setContinueWatching(listContinueWatching())
       setLoading(false)
+      void whenBridgeReady().then(() => applyPersonal())
       return () => {
+        cancelled = true
         unsubContinue()
         unsubHome()
+        unsubAuth()
       }
     }
 
-    let cancelled = false
-    const hadData = initial.ready
-
     void (async () => {
       try {
+        // Public rails don't need the native bridge — start immediately.
         const publicP = Promise.all([
           fetchTrending(),
           fetchSeasonPopular(),
           fetchAllTimePopular()
         ])
-        const bridgeP = whenBridgeReady().then(() => isAnilistConnected())
+        // Personalization waits only on bridge; runs in parallel with public rails.
+        const personalP = whenBridgeReady().then(() => applyPersonal())
 
-        const [[t, s, a], connected] = await Promise.all([publicP, bridgeP])
+        const [t, s, a] = await publicP
         if (cancelled) return
 
         setTrending(t)
         setSeasonal(s)
         setAllTime(a)
-        setAnilistOn(connected)
         setLoading(false)
         writeHomeSnapshot({
           trending: t,
           seasonal: s,
           allTime: a,
-          anilistOn: connected,
           ready: true
         })
 
-        if (connected && !isIncognitoMode()) {
-          if (!hadData || !readHomeSnapshot().related.length) {
-            setListLoading(true)
-          }
-          try {
-            const entries = await fetchViewerAnimeList(
-              ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED'],
-              { force: true }
-            )
-            if (cancelled) return
-            const fromList = continueEntriesFromList(entries)
-            const cont = mergeContinueWatching(fromList)
-            const rel = derivePrequelsSequels(entries)
-            const genres = deriveTopGenres(entries, 3)
-            setContinueWatching(cont)
-            setRelated(rel)
-            setTopGenres(genres)
-
-            let picks: AnimeMedia[] = []
-            if (genres.length) {
-              const onList = new Set(entries.map((e) => e.media.id))
-              picks = (await fetchGenrePopular(genres, 24))
-                .filter((m) => !onList.has(m.id))
-                .slice(0, 18)
-            }
-            if (!cancelled) {
-              setGenrePicks(picks)
-              writeHomeSnapshot({
-                continueWatching: cont,
-                related: rel,
-                topGenres: genres,
-                genrePicks: picks,
-                anilistOn: true
-              })
-            }
-          } catch (e) {
-            console.warn('[saizen] AniList list personalization failed', e)
-          } finally {
-            if (!cancelled) setListLoading(false)
-          }
-        }
+        await personalP
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       } finally {
@@ -208,6 +195,7 @@ export default function HomePage() {
       cancelled = true
       unsubContinue()
       unsubHome()
+      unsubAuth()
     }
   }, [])
 
@@ -228,9 +216,9 @@ export default function HomePage() {
   return (
     <div>
       {loading ? (
-        <div className="relative h-[min(48vh,420px)] min-h-[300px] overflow-hidden bg-background">
+        <div className="relative h-[min(70vh,620px)] min-h-[380px] overflow-hidden bg-background">
           <div
-            className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-4 pb-5 sm:px-5"
+            className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-4 pb-6 sm:px-5"
             style={{ paddingTop: 'calc(var(--safe-top) + 4.75rem)' }}
           >
             <Skeleton className="h-8 w-2/3 max-w-xs bg-white/10" />
@@ -241,7 +229,7 @@ export default function HomePage() {
         <HeroCarousel items={heroItems} />
       )}
 
-      <div className="px-4 pt-2 sm:px-5">
+      <div className="px-4 pt-0 sm:px-5">
         {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
 
         {loading ? (
@@ -253,7 +241,7 @@ export default function HomePage() {
           <>
             {incognito ? (
               continueWatching.length > 0 ? (
-                <PosterRail title="This session">
+                <PosterRail title="This session" className="!mt-4">
                   {continueWatching.map((entry) => (
                     <ContinueCard key={entry.anilistId} entry={entry} />
                   ))}
@@ -264,10 +252,11 @@ export default function HomePage() {
                   description="Nothing here is tracked on AniList, MAL, or your main Home. Session resume clears when you leave Incognito."
                   ctaHref="/app/search/"
                   ctaLabel="Find something to watch"
+                  className="!mt-4"
                 />
               )
             ) : continueWatching.length > 0 ? (
-              <PosterRail title="Continue watching">
+              <PosterRail title="Continue watching" className="!mt-4">
                 {continueWatching.map((entry) => (
                   <ContinueCard key={entry.anilistId} entry={entry} />
                 ))}
@@ -282,6 +271,7 @@ export default function HomePage() {
                 }
                 ctaHref={anilistOn ? '/app/search/' : '/app/settings/'}
                 ctaLabel={anilistOn ? 'Find something to watch' : 'Connect AniList'}
+                className="!mt-4"
               />
             )}
 
@@ -330,11 +320,11 @@ export default function HomePage() {
             {!incognito && listLoading && related.length === 0 ? (
               <RailSkeleton />
             ) : !incognito && related.length > 0 ? (
-              <PosterRail title="Prequels & sequels" dense>
+              <PosterRail title="Prequels & sequels">
                 {related.map(({ media, relationType }) => (
                   <PosterCard
                     key={media.id}
-                    size="md"
+                    size="lg"
                     href={`/app/anime/?id=${media.id}`}
                     image={media.coverImage?.large ?? media.coverImage?.medium}
                     title={displayTitle(media)}
@@ -362,7 +352,6 @@ export default function HomePage() {
             ) : !incognito && genrePicks.length > 0 ? (
               <PosterRail
                 title={genreRailTitle}
-                dense
                 viewMoreHref="/app/search/"
                 viewMorePreset={{
                   genres: topGenres,
@@ -373,7 +362,7 @@ export default function HomePage() {
                 {genrePicks.map((media) => (
                   <PosterCard
                     key={media.id}
-                    size="md"
+                    size="lg"
                     href={`/app/anime/?id=${media.id}`}
                     image={media.coverImage?.large}
                     title={displayTitle(media)}

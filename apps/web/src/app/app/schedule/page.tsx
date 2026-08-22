@@ -94,14 +94,12 @@ export default function SchedulePage() {
     <div className="flex min-h-0 flex-col">
       <PageHeader
         title="Schedule"
-        dense
-        className="mb-3"
         description={`${weekLabel} · local times`}
       />
 
       {/* My list / Season */}
       <div
-        className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1"
+        className="mb-5 grid grid-cols-2 gap-1.5 rounded-xl bg-muted/60 p-1"
         role="tablist"
         aria-label="Schedule source"
       >

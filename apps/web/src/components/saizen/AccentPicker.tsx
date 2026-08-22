@@ -73,7 +73,7 @@ export function AccentPicker({
       setHexInvalid(true)
       return
     }
-    const next = appearanceFromHex(normalized, value.contrast)
+    const next = appearanceFromHex(normalized, value.contrast, value.glass, value.frosted)
     if (!next) {
       setHexInvalid(true)
       return
@@ -104,7 +104,7 @@ export function AccentPicker({
 
       <div className="flex items-center justify-between gap-1.5">
         {ACCENT_SWATCHES.map((swatch) => {
-          const base = appearanceFromHex(swatch.hex, 50)
+          const base = appearanceFromHex(swatch.hex, 50, value.glass, value.frosted)
           const active =
             !!base &&
             Math.abs(base.hue - value.hue) < 10 &&
@@ -115,7 +115,7 @@ export function AccentPicker({
               key={swatch.id}
               type="button"
               onClick={() => {
-                const next = appearanceFromHex(swatch.hex, value.contrast)
+                const next = appearanceFromHex(swatch.hex, value.contrast, value.glass, value.frosted)
                 if (next) {
                   hapticPress('selection')
                   onChange(next)

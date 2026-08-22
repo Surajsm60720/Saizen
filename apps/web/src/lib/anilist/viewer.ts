@@ -49,17 +49,41 @@ export type ViewerProfile = {
 }
 
 const LIST_CACHE_KEY = 'saizen:anilist-list-cache'
-const LIST_CACHE_TTL_MS = 5 * 60 * 1000
+const VIEWER_ID_KEY = 'saizen:anilist-viewer-id'
+/** Fresh window for soft reads; stale entries still usable for instant Home paint. */
+const LIST_CACHE_TTL_MS = 15 * 60 * 1000
 
 type ListCache = {
   at: number
   entries: MediaListEntry[]
 }
 
-function readListCache(opts?: { allowStale?: boolean }): MediaListEntry[] | null {
+function storage(): Storage | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = sessionStorage.getItem(LIST_CACHE_KEY)
+    return localStorage
+  } catch {
+    return null
+  }
+}
+
+function readListCache(opts?: { allowStale?: boolean }): MediaListEntry[] | null {
+  const store = storage()
+  if (!store) return null
+  try {
+    // Prefer localStorage; fall back to legacy sessionStorage once.
+    let raw = store.getItem(LIST_CACHE_KEY)
+    if (!raw) {
+      try {
+        raw = sessionStorage.getItem(LIST_CACHE_KEY)
+        if (raw) {
+          store.setItem(LIST_CACHE_KEY, raw)
+          sessionStorage.removeItem(LIST_CACHE_KEY)
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     if (!raw) return null
     const parsed = JSON.parse(raw) as ListCache
     if (!parsed?.at || !Array.isArray(parsed.entries)) return null
@@ -71,17 +95,48 @@ function readListCache(opts?: { allowStale?: boolean }): MediaListEntry[] | null
 }
 
 function writeListCache(entries: MediaListEntry[]) {
-  if (typeof window === 'undefined') return
+  const store = storage()
+  if (!store) return
   try {
-    sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify({ at: Date.now(), entries }))
+    store.setItem(LIST_CACHE_KEY, JSON.stringify({ at: Date.now(), entries }))
   } catch {
     /* quota */
   }
 }
 
+function readCachedViewerId(): number | null {
+  const store = storage()
+  if (!store) return null
+  try {
+    const raw = store.getItem(VIEWER_ID_KEY)
+    if (!raw) return null
+    const id = Number(raw)
+    return Number.isFinite(id) && id > 0 ? id : null
+  } catch {
+    return null
+  }
+}
+
+function writeCachedViewerId(id: number) {
+  const store = storage()
+  if (!store) return
+  try {
+    store.setItem(VIEWER_ID_KEY, String(id))
+  } catch {
+    /* ignore */
+  }
+}
+
 export function clearViewerListCache() {
-  if (typeof window === 'undefined') return
-  sessionStorage.removeItem(LIST_CACHE_KEY)
+  const store = storage()
+  if (!store) return
+  try {
+    store.removeItem(LIST_CACHE_KEY)
+    store.removeItem(VIEWER_ID_KEY)
+    sessionStorage.removeItem(LIST_CACHE_KEY)
+  } catch {
+    /* ignore */
+  }
 }
 
 function normalizeEntry(partial: {
@@ -124,8 +179,8 @@ export function removeViewerListCacheEntry(mediaId: number) {
 }
 
 /** Sync peek for Home first paint (avoids empty rails while network runs). */
-export function peekViewerListCache(): MediaListEntry[] | null {
-  return readListCache()
+export function peekViewerListCache(opts?: { allowStale?: boolean }): MediaListEntry[] | null {
+  return readListCache({ allowStale: opts?.allowStale ?? true })
 }
 
 async function authedQuery<T>(
@@ -170,6 +225,7 @@ export async function fetchViewer(): Promise<ViewerProfile | null> {
       Viewer { id name }
     }
   `)
+  if (data.Viewer?.id) writeCachedViewerId(data.Viewer.id)
   return data.Viewer
 }
 
@@ -184,8 +240,12 @@ export async function fetchViewerAnimeList(
   }
 
   try {
-    const viewer = await fetchViewer()
-    if (!viewer) return readListCache({ allowStale: true }) ?? []
+    let userId = readCachedViewerId()
+    if (userId == null) {
+      const viewer = await fetchViewer()
+      if (!viewer) return readListCache({ allowStale: true }) ?? []
+      userId = viewer.id
+    }
 
     const data = await authedQuery<{
       MediaListCollection: {
@@ -221,7 +281,7 @@ export async function fetchViewerAnimeList(
       }
     }
   `,
-      { userId: viewer.id, status_in: statusIn }
+      { userId, status_in: statusIn }
     )
 
     const out: MediaListEntry[] = []
@@ -247,6 +307,15 @@ export async function fetchViewerAnimeList(
     writeListCache(out)
     return out
   } catch (e) {
+    // Cached viewer id may be wrong after account switch — clear and retry once via Viewer.
+    if (readCachedViewerId() != null && !opts?.force) {
+      try {
+        const store = storage()
+        store?.removeItem(VIEWER_ID_KEY)
+      } catch {
+        /* ignore */
+      }
+    }
     const stale = readListCache({ allowStale: true })
     if (stale?.length) return stale
     throw e

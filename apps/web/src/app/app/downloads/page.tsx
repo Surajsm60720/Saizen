@@ -105,7 +105,6 @@ export default function DownloadsPage() {
     <>
       <PageHeader
         title="Downloads"
-        dense
         description={
           incognito
             ? 'Incognito saves show here while Incognito is on.'
@@ -114,21 +113,21 @@ export default function DownloadsPage() {
       />
 
       {!native.isApp ? (
-        <p className="mb-4 rounded-xl border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        <p className="mb-5 rounded-xl border border-border/60 bg-muted/40 px-3.5 py-3 text-sm text-muted-foreground">
           Downloads run in the iOS app. Open Saizen on your phone to save episodes offline.
         </p>
       ) : null}
 
-      <div className="space-y-5">
-        <div className="grid grid-cols-3 gap-2">
+      <div className="space-y-7">
+        <div className="grid grid-cols-3 gap-3">
           {[
             { label: 'Library', value: formatBytes(visibleLibraryBytes) },
             { label: 'Cache', value: formatBytes(usage.cacheBytes) },
             { label: 'Free', value: formatBytes(usage.freeBytes) }
           ].map((stat) => (
-            <div key={stat.label} className="rounded-xl border border-border/60 bg-card px-3 py-3">
+            <div key={stat.label} className="rounded-xl border border-border/60 bg-card px-3.5 py-3.5">
               <div className="text-xs text-muted-foreground">{stat.label}</div>
-              <div className="mt-1 text-lg font-semibold tabular-nums">{stat.value}</div>
+              <div className="mt-1.5 text-lg font-semibold tabular-nums">{stat.value}</div>
             </div>
           ))}
         </div>

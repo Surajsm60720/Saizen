@@ -87,17 +87,17 @@ export function AnimeHeader({
       </div>
 
       <div
-        className="relative z-10 px-4 pb-5 sm:px-5"
-        style={{ paddingTop: 'calc(var(--safe-top) + 3.75rem)' }}
+        className="relative z-10 px-4 pb-7 sm:px-5 sm:pb-8"
+        style={{ paddingTop: 'calc(var(--safe-top) + 4rem)' }}
       >
-        <div className="flex items-end gap-4">
+        <div className="flex items-end gap-5">
           {cover ? (
             <div className="relative shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={cover}
                 alt=""
-                className="relative h-44 w-[7.25rem] rounded-xl object-cover ring-1 ring-white/12 sm:h-52 sm:w-[8.5rem]"
+                className="relative h-48 w-[7.75rem] rounded-xl object-cover ring-1 ring-white/12 sm:h-56 sm:w-[9rem]"
               />
               {score != null ? (
                 <div className="absolute -right-2 -bottom-2 flex items-center gap-1 rounded-md bg-[#1a1a1c] px-2 py-1 text-xs font-semibold text-primary ring-1 ring-white/12">
@@ -110,7 +110,7 @@ export function AnimeHeader({
 
           <div className="min-w-0 flex-1 pb-1">
             {status ? (
-              <p className="mb-1.5 text-[0.68rem] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+              <p className="mb-2 text-[0.68rem] font-medium tracking-[0.14em] text-muted-foreground uppercase">
                 {status.replaceAll('_', ' ')}
               </p>
             ) : null}
@@ -118,12 +118,12 @@ export function AnimeHeader({
               {title}
             </h1>
             {chips.length || meta ? (
-              <p className="mt-2.5 text-sm text-muted-foreground">
+              <p className="mt-3 text-sm text-muted-foreground">
                 {chips.length ? chips.join(' · ') : meta}
               </p>
             ) : null}
             {onContinueWatching || onTrailer || onEditList ? (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2.5">
                 {onContinueWatching && continueEpisode != null ? (
                   <Button
                     type="button"
@@ -165,13 +165,13 @@ export function AnimeHeader({
         </div>
 
         {genres?.length ? (
-          <p className="mt-3 text-meta">
+          <p className="mt-4 text-meta">
             {genres.slice(0, 6).join(' · ')}
           </p>
         ) : null}
 
         {description ? (
-          <p className="mt-3.5 max-w-2xl text-sm leading-relaxed text-white/75 line-clamp-4">
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/75 line-clamp-4">
             {description}
           </p>
         ) : null}

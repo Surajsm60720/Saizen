@@ -269,7 +269,6 @@ export default function SearchPage() {
       <PageHeader
         title="Search"
         description="Find anime by romaji, English, or native title — then narrow with filters."
-        dense
         action={
           <Button
             type="button"
@@ -290,7 +289,7 @@ export default function SearchPage() {
         }
       />
 
-      <form className="flex gap-2" onSubmit={(e) => void onSubmit(e)}>
+      <form className="flex gap-2.5" onSubmit={(e) => void onSubmit(e)}>
         <Input
           ref={inputRef}
           className="min-h-11"
@@ -306,7 +305,7 @@ export default function SearchPage() {
       </form>
 
       {chips.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {chips.map((c) => (
             <button
               key={c.key}
@@ -343,10 +342,10 @@ export default function SearchPage() {
       {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
 
       {!loading && results.length === 0 && (term.trim() || activeCount > 0) ? (
-        <p className="mt-5 text-sm text-muted-foreground">No results for these filters.</p>
+        <p className="mt-6 text-sm text-muted-foreground">No results for these filters.</p>
       ) : null}
 
-      <PosterGrid className="mt-5">
+      <PosterGrid className="mt-6">
         {results.map((media) => (
           <PosterCard
             key={media.id}
@@ -364,7 +363,7 @@ export default function SearchPage() {
       </PosterGrid>
 
       {hasNextPage ? (
-        <div className="mt-4 flex justify-center">
+        <div className="mt-6 flex justify-center">
           <Button
             type="button"
             variant="outline"

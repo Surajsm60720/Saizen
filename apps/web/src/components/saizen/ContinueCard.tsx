@@ -22,7 +22,7 @@ export function ContinueCard({
         hapticPress('light')
       }}
       className={cn(
-        'group relative block min-w-[15.5rem] overflow-hidden rounded-xl bg-card ring-1 ring-white/8 sm:min-w-[18rem]',
+        'group relative block min-w-[16.5rem] overflow-hidden rounded-xl bg-card ring-1 ring-white/8 sm:min-w-[19rem]',
         'saizen-press',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
         className

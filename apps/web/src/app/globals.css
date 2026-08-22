@@ -362,10 +362,12 @@
   isolation: isolate;
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(18, 18, 22, 0.42);
+  background: var(--saizen-tab-glass-fill, rgba(18, 18, 22, 0.42));
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(36px) saturate(160%);
-  backdrop-filter: blur(36px) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--saizen-tab-glass-blur, 36px))
+    saturate(var(--saizen-glass-saturate, 160%));
+  backdrop-filter: blur(var(--saizen-tab-glass-blur, 36px))
+    saturate(var(--saizen-glass-saturate, 160%));
 }
 
 .saizen-tab-glass::before,
@@ -376,7 +378,7 @@
 
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .saizen-tab-glass {
-    background: rgba(12, 12, 16, 0.28);
+    background: var(--saizen-tab-glass-fill-supported, rgba(12, 12, 16, 0.28));
   }
 }
 
@@ -404,15 +406,17 @@
 /* Top app bar — same quiet material language */
 .saizen-top-glass {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(12, 12, 16, 0.45);
-  -webkit-backdrop-filter: blur(28px) saturate(150%);
-  backdrop-filter: blur(28px) saturate(150%);
+  background: var(--saizen-top-glass-fill, rgba(12, 12, 16, 0.45));
+  -webkit-backdrop-filter: blur(var(--saizen-top-glass-blur, 28px))
+    saturate(var(--saizen-glass-saturate, 150%));
+  backdrop-filter: blur(var(--saizen-top-glass-blur, 28px))
+    saturate(var(--saizen-glass-saturate, 150%));
   box-shadow: none;
 }
 
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .saizen-top-glass {
-    background: rgba(8, 8, 12, 0.32);
+    background: var(--saizen-top-glass-fill-supported, rgba(8, 8, 12, 0.32));
   }
 }
 

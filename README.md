@@ -1,8 +1,22 @@
-# Saizen · v1.4.1
+# Saizen · v1.4.2
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Live Watch resolves installable CDN stream modules to **HLS/MP4** and plays them in a custom native **AVPlayer**. Libtorrent remains available for optional offline work — it is no longer the primary Watch path.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
+
+## What’s new in 1.4.2
+
+Patch release focused on **UI breathing room**, **Home personalization reliability**, and **liquid-glass chrome controls** (in-app / local sideload — not a new GitHub Release IPA):
+
+| Area | Change |
+|------|--------|
+| **Home hero** | Taller carousel; portrait covers fill edge-to-edge without letterbox bars |
+| **Home rails** | Prequels & sequels and genre picks use the same large posters as Popular / Trending |
+| **Spacing** | Airier section rhythm on Settings, Appearance, Downloads, Modules, Extensions, Schedule |
+| **AniList Home** | Personalized rails load after Keychain hydrate; cache-first paint, background refresh |
+| **Appearance** | Transparency slider + optional Frosted blur for the tab bar and top chrome |
+
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 
 ## What’s new in 1.4.1
 
@@ -33,7 +47,7 @@ Saizen’s playback middleware moved from “search torrents → stream” to �
 
 ## Features
 
-- **Browse & Home** — Discover rails with View more → Search filters, continue watching, and list-backed shelves after AniList / MAL sign-in
+- **Browse & Home** — Discover rails with View more → Search filters, continue watching, and list-backed shelves after AniList / MAL sign-in; taller hero carousel with consistent large posters
 - **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar
 - **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names (tap to copy)
 - **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
@@ -43,7 +57,7 @@ Saizen’s playback middleware moved from “search torrents → stream” to �
 - **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Modules** — Settings → Modules: installable Watch/Save sources; HTTPS scripts only; theme catalog fallbacks elsewhere in the app
 - **Incognito** — Settings toggle: pause list sync and Home continue; session resume clears when leaving Incognito (downloads stay on disk)
-- **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance; immersive Saizen chrome on Home only; swipe-down to dismiss sources
+- **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (accent + liquid-glass transparency / Frosted); immersive Saizen chrome on Home only; swipe-down to dismiss sources
 - **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only module/extension loads; CSP meta; secret-scanned IPA packaging
 
 Full security matrix: [docs/SECURITY_TEST_PLAN.md](./docs/SECURITY_TEST_PLAN.md).
@@ -133,7 +147,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1** is a Downloads patch (local sideload).
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`, `1.4.2`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1** / **v1.4.2** are local sideload patches.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

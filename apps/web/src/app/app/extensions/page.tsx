@@ -209,7 +209,6 @@ export default function ExtensionsPage() {
     <>
       <PageHeader
         title="Extensions"
-        dense
         description={
           <>
             Hayase-compatible torrent catalogs from{' '}
@@ -227,16 +226,16 @@ export default function ExtensionsPage() {
       />
 
       {error ? (
-        <p className="mb-3 whitespace-pre-wrap text-sm text-destructive">{error}</p>
+        <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{error}</p>
       ) : null}
       {status ? (
-        <p className="mb-3 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-sm">
+        <p className="mb-4 rounded-lg border border-border/50 bg-muted/40 px-3.5 py-2.5 text-sm">
           {status}
         </p>
       ) : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading catalogs…</p> : null}
 
-      <section className="mt-4 space-y-3">
+      <section className="mt-5 space-y-4">
         <h2 className="text-base font-semibold">Add catalog</h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1">
@@ -313,7 +312,7 @@ export default function ExtensionsPage() {
         )}
       </section>
 
-      <section className="mt-6 space-y-3">
+      <section className="mt-7 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">Filters</span>
           <Badge variant="outline">
@@ -469,7 +468,7 @@ export default function ExtensionsPage() {
         const list = byCatalog.get(catalogId) ?? []
         const label = getExtensionCatalogName(catalogId)
         return (
-          <section key={catalogId} className="mt-6 space-y-2.5">
+          <section key={catalogId} className="mt-7 space-y-3">
             <h2 className="text-base font-semibold">
               {label}{' '}
               <span className="font-normal text-muted-foreground">({list.length})</span>

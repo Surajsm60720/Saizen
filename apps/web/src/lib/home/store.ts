@@ -35,7 +35,7 @@ export function markHomeFetched(at = Date.now()) {
   fetchedAt = at
 }
 
-/** True when in-memory rails were fetched recently — skip network on remount. */
+/** True when in-memory rails were fetched recently — skip public network on remount. */
 export function isHomeFresh(): boolean {
   return Boolean(memory?.ready && fetchedAt && Date.now() - fetchedAt < FRESH_MS)
 }
@@ -87,7 +87,7 @@ export function readHomeSnapshot(): HomeSnapshot {
     snap.ready = rails.trending.length > 0 || rails.seasonal.length > 0
   }
 
-  const list = peekViewerListCache()
+  const list = peekViewerListCache({ allowStale: true })
   if (list?.length) {
     snap.anilistOn = true
     snap.continueWatching = mergeContinueWatching(continueEntriesFromList(list))
@@ -95,10 +95,17 @@ export function readHomeSnapshot(): HomeSnapshot {
     snap.topGenres = deriveTopGenres(list, 3)
   }
 
-  // Restore genre picks from memory-only field on disk if we stored them
+  // Restore genre picks from disk so cold launch isn't empty while network runs.
   try {
     if (typeof window !== 'undefined') {
-      const raw = sessionStorage.getItem('saizen:home-personal')
+      let raw = localStorage.getItem('saizen:home-personal')
+      if (!raw) {
+        raw = sessionStorage.getItem('saizen:home-personal')
+        if (raw) {
+          localStorage.setItem('saizen:home-personal', raw)
+          sessionStorage.removeItem('saizen:home-personal')
+        }
+      }
       if (raw) {
         const p = JSON.parse(raw) as {
           genrePicks?: AnimeMedia[]
@@ -149,7 +156,7 @@ export function writeHomeSnapshot(patch: Partial<HomeSnapshot>): HomeSnapshot {
 
   try {
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem(
+      localStorage.setItem(
         'saizen:home-personal',
         JSON.stringify({
           genrePicks: next.genrePicks,

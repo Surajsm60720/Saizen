@@ -25,11 +25,11 @@ export function PosterRail({
     <section
       className={cn(
         'saizen-enter',
-        dense ? 'mt-5' : 'mt-6 sm:mt-8',
+        dense ? 'mt-7' : 'mt-8 sm:mt-10',
         className
       )}
     >
-      <div className="mb-2.5 flex items-baseline justify-between gap-3">
+      <div className="mb-3.5 flex items-baseline justify-between gap-3">
         <h2 className="text-section">{title}</h2>
         {viewMoreHref && viewMorePreset ? (
           <Link
@@ -46,8 +46,8 @@ export function PosterRail({
       </div>
       <div
         className={cn(
-          'saizen-stagger scrollbar-hide flex gap-2.5 overflow-x-auto pb-1.5',
-          dense ? 'gap-2' : 'gap-2.5 sm:gap-3'
+          'saizen-stagger scrollbar-hide flex overflow-x-auto pb-2',
+          dense ? 'gap-2.5' : 'gap-3 sm:gap-3.5'
         )}
       >
         {children}
@@ -66,7 +66,7 @@ export function PosterGrid({
   return (
     <div
       className={cn(
-        'saizen-stagger grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6',
+        'saizen-stagger grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-3.5 md:grid-cols-5 lg:grid-cols-6',
         className
       )}
     >
