@@ -1,4 +1,6 @@
-/** Jikan (MAL) episode metadata — titles/synopsis AniList streamingEpisodes often lacks. */
+/** MAL catalog episode metadata (Tenrai / Jikan) — titles AniList streamingEpisodes often lacks. */
+
+import { jikanGet } from '@/lib/catalog/jikanHttp'
 
 export interface JikanEpisodeDetail {
   number: number
@@ -23,12 +25,7 @@ export async function fetchJikanEpisode(
   if (detailCache.has(key)) return detailCache.get(key) ?? null
 
   try {
-    const res = await fetch(`https://api.jikan.moe/v4/anime/${malId}/episodes/${episode}`)
-    if (!res.ok) {
-      detailCache.set(key, null)
-      return null
-    }
-    const json = (await res.json()) as {
+    const json = await jikanGet<{
       data?: {
         mal_id?: number
         title?: string
@@ -39,7 +36,7 @@ export async function fetchJikanEpisode(
         filler?: boolean
         recap?: boolean
       }
-    }
+    }>(`/anime/${malId}/episodes/${episode}`)
     const d = json.data
     if (!d) {
       detailCache.set(key, null)
@@ -69,8 +66,8 @@ export async function fetchJikanEpisode(
 }
 
 /**
- * Paginate Jikan episode list (titles for airing/new shows).
- * Respects ~3 req/sec soft limit with a short delay between pages.
+ * Paginate episode list (titles for airing/new shows).
+ * Soft rate limit via jikanGet queue + short delay between pages.
  */
 export async function fetchJikanEpisodeList(
   malId: number,
@@ -87,11 +84,7 @@ export async function fetchJikanEpisodeList(
   const collected: JikanEpisodeDetail[] = []
   try {
     for (let page = 1; page <= maxPages; page++) {
-      const res = await fetch(
-        `https://api.jikan.moe/v4/anime/${malId}/episodes?page=${page}`
-      )
-      if (!res.ok) break
-      const json = (await res.json()) as {
+      const json = await jikanGet<{
         data?: Array<{
           mal_id?: number
           title?: string
@@ -103,7 +96,7 @@ export async function fetchJikanEpisodeList(
           synopsis?: string
         }>
         pagination?: { has_next_page?: boolean }
-      }
+      }>(`/anime/${malId}/episodes?page=${page}`)
       const rows = json.data ?? []
       if (!rows.length) break
       for (const d of rows) {

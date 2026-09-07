@@ -7,7 +7,7 @@ import {
   peekViewerListCache,
   type AnimeMedia
 } from '@/lib/anilist'
-import { isAnilistConnected } from '@/lib/auth/tokens'
+import { isAnilistConnected, isMalConnected } from '@/lib/auth/tokens'
 import { whenBridgeReady } from '@/lib/native/ready'
 import { isIncognitoMode } from '@/lib/privacy/incognito'
 import { mergeContinueWatching } from '@/lib/watch/continue'
@@ -36,13 +36,14 @@ function emptyResult(anilistOn: boolean): HomePersonalizationResult {
 
 function resultFromEntries(
   entries: NonNullable<ReturnType<typeof peekViewerListCache>>,
-  genrePicksFallback?: AnimeMedia[]
+  genrePicksFallback?: AnimeMedia[],
+  listOn = true
 ): HomePersonalizationResult {
   const cont = mergeContinueWatching(continueEntriesFromList(entries))
   const related = derivePrequelsSequels(entries)
   const topGenres = deriveTopGenres(entries, 3)
   return {
-    anilistOn: true,
+    anilistOn: listOn,
     continueWatching: cont,
     related,
     topGenres,
@@ -50,14 +51,20 @@ function resultFromEntries(
   }
 }
 
+async function listProviderOn(): Promise<boolean> {
+  const [al, mal] = await Promise.all([isAnilistConnected(), isMalConnected()])
+  // AniList list when connected; MAL covers outages and MAL-only accounts.
+  return Boolean(al || mal)
+}
+
 async function loadPersonalization(force: boolean): Promise<HomePersonalizationResult> {
   await whenBridgeReady()
 
   if (isIncognitoMode()) {
-    const anilistOn = await isAnilistConnected()
-    const empty = emptyResult(anilistOn)
+    const on = await listProviderOn()
+    const empty = emptyResult(on)
     writeHomeSnapshot({
-      anilistOn,
+      anilistOn: on,
       related: [],
       topGenres: [],
       genrePicks: []
@@ -65,7 +72,7 @@ async function loadPersonalization(force: boolean): Promise<HomePersonalizationR
     return empty
   }
 
-  const connected = await isAnilistConnected()
+  const connected = await listProviderOn()
   if (!connected) {
     const empty = emptyResult(false)
     writeHomeSnapshot({
@@ -84,9 +91,9 @@ async function loadPersonalization(force: boolean): Promise<HomePersonalizationR
       const snap = readHomeSnapshot()
       const result = resultFromEntries(
         cached,
-        snap.genrePicks.length ? snap.genrePicks : undefined
+        snap.genrePicks.length ? snap.genrePicks : undefined,
+        true
       )
-      // If we already have genre picks cached, skip the extra AniList round-trip.
       if (!result.genrePicks.length && result.topGenres.length) {
         const onList = new Set(cached.map((e) => e.media.id))
         result.genrePicks = (await fetchGenrePopular(result.topGenres, 24))
@@ -108,7 +115,7 @@ async function loadPersonalization(force: boolean): Promise<HomePersonalizationR
     ['CURRENT', 'REPEATING', 'COMPLETED', 'PAUSED'],
     { force }
   )
-  const base = resultFromEntries(entries)
+  const base = resultFromEntries(entries, undefined, true)
   if (base.topGenres.length) {
     const onList = new Set(entries.map((e) => e.media.id))
     base.genrePicks = (await fetchGenrePopular(base.topGenres, 24))
@@ -127,7 +134,7 @@ async function loadPersonalization(force: boolean): Promise<HomePersonalizationR
 }
 
 /**
- * Load AniList-backed Home rails (continue merge, prequels/sequels, genre picks).
+ * Load list-backed Home rails (continue merge, prequels/sequels, genre picks).
  * Concurrent callers share one in-flight request (force wins over soft).
  */
 export async function refreshHomePersonalization(opts?: {
@@ -136,7 +143,6 @@ export async function refreshHomePersonalization(opts?: {
   const force = opts?.force ?? false
   if (inflight) {
     if (!force || inflightForce) return inflight
-    // Upgrade: wait for soft to finish, then run force.
     try {
       await inflight
     } catch {
@@ -154,13 +160,12 @@ export async function refreshHomePersonalization(opts?: {
 
 /**
  * Instant cache paint, then one background network refresh.
- * Use on Home mount / auth hydrate so rails aren't blocked on AniList RTT.
  */
 export async function refreshHomePersonalizationSWR(): Promise<HomePersonalizationResult> {
   const soft = await refreshHomePersonalization({ force: false })
   if (soft.anilistOn) {
     void refreshHomePersonalization({ force: true }).catch((e) => {
-      console.warn('[saizen] AniList list background refresh failed', e)
+      console.warn('[saizen] list background refresh failed', e)
     })
   }
   return soft

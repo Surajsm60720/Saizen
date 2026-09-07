@@ -1,7 +1,7 @@
 {
   "name": "saizen",
   "private": true,
-  "version": "1.4.2",
+  "version": "1.4.3",
   "packageManager": "pnpm@10.28.2",
   "scripts": {
     "dev": "pnpm --filter @saizen/web dev",

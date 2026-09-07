@@ -1,8 +1,23 @@
-# Saizen · v1.4.2
+# Saizen · v1.4.3
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Live Watch resolves installable CDN stream modules to **HLS/MP4** and plays them in a custom native **AVPlayer**. Libtorrent remains available for optional offline work — it is no longer the primary Watch path.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
+
+## What’s new in 1.4.3
+
+Patch release for **AniList outage resilience** — catalog and lists keep working via Jikan/MAL (in-app / local sideload — not a new GitHub Release IPA):
+
+| Area | Change |
+|------|--------|
+| **Failover** | AniList stays primary; on outage-class GraphQL errors, enter fallback mode (~20 min TTL or until AniList recovers) |
+| **Catalog** | Browse / search / detail / schedule / themes route through Tenrai → public Jikan (MAL IDs mapped back toward AniList when possible) |
+| **Lists** | Home personalization prefers MAL when connected during fallback; otherwise stale AniList cache |
+| **Banner** | Dismissible “using catalog fallback” chrome while failover is active |
+| **Episode titles** | Prefer AniZip / Jikan titles; ignore platform-name streaming labels that appear under MAL fallback |
+
+Design notes: [docs/superpowers/specs/2026-09-07-anilist-jikan-fallback-design.md](./docs/superpowers/specs/2026-09-07-anilist-jikan-fallback-design.md).  
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 
 ## What’s new in 1.4.2
 
@@ -47,7 +62,7 @@ Saizen’s playback middleware moved from “search torrents → stream” to �
 
 ## Features
 
-- **Browse & Home** — Discover rails with View more → Search filters, continue watching, and list-backed shelves after AniList / MAL sign-in; taller hero carousel with consistent large posters
+- **Browse & Home** — Discover rails with View more → Search filters, continue watching, and list-backed shelves after AniList / MAL sign-in; taller hero carousel with consistent large posters; **AniList → Jikan/MAL catalog fallback** when GraphQL is down
 - **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar
 - **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names (tap to copy)
 - **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
@@ -147,7 +162,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`, `1.4.2`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1** / **v1.4.2** are local sideload patches.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`, `1.4.2`, `1.4.3`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1+** are local sideload patches.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

@@ -8,6 +8,7 @@ import { refreshNative } from '@/lib/native'
 import { markBridgeReady } from '@/lib/native/ready'
 import { hydrateTokenMirrors, scrubLegacyCredentialSecrets, clearOAuthCredentialOverrides } from '@/lib/auth'
 import { GlassTabBar, GLASS_TAB_ITEMS } from '@/components/saizen/GlassTabBar'
+import { CatalogFallbackBanner } from '@/components/saizen/CatalogFallbackBanner'
 import { PaneErrorBoundary } from '@/components/saizen/PaneErrorBoundary'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
@@ -264,6 +265,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 : 'px-3.5 pt-[calc(0.65rem+var(--safe-top))] pb-[calc(4.5rem+var(--safe-bottom))] sm:px-5 md:pt-[calc(2.5rem+var(--safe-top))] md:pb-8'
         )}
       >
+        {!isPlayer ? (
+          <CatalogFallbackBanner
+            className={cn(
+              isHome
+                ? 'mb-2 mt-[calc(0.5rem+var(--safe-top))] px-3.5 sm:px-5'
+                : isAnime
+                  ? 'mb-2 mt-[calc(2.75rem+var(--safe-top))]'
+                  : 'mb-3'
+            )}
+          />
+        ) : null}
         {/* Keep primary tabs mounted so tab switches don't remount / lose scroll */}
         <div
           className={cn(!isHome && 'hidden')}

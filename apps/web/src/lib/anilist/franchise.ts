@@ -1,9 +1,9 @@
-import {
-  fetchMediaRelations,
-  type AnimeMedia,
-  type AnimeRelationEdge,
-  type AnimeRelationNode
+import type {
+  AnimeMedia,
+  AnimeRelationEdge,
+  AnimeRelationNode
 } from './client'
+import { fetchMediaRelations } from '@/lib/catalog/routed'
 
 /** Story-family relation types used by the franchise walk. */
 export const FRANCHISE_RELATION_TYPES = new Set([

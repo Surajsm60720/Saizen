@@ -1,14 +1,6 @@
 export {
   anilist,
-  fetchTrending,
-  fetchPopular,
-  fetchSeasonPopular,
-  fetchAllTimePopular,
   currentAniSeason,
-  fetchAnime,
-  fetchMedia,
-  searchAnime,
-  fetchAniListGenres,
   searchYearOptions,
   countActiveSearchFilters,
   DEFAULT_SEARCH_FILTERS,
@@ -16,9 +8,6 @@ export {
   MEDIA_STATUS_OPTIONS,
   MEDIA_SORT_OPTIONS,
   SEASON_OPTIONS,
-  fetchCharacter,
-  fetchStaff,
-  fetchMediaRelations,
   displayTitle,
   stripHtml,
   formatSource,
@@ -53,14 +42,31 @@ export type {
   StaffCharacterEdge,
   StaffMediaEdge
 } from './client'
+
+/** Catalog reads — AniList primary, Jikan/MAL failover. */
 export {
-  fetchViewer,
+  fetchTrending,
+  fetchPopular,
+  fetchSeasonPopular,
+  fetchAllTimePopular,
+  fetchAnime,
+  fetchMedia,
+  searchAnime,
+  fetchAniListGenres,
+  fetchCharacter,
+  fetchStaff,
+  fetchMediaRelations,
+  fetchGenrePopular,
   fetchViewerAnimeList,
   fetchViewerListEntry,
+  fetchWeekSchedule
+} from '@/lib/catalog/routed'
+
+export {
+  fetchViewer,
   peekViewerListCache,
   upsertViewerListCacheEntry,
   removeViewerListCacheEntry,
-  fetchGenrePopular,
   derivePrequelsSequels,
   deriveSourceMaterials,
   deriveTopGenres,
@@ -80,7 +86,6 @@ export {
 export type { RelatedTitle, FranchiseGraph, FranchiseNode, FranchiseEdge } from './franchise'
 export {
   fetchAiringSchedulesInRange,
-  fetchWeekSchedule,
   clearWeekScheduleCache
 } from './schedule'
 export type {

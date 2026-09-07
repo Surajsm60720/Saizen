@@ -20,4 +20,5 @@ export { ThemeTracks } from './ThemeTracks'
 export { PersonRail } from './PersonRail'
 export type { PersonRailItem } from './PersonRail'
 export { PaneErrorBoundary } from './PaneErrorBoundary'
+export { CatalogFallbackBanner } from './CatalogFallbackBanner'
 

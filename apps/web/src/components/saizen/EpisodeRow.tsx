@@ -171,7 +171,15 @@ function formatAirDate(airingAt?: number | null): string | undefined {
 /** Parse "Episode 12 - Title" style AniList streaming titles. */
 export function parseStreamingEpisodeNumber(title?: string | null): number | null {
   if (!title) return null
-  const m = title.match(/episode\s*(\d+)/i)
+  // Reject bare platform / service names that are not episode labels.
+  if (
+    /^(crunchyroll|netflix|hidive|disney\+?|amazon|prime video|hulu|bilibili|youtube|tubi)$/i.test(
+      title.trim()
+    )
+  ) {
+    return null
+  }
+  const m = title.match(/(?:episode|ep\.?)\s*(\d+)/i) || title.match(/^(\d+)\s*[:\-–.]/)
   if (!m) return null
   const n = Number(m[1])
   return Number.isFinite(n) && n > 0 ? n : null

@@ -10,7 +10,8 @@ import {
   type AiringScheduleItem,
   type WeekScheduleMode
 } from '@/lib/anilist'
-import { isAnilistConnected } from '@/lib/auth'
+import { isAnilistConnected, isMalConnected } from '@/lib/auth'
+import { isCatalogFallback, subscribeCatalogStatus } from '@/lib/catalog'
 import {
   isIncognitoMode,
   subscribeIncognitoMode
@@ -33,6 +34,7 @@ export default function SchedulePage() {
   const [selectedDay, setSelectedDay] = useState(() => localWeekdayIndex())
   const [mode, setMode] = useState<WeekScheduleMode | null>(null)
   const [anilistOn, setAnilistOn] = useState(false)
+  const [listOn, setListOn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<AiringScheduleItem[]>([])
@@ -45,14 +47,29 @@ export default function SchedulePage() {
 
   useEffect(() => {
     let cancelled = false
-    void isAnilistConnected().then((on) => {
+    void (async () => {
+      const [al, mal] = await Promise.all([isAnilistConnected(), isMalConnected()])
       if (cancelled) return
-      setAnilistOn(on)
-      // Incognito never uses My list — stay on season.
-      setMode(on && !isIncognitoMode() ? 'watching' : 'season')
+      setAnilistOn(al)
+      const canList = (al || mal) && !isIncognitoMode()
+      setListOn(canList)
+      // During AniList outage, default to Season — My list filter needs ID matching
+      // and is often empty until MAL list loads.
+      const preferSeason = isCatalogFallback() || !canList
+      setMode(preferSeason ? 'season' : 'watching')
+    })()
+    const unsub = subscribeCatalogStatus(() => {
+      void (async () => {
+        const [al, mal] = await Promise.all([isAnilistConnected(), isMalConnected()])
+        if (cancelled) return
+        const canList = (al || mal) && !isIncognitoMode()
+        setListOn(canList)
+        setAnilistOn(al)
+      })()
     })
     return () => {
       cancelled = true
+      unsub()
     }
   }, [incognito])
 
@@ -107,16 +124,16 @@ export default function SchedulePage() {
           type="button"
           role="tab"
           aria-selected={isMyList}
-          disabled={!anilistOn || incognito}
+          disabled={!listOn || incognito}
           title={
             incognito
               ? 'My list is unavailable in Incognito Mode'
-              : anilistOn
+              : listOn
                 ? undefined
-                : 'Sign in with AniList to use My list'
+                : 'Sign in with AniList or MAL to use My list'
           }
           onClick={() => {
-            if (incognito) return
+            if (incognito || !listOn) return
             setMode('watching')
           }}
           className={cn(
@@ -124,7 +141,7 @@ export default function SchedulePage() {
             ready && isMyList
               ? 'bg-card text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
-            (!anilistOn || incognito) && 'cursor-not-allowed opacity-45'
+            (!listOn || incognito) && 'cursor-not-allowed opacity-45'
           )}
         >
           My list
@@ -253,9 +270,9 @@ export default function SchedulePage() {
         <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center">
           <p className="text-subhead">
             {isMyList
-              ? anilistOn
+              ? listOn
                 ? 'Nothing from your Watching list airs on this day.'
-                : 'Sign in with AniList in Settings to see your list.'
+                : 'Sign in with AniList or MAL in Settings to see your list.'
               : 'No season releases on this local day.'}
           </p>
         </div>

@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.4.2'
+export const APP_VERSION = '1.4.3'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.3',
+    date: '2026-09-07',
+    title: 'AniList outage fallback via Jikan/MAL',
+    highlights: [
+      'When AniList GraphQL fails (403 / network), catalog reads fail over to MAL catalog (Tenrai primary, public Jikan secondary)',
+      'List personalization uses MAL when connected during fallback; otherwise stale AniList cache + connect CTA',
+      'Dismissible “catalog fallback” banner while failover mode is active (TTL ~20 min or until AniList recovers)',
+      'Search, Schedule, Home rails, themes, and episode metadata keep working through the routed catalog layer',
+      'Episode titles prefer AniZip/Jikan metadata and ignore platform-name streaming labels that slip in during MAL fallback'
+    ]
+  },
   {
     version: '1.4.2',
     date: '2026-08-22',

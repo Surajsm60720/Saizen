@@ -1,9 +1,8 @@
 /** AnimeThemes.moe — public read API for OP/ED metadata. No auth required. */
-/** Jikan (MAL) used as fallback when AnimeThemes is down / flaky (e.g. CF 520). */
+/** MAL catalog (Tenrai / Jikan) used as fallback when AnimeThemes is down / flaky. */
 
 const BASE = 'https://api.animethemes.moe'
 const SITE = 'https://animethemes.moe'
-const JIKAN = 'https://api.jikan.moe/v4'
 
 export type ThemeKind = 'OP' | 'ED' | 'IN' | 'OTHER'
 
@@ -216,29 +215,30 @@ function parseJikanThemeLine(
 }
 
 async function fetchThemesFromJikan(idMal: number): Promise<AnimeThemeTrack[]> {
-  const { saizenFetch } = await import('@/lib/extensions/fetch')
-  const res = await saizenFetch(`${JIKAN}/anime/${idMal}/themes`, {
-    headers: { Accept: 'application/json' }
-  })
-  if (!res.ok) {
-    if (res.status === 404) return []
-    throw new ThemesFetchError(`Jikan themes ${res.status}`, res.status)
+  const { jikanGet } = await import('@/lib/catalog/jikanHttp')
+  try {
+    const json = await jikanGet<{
+      data?: { openings?: string[]; endings?: string[] }
+    }>(`/anime/${idMal}/themes`)
+    const openings = json.data?.openings ?? []
+    const endings = json.data?.endings ?? []
+    const out: AnimeThemeTrack[] = []
+    openings.forEach((line, i) => {
+      const t = parseJikanThemeLine(line, 'OP', i)
+      if (t) out.push(t)
+    })
+    endings.forEach((line, i) => {
+      const t = parseJikanThemeLine(line, 'ED', i)
+      if (t) out.push(t)
+    })
+    return out.slice(0, 24)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const statusMatch = msg.match(/HTTP (\d+)/i)
+    const status = statusMatch ? Number(statusMatch[1]) : undefined
+    if (status === 404) return []
+    throw new ThemesFetchError(`MAL catalog themes ${msg}`, status)
   }
-  const json = (await res.json()) as {
-    data?: { openings?: string[]; endings?: string[] }
-  }
-  const openings = json.data?.openings ?? []
-  const endings = json.data?.endings ?? []
-  const out: AnimeThemeTrack[] = []
-  openings.forEach((line, i) => {
-    const t = parseJikanThemeLine(line, 'OP', i)
-    if (t) out.push(t)
-  })
-  endings.forEach((line, i) => {
-    const t = parseJikanThemeLine(line, 'ED', i)
-    if (t) out.push(t)
-  })
-  return out.slice(0, 24)
 }
 
 /** Official MAL API — works when Jikan's MAL upstream is 504. */
