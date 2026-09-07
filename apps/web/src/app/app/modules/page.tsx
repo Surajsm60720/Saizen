@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, SlidersHorizontal, X } from 'lucide-react'
-import type { InstalledModule, ModuleCatalogEntry } from '@saizen/shared'
+import type { ExtraModuleCatalog, InstalledModule, ModuleCatalogEntry } from '@saizen/shared'
 import { PageHeader } from '@/components/saizen'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getNative } from '@/lib/native'
+import { setShowNsfwModules, SHOW_NSFW_MODULES_KEY } from '@/lib/privacy/adult'
 
 const selectClass =
   'h-11 w-full appearance-none rounded-lg border border-white/10 bg-[#1c1c1e] bg-[length:1rem] bg-[right_0.65rem_center] bg-no-repeat px-3 pr-9 text-base text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25'
@@ -27,26 +28,62 @@ const selectChevron = {
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9a9a' stroke-width='2'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E\")"
 } as const
 
+const SHOW_NSFW_KEY = SHOW_NSFW_MODULES_KEY
+
+function isNsfwEntry(entry: { nsfw?: boolean | null }): boolean {
+  return entry.nsfw === true
+}
+
+/** Capacitor / bridge quirks must never leave us with a non-array (renders crash). */
+function asModuleList(value: unknown): InstalledModule[] {
+  return Array.isArray(value) ? (value as InstalledModule[]) : []
+}
+
+function asCatalogList(value: unknown): ModuleCatalogEntry[] {
+  return Array.isArray(value) ? (value as ModuleCatalogEntry[]) : []
+}
+
 export default function ModulesPage() {
   const [installed, setInstalled] = useState<InstalledModule[]>([])
   const [catalog, setCatalog] = useState<ModuleCatalogEntry[]>([])
+  const [extraCatalogs, setExtraCatalogs] = useState<ExtraModuleCatalog[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [testQuery, setTestQuery] = useState('Naruto')
+  const [testQuery, setTestQuery] = useState('Overflow')
   const [tab, setTab] = useState<'installed' | 'browse'>('installed')
   const [enabledOnly, setEnabledOnly] = useState(false)
+  const [showNsfw, setShowNsfw] = useState(false)
   const [streamTypeFilter, setStreamTypeFilter] = useState('all')
   const [qualityFilter, setQualityFilter] = useState('all')
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [addOpen, setAddOpen] = useState(true)
+  const [addOpen, setAddOpen] = useState(false)
+  const [catalogUrlOpen, setCatalogUrlOpen] = useState(true)
   const [customUrl, setCustomUrl] = useState('')
   const [customName, setCustomName] = useState('')
+  const [extraCatalogUrl, setExtraCatalogUrl] = useState('')
 
   const native = getNative()
   const isApp = native.isApp
+
+  useEffect(() => {
+    try {
+      setShowNsfw(localStorage.getItem(SHOW_NSFW_KEY) === '1')
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  function persistShowNsfw(next: boolean) {
+    setShowNsfw(next)
+    setShowNsfwModules(next)
+    // Default Test title is SFW; switch to a known adult hit when enabling NSFW.
+    if (next) {
+      setTestQuery((q) => (q.trim().toLowerCase() === 'naruto' || !q.trim() ? 'Overflow' : q))
+    }
+  }
 
   const refreshInstalled = useCallback(async () => {
     if (!native.listModules) {
@@ -54,7 +91,7 @@ export default function ModulesPage() {
       return
     }
     const list = await native.listModules()
-    setInstalled(list)
+    setInstalled(asModuleList(list))
   }, [native])
 
   const loadAll = useCallback(async () => {
@@ -62,13 +99,21 @@ export default function ModulesPage() {
     setError('')
     try {
       if (native.listModules) {
-        setInstalled(await native.listModules())
+        setInstalled(asModuleList(await native.listModules()))
       } else {
         setInstalled([])
       }
+      if (native.listExtraModuleCatalogs) {
+        try {
+          const catalogs = await native.listExtraModuleCatalogs()
+          setExtraCatalogs(Array.isArray(catalogs) ? catalogs : [])
+        } catch {
+          setExtraCatalogs([])
+        }
+      }
       if (native.browseModuleCatalog) {
         try {
-          setCatalog(await native.browseModuleCatalog())
+          setCatalog(asCatalogList(await native.browseModuleCatalog()))
         } catch (e) {
           setCatalog([])
           setError(e instanceof Error ? e.message : String(e))
@@ -89,24 +134,29 @@ export default function ModulesPage() {
   const installedIds = useMemo(() => new Set(installed.map((m) => m.id)), [installed])
 
   const catalogVisible = useMemo(() => {
-    return catalog.filter(
-      (e) =>
-        (e.status ?? '').toLowerCase() === 'active' &&
-        (e.type ?? '').toLowerCase() === 'anime' &&
-        e.scriptUrl.toLowerCase().startsWith('https://')
-    )
-  }, [catalog])
+    return catalog.filter((e) => {
+      if ((e.status ?? '').toLowerCase() !== 'active') return false
+      if ((e.type ?? '').toLowerCase() !== 'anime') return false
+      if (!e.scriptUrl.toLowerCase().startsWith('https://')) return false
+      if (!showNsfw && isNsfwEntry(e)) return false
+      return true
+    })
+  }, [catalog, showNsfw])
 
   const normalizedQuery = useMemo(() => search.trim().toLowerCase(), [search])
 
   const filteredInstalled = useMemo(() => {
-    const base = installed.filter((m) => !enabledOnly || m.enabled)
+    const base = installed.filter((m) => {
+      if (enabledOnly && !m.enabled) return false
+      if (!showNsfw && isNsfwEntry(m)) return false
+      return true
+    })
     if (!normalizedQuery) return base
     return base.filter((m) => {
       const hay = [m.name, m.id, m.baseUrl ?? ''].filter(Boolean).join(' · ').toLowerCase()
       return hay.includes(normalizedQuery)
     })
-  }, [enabledOnly, installed, normalizedQuery])
+  }, [enabledOnly, installed, normalizedQuery, showNsfw])
 
   const filteredCatalog = useMemo(() => {
     const base = catalogVisible.filter((e) => {
@@ -158,6 +208,13 @@ export default function ModulesPage() {
         clear: () => setEnabledOnly(false)
       })
     }
+    if (showNsfw) {
+      chips.push({
+        key: 'nsfw',
+        label: 'Show NSFW',
+        clear: () => persistShowNsfw(false)
+      })
+    }
     if (streamTypeFilter !== 'all') {
       chips.push({
         key: 'stream',
@@ -173,10 +230,11 @@ export default function ModulesPage() {
       })
     }
     return chips
-  }, [enabledOnly, qualityFilter, streamTypeFilter])
+  }, [enabledOnly, qualityFilter, showNsfw, streamTypeFilter])
 
   function clearFilters() {
     setEnabledOnly(false)
+    persistShowNsfw(false)
     setStreamTypeFilter('all')
     setQualityFilter('all')
   }
@@ -228,7 +286,7 @@ export default function ModulesPage() {
     setBusyId(id)
     setStatus('')
     try {
-      setInstalled(await native.removeModule(id))
+      setInstalled(asModuleList(await native.removeModule(id)))
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e))
     } finally {
@@ -245,7 +303,7 @@ export default function ModulesPage() {
     ;[ids[idx], ids[swap]] = [ids[swap], ids[idx]]
     setBusyId(id)
     try {
-      setInstalled(await native.reorderModules(ids))
+      setInstalled(asModuleList(await native.reorderModules(ids)))
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e))
     } finally {
@@ -259,6 +317,7 @@ export default function ModulesPage() {
     setStatus(`Installing ${entry.sourceName}…`)
     setError('')
     try {
+      if (isNsfwEntry(entry) && !showNsfw) persistShowNsfw(true)
       const list = await native.installModule({
         id: entry.id,
         scriptUrl: entry.scriptUrl,
@@ -267,11 +326,183 @@ export default function ModulesPage() {
         streamType: entry.streamType ?? undefined,
         status: entry.status ?? undefined,
         type: entry.type ?? undefined,
-        quality: entry.quality ?? undefined
+        quality: entry.quality ?? undefined,
+        nsfw: isNsfwEntry(entry) || undefined
       })
-      setInstalled(list)
+      setInstalled(asModuleList(list))
       setTab('installed')
       setStatus(`Installed ${entry.sourceName}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      // Keep prior list visible — a bad bridge payload used to blank the pane.
+      try {
+        await refreshInstalled()
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const enabledNsfwCount = useMemo(
+    () => installed.filter((m) => m.enabled && isNsfwEntry(m)).length,
+    [installed]
+  )
+
+  const brokenCatalogInstalls = useMemo(
+    () =>
+      installed.filter((m) => {
+        const url = (m.scriptUrl || '').toLowerCase()
+        return url.endsWith('.json') || url.includes('/index.json') || /\/index\.json(\?|$)/.test(url)
+      }),
+    [installed]
+  )
+
+  function looksLikeCatalogUrl(url: string): boolean {
+    const lower = url.toLowerCase()
+    return lower.endsWith('.json') || lower.includes('/index.json')
+  }
+
+  async function installCatalogEntries(entries: ModuleCatalogEntry[]) {
+    if (!native.installModule) return
+    const targets = entries.filter(
+      (e) =>
+        (e.status ?? '').toLowerCase() === 'active' &&
+        (e.type ?? '').toLowerCase() === 'anime' &&
+        e.scriptUrl.toLowerCase().startsWith('https://')
+    )
+    if (!targets.length) {
+      setStatus('Catalog added — open Browse to install modules')
+      return
+    }
+    let lastList = installed
+    const failed: string[] = []
+    for (const entry of targets) {
+      setStatus(`Installing ${entry.sourceName}…`)
+      try {
+        if (isNsfwEntry(entry) && !showNsfw) persistShowNsfw(true)
+        lastList = asModuleList(
+          await native.installModule({
+            id: entry.id,
+            scriptUrl: entry.scriptUrl,
+            sourceName: entry.sourceName,
+            baseUrl: entry.baseUrl ?? undefined,
+            streamType: entry.streamType ?? undefined,
+            status: entry.status ?? undefined,
+            type: entry.type ?? undefined,
+            quality: entry.quality ?? undefined,
+            nsfw: isNsfwEntry(entry) || undefined
+          })
+        )
+      } catch (e) {
+        failed.push(
+          `${entry.sourceName}: ${e instanceof Error ? e.message : String(e)}`
+        )
+      }
+    }
+    setInstalled(lastList)
+    setTab('installed')
+    if (failed.length) {
+      setError(failed.join('\n'))
+      setStatus(`Installed with ${failed.length} error(s)`)
+    } else {
+      setStatus(
+        `Installed ${targets.map((t) => t.sourceName).join(', ')}. Enable them, then Watch an adult title.`
+      )
+    }
+  }
+
+  async function installCustom() {
+    if (!native.installModuleFromUrl && !native.addExtraModuleCatalog) return
+    const url = customUrl.trim()
+    if (!url.toLowerCase().startsWith('https://')) {
+      setError('URL must be https://')
+      return
+    }
+
+    // Catalog index.json → Extra catalog (+ install entries), not a script module.
+    if (looksLikeCatalogUrl(url)) {
+      if (!native.addExtraModuleCatalog) {
+        setError('Extra catalogs require the iOS app')
+        return
+      }
+      setBusyId('custom')
+      setError('')
+      setStatus('Adding catalog…')
+      try {
+        if (!showNsfw) persistShowNsfw(true)
+        setExtraCatalogs(await native.addExtraModuleCatalog(url))
+        setCustomUrl('')
+        setCustomName('')
+        let entries: ModuleCatalogEntry[] = []
+        if (native.browseModuleCatalog) {
+          entries = asCatalogList(await native.browseModuleCatalog())
+          setCatalog(entries)
+        }
+        const nsfwEntries = entries.filter(isNsfwEntry)
+        await installCatalogEntries(nsfwEntries)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setBusyId(null)
+      }
+      return
+    }
+
+    if (!native.installModuleFromUrl) return
+    setBusyId('custom')
+    setError('')
+    setStatus('Installing custom module…')
+    try {
+      setInstalled(
+        asModuleList(
+          await native.installModuleFromUrl({
+            url,
+            name: customName.trim() || undefined,
+            nsfw: showNsfw || undefined
+          })
+        )
+      )
+      setCustomUrl('')
+      setCustomName('')
+      setAddOpen(false)
+      setTab('installed')
+      setStatus('Installed custom module')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      try {
+        await refreshInstalled()
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+
+  async function addExtraCatalog() {
+    if (!native.addExtraModuleCatalog) return
+    const url = extraCatalogUrl.trim()
+    if (!url.toLowerCase().startsWith('https://')) {
+      setError('Catalog URL must be https://')
+      return
+    }
+    setBusyId('extra-catalog')
+    setError('')
+    setStatus('Adding catalog…')
+    try {
+      if (!showNsfw) persistShowNsfw(true)
+      setExtraCatalogs(await native.addExtraModuleCatalog(url))
+      setExtraCatalogUrl('')
+      let entries: ModuleCatalogEntry[] = []
+      if (native.browseModuleCatalog) {
+        entries = asCatalogList(await native.browseModuleCatalog())
+        setCatalog(entries)
+      }
+      const nsfwEntries = entries.filter(isNsfwEntry)
+      await installCatalogEntries(nsfwEntries)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -279,28 +510,16 @@ export default function ModulesPage() {
     }
   }
 
-  async function installCustom() {
-    if (!native.installModuleFromUrl) return
-    const url = customUrl.trim()
-    if (!url.toLowerCase().startsWith('https://')) {
-      setError('scriptUrl must be https://')
-      return
-    }
-    setBusyId('custom')
+  async function removeExtraCatalog(url: string) {
+    if (!native.removeExtraModuleCatalog) return
+    setBusyId(url)
     setError('')
-    setStatus('Installing custom module…')
     try {
-      setInstalled(
-        await native.installModuleFromUrl({
-          url,
-          name: customName.trim() || undefined
-        })
-      )
-      setCustomUrl('')
-      setCustomName('')
-      setAddOpen(false)
-      setTab('installed')
-      setStatus('Installed custom module')
+      setExtraCatalogs(await native.removeExtraModuleCatalog(url))
+      if (native.browseModuleCatalog) {
+        setCatalog(asCatalogList(await native.browseModuleCatalog()))
+      }
+      setStatus('Catalog removed')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -371,6 +590,33 @@ export default function ModulesPage() {
         />
       </div>
 
+      <div className="mt-3 flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
+        <Label htmlFor="show-nsfw-bar" className="text-sm">
+          Show NSFW modules
+        </Label>
+        <Switch
+          id="show-nsfw-bar"
+          checked={showNsfw}
+          onCheckedChange={persistShowNsfw}
+        />
+      </div>
+
+      {showNsfw || enabledNsfwCount > 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {enabledNsfwCount > 0
+            ? `NSFW sources enabled (${enabledNsfwCount}). They only join Watch on adult titles.`
+            : 'NSFW catalog rows are visible. Install and enable a source (e.g. Hstream), then open an adult title to Watch.'}
+        </p>
+      ) : null}
+
+      {brokenCatalogInstalls.length > 0 ? (
+        <p className="mt-2 text-xs text-destructive">
+          {brokenCatalogInstalls.map((m) => m.name || m.id).join(', ')} looks like a catalog
+          index, not a stream module. Remove it, paste the index.json under Extra catalog URL
+          (or Add from URL), and install Hstream from Browse.
+        </p>
+      ) : null}
+
       {filterChips.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {filterChips.map((chip) => (
@@ -417,7 +663,7 @@ export default function ModulesPage() {
             <p className="text-sm text-muted-foreground">Loading modules…</p>
           ) : filteredInstalled.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {normalizedQuery || enabledOnly
+              {normalizedQuery || enabledOnly || (!showNsfw && installed.some(isNsfwEntry))
                 ? 'No matching installed modules.'
                 : 'Nothing installed yet. Switch to Browse to add a source.'}
             </p>
@@ -432,7 +678,14 @@ export default function ModulesPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">{mod.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="truncate text-sm font-semibold">{mod.name}</div>
+                          {isNsfwEntry(mod) ? (
+                            <Badge variant="outline" className="shrink-0 text-[10px]">
+                              NSFW
+                            </Badge>
+                          ) : null}
+                        </div>
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">
                           {mod.baseUrl || mod.id}
                         </div>
@@ -503,6 +756,61 @@ export default function ModulesPage() {
             <button
               type="button"
               className="flex w-full items-center justify-between py-1 text-sm font-medium"
+              onClick={() => setCatalogUrlOpen((open) => !open)}
+            >
+              Extra catalog URL
+              <ChevronDown
+                className={`size-4 transition-transform ${catalogUrlOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {catalogUrlOpen ? (
+              <div className="mt-2 flex flex-col gap-2 pb-1">
+                <p className="text-xs text-muted-foreground">
+                  Paste an HTTPS index.json (e.g. saizen-modules). Turns on Show NSFW and installs
+                  listed sources like Hstream.
+                </p>
+                <Input
+                  className="min-h-10"
+                  placeholder="https://…/index.json"
+                  value={extraCatalogUrl}
+                  onChange={(e) => setExtraCatalogUrl(e.target.value)}
+                />
+                <Button
+                  className="min-h-10"
+                  disabled={!isApp || busyId === 'extra-catalog' || !extraCatalogUrl.trim()}
+                  onClick={() => void addExtraCatalog()}
+                >
+                  Add catalog & install
+                </Button>
+                {extraCatalogs.length > 0 ? (
+                  <ul className="space-y-1.5 pt-1">
+                    {extraCatalogs.map((c) => (
+                      <li
+                        key={c.url}
+                        className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
+                      >
+                        <span className="min-w-0 truncate">{c.url}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 shrink-0 text-destructive"
+                          disabled={busyId === c.url}
+                          onClick={() => void removeExtraCatalog(c.url)}
+                        >
+                          Remove
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl border border-border/50 px-3 py-2">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between py-1 text-sm font-medium"
               onClick={() => setAddOpen((open) => !open)}
             >
               Add from URL
@@ -512,14 +820,14 @@ export default function ModulesPage() {
               <div className="mt-2 flex flex-col gap-2 pb-1">
                 <Input
                   className="min-h-10"
-                  placeholder="https://…/module.js"
+                  placeholder="https://…/module.js or …/index.json"
                   value={customUrl}
                   onChange={(e) => setCustomUrl(e.target.value)}
                 />
                 <div className="flex gap-2">
                   <Input
                     className="min-h-10"
-                    placeholder="Name (optional)"
+                    placeholder="Name (optional, scripts only)"
                     value={customName}
                     onChange={(e) => setCustomName(e.target.value)}
                   />
@@ -531,6 +839,10 @@ export default function ModulesPage() {
                     Install
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  index.json is treated as a catalog (installs Hstream etc.). .js is a single
+                  module script.
+                </p>
               </div>
             ) : null}
           </div>
@@ -561,6 +873,9 @@ export default function ModulesPage() {
                           <Badge variant="outline">{entry.streamType}</Badge>
                         ) : null}
                         {entry.quality ? <Badge variant="outline">{entry.quality}</Badge> : null}
+                        {isNsfwEntry(entry) ? (
+                          <Badge variant="outline">NSFW</Badge>
+                        ) : null}
                         {already ? <Badge variant="secondary">Installed</Badge> : null}
                       </div>
                     </div>
@@ -598,6 +913,17 @@ export default function ModulesPage() {
                 id="enabled-only"
                 checked={enabledOnly}
                 onCheckedChange={setEnabledOnly}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
+              <Label htmlFor="show-nsfw" className="text-sm">
+                Show NSFW modules
+              </Label>
+              <Switch
+                id="show-nsfw"
+                checked={showNsfw}
+                onCheckedChange={persistShowNsfw}
               />
             </div>
 
@@ -643,12 +969,12 @@ export default function ModulesPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="test-query" className="text-xs text-muted-foreground">
-                Test title
+                Test title (Overflow for Hstream)
               </Label>
               <Input
                 id="test-query"
                 className="min-h-11"
-                placeholder="Naruto"
+                placeholder="Overflow"
                 value={testQuery}
                 onChange={(e) => setTestQuery(e.target.value)}
               />

@@ -2,6 +2,7 @@ import type {
   ClientSettings,
   DownloadJob,
   EnqueueDownloadOptions,
+  ExtraModuleCatalog,
   InstalledModule,
   LibraryEntry,
   ModuleCatalogEntry,
@@ -89,6 +90,15 @@ const webFallback: SaizenNative = {
   },
   async browseModuleCatalog(): Promise<ModuleCatalogEntry[]> {
     throw new Error('Module catalog requires the iOS app')
+  },
+  async listExtraModuleCatalogs(): Promise<ExtraModuleCatalog[]> {
+    return []
+  },
+  async addExtraModuleCatalog() {
+    throw new Error('Extra catalogs require the iOS app')
+  },
+  async removeExtraModuleCatalog() {
+    throw new Error('Extra catalogs require the iOS app')
   },
   async installModule() {
     throw new Error('Module install requires the iOS app')

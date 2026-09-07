@@ -34,6 +34,7 @@ public final class PlayerRouter {
     title: String?,
     context: PlaybackContext = PlaybackContext(anilistId: 0, episode: 0, idMal: nil),
     headers: [String: String] = [:],
+    subtitleURL: URL? = nil,
     onDismiss: (() -> Void)? = nil
   ) {
     NSLog("[Saizen] PlayerRouter present hint=%@ url=%@", hint.rawValue, HTTPRangeServer.redactedURLString(url))
@@ -52,6 +53,7 @@ public final class PlayerRouter {
         title: title,
         context: context,
         headers: headers,
+        subtitleURL: subtitleURL,
         onDismiss: onDismiss
       )
     case .vlc:
@@ -67,6 +69,7 @@ public final class PlayerRouter {
           title: title,
           context: context,
           headers: headers,
+          subtitleURL: subtitleURL,
           onDismiss: onDismiss
         )
       }
@@ -79,6 +82,7 @@ public final class PlayerRouter {
     title: String?,
     context: PlaybackContext,
     headers: [String: String],
+    subtitleURL: URL?,
     onDismiss: (() -> Void)?
   ) {
     let alert = UIAlertController(
@@ -98,6 +102,7 @@ public final class PlayerRouter {
         title: title,
         context: context,
         headers: headers,
+        subtitleURL: subtitleURL,
         onDismiss: onDismiss
       )
     })
@@ -110,6 +115,7 @@ public final class PlayerRouter {
     title: String?,
     context: PlaybackContext,
     headers: [String: String],
+    subtitleURL: URL?,
     onDismiss: (() -> Void)?
   ) {
     let opts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": headers]
@@ -120,17 +126,24 @@ public final class PlayerRouter {
     player.automaticallyWaitsToMinimizeStalling = true
     player.actionAtItemEnd = .pause
 
-    let vc = SaizenAVPlayerViewController(player: player, title: title, context: context)
+    let vc = SaizenAVPlayerViewController(
+      player: player,
+      title: title,
+      context: context,
+      subtitleURL: subtitleURL,
+      subtitleHeaders: headers
+    )
     vc.onDismiss = onDismiss
 
     SaizenPlaybackAudio.activate()
     NowPlayingSession.shared.bind(player: player, title: title, episode: context.episode)
 
     NSLog(
-      "[Saizen] custom AVPlayer present skip op=%@ ed=%@ autoSkip=%@",
+      "[Saizen] custom AVPlayer present skip op=%@ ed=%@ autoSkip=%@ subtitle=%@",
       context.options.op.map { "\($0.start)-\($0.end)" } ?? "nil",
       context.options.ed.map { "\($0.start)-\($0.end)" } ?? "nil",
-      context.options.autoSkipOpEd ? "yes" : "no"
+      context.options.autoSkipOpEd ? "yes" : "no",
+      subtitleURL?.absoluteString ?? "nil"
     )
 
     presenter.present(vc, animated: true)

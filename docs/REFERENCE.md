@@ -2,7 +2,7 @@
 
 Do **not** paste or vendor Hayase or Shirox source. Behavior notes only while building Saizen.
 
-**Current product:** Saizen **v1.4.3** — CDN Watch modules → custom AVPlayer; AniList → Jikan/MAL catalog fallback on GraphQL outage.  
+**Current product:** Saizen **v1.4.4** — CDN Watch modules → custom AVPlayer; AniList → Jikan/MAL catalog fallback; optional NSFW module catalogs.  
 **Architecture source of truth (active):** [`superpowers/specs/2026-08-11-cdn-watch-keep-ui-design.md`](./superpowers/specs/2026-08-11-cdn-watch-keep-ui-design.md)  
 **Implementation plan:** [`superpowers/plans/2026-08-11-cdn-watch-keep-ui.md`](./superpowers/plans/2026-08-11-cdn-watch-keep-ui.md)  
 **v1 feature freeze (pre-middleware baseline):** [`reference/FEATURES_SNAPSHOT_v1.3.3.md`](./reference/FEATURES_SNAPSHOT_v1.3.3.md)  

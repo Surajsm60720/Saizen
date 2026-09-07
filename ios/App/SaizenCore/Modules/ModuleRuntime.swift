@@ -82,6 +82,13 @@ public final class ModuleResolveSession: @unchecked Sendable {
       throw ModuleRuntimeError.invalidReturn
     }
 
+    let sharedSubtitle: URL? = {
+      guard let raw = object["subtitle"] as? String, !raw.isEmpty,
+            let url = URL(string: raw, relativeTo: baseURL)?.absoluteURL,
+            url.scheme?.lowercased() == "https" else { return nil }
+      return url
+    }()
+
     return try streams.compactMap { item -> StreamCandidate? in
       guard var stream = Self.dictionary(from: item) else {
         throw ModuleRuntimeError.invalidReturn
@@ -103,13 +110,20 @@ public final class ModuleResolveSession: @unchecked Sendable {
         (stream["quality"] as? String)
         ?? (stream["resolution"] as? String)
         ?? Self.qualityFromTitle(title)
+      let perStreamSubtitle: URL? = {
+        guard let raw = stream["subtitle"] as? String, !raw.isEmpty,
+              let u = URL(string: raw, relativeTo: baseURL)?.absoluteURL,
+              u.scheme?.lowercased() == "https" else { return nil }
+        return u
+      }()
       return StreamCandidate(
         url: url,
         headers: headers,
         quality: quality,
         title: title,
         moduleId: moduleId,
-        kind: StreamCandidate.kind(for: url)
+        kind: StreamCandidate.kind(for: url),
+        subtitle: perStreamSubtitle ?? sharedSubtitle
       )
     }
   }
@@ -362,13 +376,51 @@ public final class ModuleResolveSession: @unchecked Sendable {
       request.httpBody = Self.bodyData(from: body)
     }
 
+    // Laravel / Axios: X-XSRF-TOKEN must match the XSRF-TOKEN cookie. iOS hides
+    // Set-Cookie from JS, so modules often POST with a missing/wrong header → 419.
+    // Always prefer the session jar value when present.
+    if method != "GET", method != "HEAD", method != "OPTIONS" {
+      Self.applyLaravelXsrfHeader(to: &request, cookieStorage: fetchSession.cookieStorage)
+    }
+
     return request
+  }
+
+  /// Sets `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie (overrides module value).
+  private static func applyLaravelXsrfHeader(to request: inout URLRequest, cookieStorage: HTTPCookieStorage) {
+    guard let url = request.url, let host = url.host?.lowercased() else { return }
+    let forURL = cookieStorage.cookies(for: url) ?? []
+    let fallback = (cookieStorage.cookies ?? []).filter { cookie in
+      let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+      return host == domain || host.hasSuffix("." + domain)
+    }
+    let cookies = forURL.isEmpty ? fallback : forURL
+    guard let raw = cookies.first(where: { $0.name == "XSRF-TOKEN" })?.value, !raw.isEmpty else {
+      NSLog(
+        "[Saizen] ModuleRuntime no XSRF-TOKEN cookie host=%@ jar=%d",
+        host,
+        cookies.count
+      )
+      return
+    }
+    let decoded = raw.removingPercentEncoding ?? raw
+    request.setValue(decoded, forHTTPHeaderField: "X-XSRF-TOKEN")
+    NSLog("[Saizen] ModuleRuntime set X-XSRF-TOKEN from cookie jar host=%@", host)
   }
 
   private func makeFetchResponse(data: Data, response: HTTPURLResponse) -> JSValue {
     let body = String(data: data, encoding: .utf8) ?? ""
     var headers = response.allHeaderFields.reduce(into: [String: String]()) { result, item in
       result["\(item.key)".lowercased()] = "\(item.value)"
+    }
+    // iOS URLSession strips Set-Cookie from allHeaderFields (cookies go only into
+    // HTTPCookieStorage). Laravel/Axios modules need to read XSRF-TOKEN from
+    // set-cookie — synthesize it from the session jar for this response URL.
+    if headers["set-cookie"] == nil, let url = response.url {
+      let cookies = fetchSession.cookieStorage.cookies(for: url) ?? []
+      if !cookies.isEmpty {
+        headers["set-cookie"] = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: ", ")
+      }
     }
     // Modules parse Retry-After as seconds; Cloudflare sometimes returns huge / date values.
     // Cap to 30s so 429 backoff stays usable inside a resolve session.

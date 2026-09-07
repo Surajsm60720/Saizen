@@ -1,8 +1,24 @@
-# Saizen · v1.4.3
+# Saizen · v1.4.4
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Live Watch resolves installable CDN stream modules to **HLS/MP4** and plays them in a custom native **AVPlayer**. Libtorrent remains available for optional offline work — it is no longer the primary Watch path.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
+
+## What’s new in 1.4.4
+
+Patch release for **optional NSFW stream-module catalogs** (in-app / local sideload — not a new GitHub Release IPA):
+
+| Area | Change |
+|------|--------|
+| **Extra catalogs** | Settings → Modules: add HTTPS `index.json` URLs alongside Cufiy; rows with `nsfw: true` stay hidden until **Show NSFW** |
+| **Resolve** | Adult titles only include enabled NSFW modules (`allowNsfw`); SFW titles never pull them |
+| **Search** | Include-adult follows Show NSFW and/or a hentai torrent extension |
+| **Player** | Optional WebVTT sidecar from modules; no silent fallback to episode 1 when a number is missing |
+| **Stability** | Cap module plugin resolves/rejects on the main queue; Modules pane recovers after install/reinstall |
+| **Hosting** | NSFW scripts stay on HTTPS hosts (e.g. [saizen-modules](https://github.com/Surajsm60720/saizen-modules)); local `/modules/` harness mirror is **gitignored** |
+
+Design notes: [docs/superpowers/specs/2026-09-07-nsfw-module-catalogs-design.md](./docs/superpowers/specs/2026-09-07-nsfw-module-catalogs-design.md).  
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 
 ## What’s new in 1.4.3
 
@@ -63,14 +79,14 @@ Saizen’s playback middleware moved from “search torrents → stream” to �
 ## Features
 
 - **Browse & Home** — Discover rails with View more → Search filters, continue watching, and list-backed shelves after AniList / MAL sign-in; taller hero carousel with consistent large posters; **AniList → Jikan/MAL catalog fallback** when GraphQL is down
-- **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar
+- **Search** — Title + Filters sheet (genre, year, season, format, status, sort, in-my-list); session kept when opening anime and returning; keyboard hides the tab bar; adult results when Show NSFW modules and/or a hentai extension is on
 - **Anime detail** — Character / VA / staff rails + pages; franchise watch-order Relations; edit list entry; **Continue watching EP xx**; OP/ED song names (tap to copy)
 - **Schedule** — Week airing calendar in the tab bar (device-local times); My list vs current season
-- **Player** — Custom AVPlayer for CDN HLS/MP4; ±10s / play / next; double/triple-tap seek; speed + aspect; AniSkip OP/ED marks + Skip pill / optional auto-skip; MobileVLCKit only as a probe fallback
+- **Player** — Custom AVPlayer for CDN HLS/MP4 (optional WebVTT sidecars); ±10s / play / next; double/triple-tap seek; speed + aspect; AniSkip OP/ED marks + Skip pill / optional auto-skip; MobileVLCKit only as a probe fallback
 - **Downloads** — Settings → Downloads: resilient queue (pause/resume/cancel), accurate progress, fast batch Save via `resolveStreamsBatch`, lock-screen progress, offline library playback; Clear cache sweeps orphan/partial HLS packs
 - **Transfers** — Settings: torrent download Mbps cap + max peers (applied live when torrent paths are used)
 - **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
-- **Modules** — Settings → Modules: installable Watch/Save sources; HTTPS scripts only; theme catalog fallbacks elsewhere in the app
+- **Modules** — Settings → Modules: installable Watch/Save sources; optional NSFW HTTPS catalogs + Show NSFW; scripts remain remote HTTPS only
 - **Incognito** — Settings toggle: pause list sync and Home continue; session resume clears when leaving Incognito (downloads stay on disk)
 - **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (accent + liquid-glass transparency / Frosted); immersive Saizen chrome on Home only; swipe-down to dismiss sources
 - **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only module/extension loads; CSP meta; secret-scanned IPA packaging
@@ -93,6 +109,7 @@ This is a **personal sideload** project — not an App Store build. Packaging no
 | `ios/App/SaizenCore` | Canonical Swift: modules, player, torrent, HTTP, auth |
 | `ios/App/Plugins` | Capacitor plugins (`SaizenModules`, `SaizenPlayer`, `SaizenTorrent`, `SaizenAuth`) |
 | `ios/vendor/` | **Gitignored** — build libtorrent here locally |
+| `/modules/` | **Gitignored** — local harness mirror for stream modules; live catalog is a separate HTTPS host |
 | `scripts/` | Sync Swift into Cap, build libtorrent, Cap HTML fixups, IPA packaging |
 | `docs/` | Native contract, HTTP Range notes, architecture notes, security test plan |
 
@@ -162,7 +179,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`, `1.4.2`, `1.4.3`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1+** are local sideload patches.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`–`1.4.4`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1+** are local sideload patches.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

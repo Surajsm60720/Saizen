@@ -86,3 +86,8 @@ coverage/
 .nyc_output/
 *.orig
 *.rej
+
+# NSFW / stream module scripts — live catalog is the separate saizen-modules
+# repo (HTTPS index.json + JS). Keep a local modules/ mirror for harness work;
+# do not commit it into Saizen.
+/modules/

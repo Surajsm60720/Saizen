@@ -11,6 +11,7 @@ public struct InstalledModule: Codable, Equatable, Sendable {
   /// Cached script file name under Application Support/Saizen/Modules/ (e.g. `jLCx0.js`).
   /// Legacy rows may still store an absolute path — resolve via `ModuleStore.resolvedScriptURL`.
   public var scriptPath: String
+  public var nsfw: Bool
 
   public init(
     id: String,
@@ -20,7 +21,8 @@ public struct InstalledModule: Codable, Equatable, Sendable {
     enabled: Bool = true,
     order: Int,
     lastSuccessAt: Date? = nil,
-    scriptPath: String
+    scriptPath: String,
+    nsfw: Bool = false
   ) {
     self.id = id
     self.name = name
@@ -30,6 +32,24 @@ public struct InstalledModule: Codable, Equatable, Sendable {
     self.order = order
     self.lastSuccessAt = lastSuccessAt
     self.scriptPath = scriptPath
+    self.nsfw = nsfw
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, name, scriptUrl, baseUrl, enabled, order, lastSuccessAt, scriptPath, nsfw
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    name = try c.decode(String.self, forKey: .name)
+    scriptUrl = try c.decode(String.self, forKey: .scriptUrl)
+    baseUrl = try c.decodeIfPresent(String.self, forKey: .baseUrl)
+    enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 0
+    lastSuccessAt = try c.decodeIfPresent(Date.self, forKey: .lastSuccessAt)
+    scriptPath = try c.decodeIfPresent(String.self, forKey: .scriptPath) ?? ""
+    nsfw = try c.decodeIfPresent(Bool.self, forKey: .nsfw) ?? false
   }
 }
 
@@ -40,6 +60,7 @@ public enum ModuleStoreError: Error, LocalizedError {
   case notFound(String)
   case emptyName
   case persistFailed
+  case catalogUrlNotScript
 
   public var errorDescription: String? {
     switch self {
@@ -55,6 +76,8 @@ public enum ModuleStoreError: Error, LocalizedError {
       return "Module name is required"
     case .persistFailed:
       return "Failed to persist module library"
+    case .catalogUrlNotScript:
+      return "That URL is a module catalog (index.json), not a script. Add it under Extra catalog URL, turn on Show NSFW, then Install Hstream from Browse."
     }
   }
 }
@@ -138,7 +161,8 @@ public final class ModuleStore: @unchecked Sendable {
       id: module.id,
       name: module.name,
       scriptUrlString: module.scriptUrl,
-      baseUrl: module.baseUrl
+      baseUrl: module.baseUrl,
+      nsfw: module.nsfw
     )
 
     let refreshed: InstalledModule = try {
@@ -164,11 +188,12 @@ public final class ModuleStore: @unchecked Sendable {
       id: entry.id,
       name: name,
       scriptUrlString: entry.scriptUrl,
-      baseUrl: entry.baseUrl
+      baseUrl: entry.baseUrl,
+      nsfw: entry.isNsfw
     )
   }
 
-  public func install(customScriptURL: URL, name: String) async throws {
+  public func install(customScriptURL: URL, name: String, nsfw: Bool = false) async throws {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw ModuleStoreError.emptyName }
     let id = "custom-\(stableId(for: customScriptURL))"
@@ -176,7 +201,8 @@ public final class ModuleStore: @unchecked Sendable {
       id: id,
       name: trimmed,
       scriptUrlString: customScriptURL.absoluteString,
-      baseUrl: nil
+      baseUrl: nil,
+      nsfw: nsfw
     )
   }
 
@@ -263,7 +289,8 @@ public final class ModuleStore: @unchecked Sendable {
     id: String,
     name: String,
     scriptUrlString: String,
-    baseUrl: String?
+    baseUrl: String?,
+    nsfw: Bool = false
   ) async throws {
     let url = try Self.requireHttpsURL(scriptUrlString)
     let data = try await Self.downloadScript(from: url)
@@ -273,10 +300,11 @@ public final class ModuleStore: @unchecked Sendable {
     let fileURL = Self.modulesDir.appendingPathComponent(fileName)
     try data.write(to: fileURL, options: .atomic)
     NSLog(
-      "[Saizen] ModuleStore installed module=%@ bytes=%d path=%@",
+      "[Saizen] ModuleStore installed module=%@ bytes=%d path=%@ nsfw=%@",
       id,
       data.count,
-      fileURL.path
+      fileURL.path,
+      nsfw ? "1" : "0"
     )
 
     lock.lock()
@@ -288,6 +316,7 @@ public final class ModuleStore: @unchecked Sendable {
       modules[idx].baseUrl = baseUrl
       modules[idx].scriptPath = fileName
       modules[idx].enabled = true
+      modules[idx].nsfw = nsfw
     } else {
       let order = modules.map(\.order).max().map { $0 + 1 } ?? 0
       modules.append(
@@ -299,7 +328,8 @@ public final class ModuleStore: @unchecked Sendable {
           enabled: true,
           order: order,
           lastSuccessAt: nil,
-          scriptPath: fileName
+          scriptPath: fileName,
+          nsfw: nsfw
         )
       )
     }
@@ -320,6 +350,10 @@ public final class ModuleStore: @unchecked Sendable {
   }
 
   private static func downloadScript(from url: URL) async throws -> Data {
+    let path = url.path.lowercased()
+    if path.hasSuffix(".json") || path.hasSuffix("/index.json") {
+      throw ModuleStoreError.catalogUrlNotScript
+    }
     let config = URLSessionConfiguration.ephemeral
     let session = URLSession(configuration: config)
     defer { session.invalidateAndCancel() }
@@ -327,6 +361,13 @@ public final class ModuleStore: @unchecked Sendable {
     guard let http = resp as? HTTPURLResponse else { throw ModuleFetchError.badResponse }
     guard (200..<300).contains(http.statusCode) else {
       throw ModuleStoreError.downloadFailed(http.statusCode)
+    }
+    if let text = String(data: data.prefix(256), encoding: .utf8)?
+      .trimmingCharacters(in: .whitespacesAndNewlines),
+      (text.hasPrefix("[") || text.hasPrefix("{")),
+      text.contains("\"scriptUrl\"")
+    {
+      throw ModuleStoreError.catalogUrlNotScript
     }
     return data
   }

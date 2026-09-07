@@ -10,6 +10,9 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
   public let pluginMethods: [CAPPluginMethod] = [
     CAPPluginMethod(name: "listModules", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "browseModuleCatalog", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "listExtraModuleCatalogs", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "addExtraModuleCatalog", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "removeExtraModuleCatalog", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "installModule", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "installModuleFromUrl", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "testModule", returnType: CAPPluginReturnPromise),
@@ -22,25 +25,72 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "recordModuleSuccess", returnType: CAPPluginReturnPromise)
   ]
 
+  /// Capacitor bridge calls must complete on the main queue — resolving from a
+  /// detached `Task` has blanked the Modules WebView after install/reinstall.
+  private func resolve(_ call: CAPPluginCall, _ data: PluginCallResultData = [:]) {
+    DispatchQueue.main.async { call.resolve(data) }
+  }
+
+  private func reject(_ call: CAPPluginCall, _ message: String) {
+    DispatchQueue.main.async { call.reject(message) }
+  }
+
   @objc func listModules(_ call: CAPPluginCall) {
     let modules = ModuleStore.shared.list().map { Self.encodeModule($0) }
-    call.resolve(["modules": modules])
+    resolve(call, ["modules": modules])
   }
 
   @objc func browseModuleCatalog(_ call: CAPPluginCall) {
     Task {
       do {
         let entries = try await ModuleLibraryClient.fetchCatalog()
-        call.resolve(["entries": entries.map { Self.encodeCatalogEntry($0) }])
+        self.resolve(call, ["entries": entries.map { Self.encodeCatalogEntry($0) }])
       } catch {
-        call.reject(error.localizedDescription)
+        self.reject(call, error.localizedDescription)
       }
     }
   }
 
+  @objc func listExtraModuleCatalogs(_ call: CAPPluginCall) {
+    let catalogs = ModuleLibraryClient.extraCatalogURLs().map {
+      ["url": $0.absoluteString] as [String: Any]
+    }
+    resolve(call, ["catalogs": catalogs])
+  }
+
+  @objc func addExtraModuleCatalog(_ call: CAPPluginCall) {
+    guard let urlString = call.getString("url")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          let url = URL(string: urlString)
+    else {
+      reject(call, "Missing or invalid url")
+      return
+    }
+    do {
+      let urls = try ModuleLibraryClient.addExtraCatalogURL(url)
+      resolve(call, [
+        "catalogs": urls.map { ["url": $0.absoluteString] as [String: Any] }
+      ])
+    } catch {
+      reject(call, error.localizedDescription)
+    }
+  }
+
+  @objc func removeExtraModuleCatalog(_ call: CAPPluginCall) {
+    guard let urlString = call.getString("url")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          let url = URL(string: urlString)
+    else {
+      reject(call, "Missing or invalid url")
+      return
+    }
+    let urls = ModuleLibraryClient.removeExtraCatalogURL(url)
+    resolve(call, [
+      "catalogs": urls.map { ["url": $0.absoluteString] as [String: Any] }
+    ])
+  }
+
   @objc func installModule(_ call: CAPPluginCall) {
     guard let id = call.getString("id")?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
-      call.reject("Missing id")
+      reject(call, "Missing id")
       return
     }
     let scriptUrl = call.getString("scriptUrl")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -48,6 +98,7 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
       call.getString("sourceName")?.trimmingCharacters(in: .whitespacesAndNewlines)
       ?? call.getString("name")?.trimmingCharacters(in: .whitespacesAndNewlines)
       ?? id
+    let nsfw = call.getBool("nsfw")
 
     Task {
       do {
@@ -61,21 +112,22 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
             streamType: call.getString("streamType"),
             status: call.getString("status"),
             type: call.getString("type"),
-            quality: call.getString("quality")
+            quality: call.getString("quality"),
+            nsfw: nsfw
           )
         } else {
           let catalog = try await ModuleLibraryClient.fetchCatalog()
           guard let found = catalog.first(where: { $0.id == id }) else {
-            call.reject("Catalog entry not found: \(id)")
+            self.reject(call, "Catalog entry not found: \(id)")
             return
           }
           entry = found
         }
         try await ModuleStore.shared.install(from: entry)
         let modules = ModuleStore.shared.list().map { Self.encodeModule($0) }
-        call.resolve(["modules": modules])
+        self.resolve(call, ["modules": modules])
       } catch {
-        call.reject(error.localizedDescription)
+        self.reject(call, error.localizedDescription)
       }
     }
   }
@@ -84,26 +136,31 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     guard let urlString = call.getString("url")?.trimmingCharacters(in: .whitespacesAndNewlines),
           let url = URL(string: urlString)
     else {
-      call.reject("Missing or invalid url")
+      reject(call, "Missing or invalid url")
       return
     }
     let name =
       call.getString("name")?.trimmingCharacters(in: .whitespacesAndNewlines)
       ?? url.lastPathComponent
+    let nsfw = call.getBool("nsfw") ?? false
     Task {
       do {
-        try await ModuleStore.shared.install(customScriptURL: url, name: name.isEmpty ? "Custom module" : name)
+        try await ModuleStore.shared.install(
+          customScriptURL: url,
+          name: name.isEmpty ? "Custom module" : name,
+          nsfw: nsfw
+        )
         let modules = ModuleStore.shared.list().map { Self.encodeModule($0) }
-        call.resolve(["modules": modules])
+        self.resolve(call, ["modules": modules])
       } catch {
-        call.reject(error.localizedDescription)
+        self.reject(call, error.localizedDescription)
       }
     }
   }
 
   @objc func testModule(_ call: CAPPluginCall) {
     guard let id = call.getString("id")?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
-      call.reject("Missing id")
+      reject(call, "Missing id")
       return
     }
     let query = call.getString("query")?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -111,71 +168,72 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     Task {
       do {
         let result = try await Self.runModuleTest(id: id, query: query)
-        call.resolve(result)
+        self.resolve(call, result)
       } catch {
-        call.reject(error.localizedDescription)
+        self.reject(call, error.localizedDescription)
       }
     }
   }
 
   @objc func setModuleEnabled(_ call: CAPPluginCall) {
     guard let id = call.getString("id")?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
-      call.reject("Missing id")
+      reject(call, "Missing id")
       return
     }
     guard let enabled = call.getBool("enabled") else {
-      call.reject("Missing enabled")
+      reject(call, "Missing enabled")
       return
     }
     do {
       try ModuleStore.shared.setEnabled(id: id, enabled: enabled)
-      call.resolve(["ok": true])
+      resolve(call, ["ok": true])
     } catch {
-      call.reject(error.localizedDescription)
+      reject(call, error.localizedDescription)
     }
   }
 
   @objc func reorderModules(_ call: CAPPluginCall) {
     guard let ids = call.getArray("ids", String.self) else {
-      call.reject("Missing ids")
+      reject(call, "Missing ids")
       return
     }
     do {
       try ModuleStore.shared.reorder(ids: ids)
       let modules = ModuleStore.shared.list().map { Self.encodeModule($0) }
-      call.resolve(["modules": modules])
+      resolve(call, ["modules": modules])
     } catch {
-      call.reject(error.localizedDescription)
+      reject(call, error.localizedDescription)
     }
   }
 
   @objc func removeModule(_ call: CAPPluginCall) {
     guard let id = call.getString("id")?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
-      call.reject("Missing id")
+      reject(call, "Missing id")
       return
     }
     do {
       try ModuleStore.shared.remove(id: id)
       let modules = ModuleStore.shared.list().map { Self.encodeModule($0) }
-      call.resolve(["modules": modules])
+      resolve(call, ["modules": modules])
     } catch {
-      call.reject(error.localizedDescription)
+      reject(call, error.localizedDescription)
     }
   }
 
   @objc func resolveStreams(_ call: CAPPluginCall) {
     guard let title = call.getString("title")?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
-      call.reject("Missing title")
+      reject(call, "Missing title")
       return
     }
     let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
     let episode = call.getInt("episode") ?? 0
     guard anilistId > 0, episode > 0 else {
-      call.reject("Missing anilistId or episode")
+      reject(call, "Missing anilistId or episode")
       return
     }
     let query = call.getString("query")
     let fast = call.getBool("fast") ?? false
+    let allowNsfw = call.getBool("allowNsfw") ?? false
 
     Task {
       do {
@@ -185,39 +243,42 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
             title: title,
             anilistId: anilistId,
             episode: episode,
-            query: query
+            query: query,
+            allowNsfw: allowNsfw
           )
         } else {
           candidates = try await StreamResolver.shared.resolve(
             title: title,
             anilistId: anilistId,
             episode: episode,
-            query: query
+            query: query,
+            allowNsfw: allowNsfw
           )
         }
-        call.resolve(["candidates": candidates.map { Self.encodeCandidate($0) }])
+        self.resolve(call, ["candidates": candidates.map { Self.encodeCandidate($0) }])
       } catch {
-        call.reject(error.localizedDescription)
+        self.reject(call, error.localizedDescription)
       }
     }
   }
 
   @objc func resolveStreamsBatch(_ call: CAPPluginCall) {
     guard let title = call.getString("title")?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
-      call.reject("Missing title")
+      reject(call, "Missing title")
       return
     }
     let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
     guard anilistId > 0 else {
-      call.reject("Missing anilistId")
+      reject(call, "Missing anilistId")
       return
     }
     let episodes = call.getArray("episodes", Int.self) ?? []
     guard !episodes.isEmpty else {
-      call.reject("Missing episodes")
+      reject(call, "Missing episodes")
       return
     }
     let query = call.getString("query")
+    let allowNsfw = call.getBool("allowNsfw") ?? false
 
     Task {
       do {
@@ -225,33 +286,35 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
           title: title,
           anilistId: anilistId,
           episodes: episodes,
-          query: query
+          query: query,
+          allowNsfw: allowNsfw
         )
-        call.resolve(["results": results])
+        self.resolve(call, ["results": results])
       } catch {
-        call.reject(error.localizedDescription)
+        self.reject(call, error.localizedDescription)
       }
     }
   }
 
   @objc func resolveAndPlay(_ call: CAPPluginCall) {
     guard let title = call.getString("title")?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
-      call.reject("Missing title")
+      reject(call, "Missing title")
       return
     }
     let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
     let episode = call.getInt("episode") ?? 0
     guard anilistId > 0, episode > 0 else {
-      call.reject("Missing anilistId or episode")
+      reject(call, "Missing anilistId or episode")
       return
     }
     let query = call.getString("query")
     let idMal = call.getInt("idMal")
+    let allowNsfw = call.getBool("allowNsfw") ?? false
     let spawn = Self.parseSpawnContext(call, fallbackTitle: title, idMal: idMal)
 
     DispatchQueue.main.async {
       guard let root = self.bridge?.viewController else {
-        call.reject("No view controller")
+        self.reject(call, "No view controller")
         return
       }
       Task {
@@ -262,11 +325,12 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
             episode: episode,
             query: query,
             presenter: root,
-            spawn: spawn
+            spawn: spawn,
+            allowNsfw: allowNsfw
           )
-          call.resolve(["candidate": Self.encodeCandidate(winner)])
+          self.resolve(call, ["candidate": Self.encodeCandidate(winner)])
         } catch {
-          call.reject(error.localizedDescription)
+          self.reject(call, error.localizedDescription)
         }
       }
     }
@@ -277,20 +341,20 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     guard let moduleId = call.getString("moduleId")?.trimmingCharacters(in: .whitespacesAndNewlines),
           !moduleId.isEmpty
     else {
-      call.reject("Missing moduleId")
+      reject(call, "Missing moduleId")
       return
     }
     let anilistId = call.getInt("anilistId") ?? call.getInt("mediaId") ?? 0
     guard anilistId > 0 else {
-      call.reject("Missing anilistId")
+      reject(call, "Missing anilistId")
       return
     }
     do {
       try ModuleStore.shared.recordSuccess(id: moduleId)
       try ModuleStore.shared.setLastGoodModule(anilistId: anilistId, moduleId: moduleId)
-      call.resolve(["ok": true])
+      resolve(call, ["ok": true])
     } catch {
-      call.reject(error.localizedDescription)
+      reject(call, error.localizedDescription)
     }
   }
 
@@ -309,7 +373,8 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
       "scriptUrl": m.scriptUrl,
       "enabled": m.enabled,
       "order": m.order,
-      "scriptPath": m.scriptPath
+      "scriptPath": m.scriptPath,
+      "nsfw": m.nsfw
     ]
     if let baseUrl = m.baseUrl { dict["baseUrl"] = baseUrl }
     if let at = m.lastSuccessAt {
@@ -322,7 +387,8 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     var dict: [String: Any] = [
       "id": e.id,
       "sourceName": e.sourceName,
-      "scriptUrl": e.scriptUrl
+      "scriptUrl": e.scriptUrl,
+      "nsfw": e.isNsfw
     ]
     if let baseUrl = e.baseUrl { dict["baseUrl"] = baseUrl }
     if let streamType = e.streamType { dict["streamType"] = streamType }
@@ -358,7 +424,15 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     )
     defer { session.teardown() }
 
-    let trimmed = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let trimmedRaw = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    // NSFW modules don't index SFW shows — Modules UI used to default Test to "Naruto".
+    let trimmed: String = {
+      if module.nsfw {
+        let lower = trimmedRaw.lowercased()
+        if lower.isEmpty || lower == "naruto" { return "Overflow" }
+      }
+      return trimmedRaw
+    }()
     if trimmed.isEmpty {
       return [
         "ok": true,
@@ -368,17 +442,28 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
 
     let results = try await session.searchResults(trimmed)
     let count = results.count
+    NSLog(
+      "[Saizen] testModule id=%@ nsfw=%@ query=%@ results=%d",
+      id,
+      module.nsfw ? "1" : "0",
+      trimmed,
+      count
+    )
     if count > 0 {
       return [
         "ok": true,
-        "message": "Search OK (\(count) result\(count == 1 ? "" : "s"))",
+        "message": "Search OK (\(count) result\(count == 1 ? "" : "s")) for \"\(trimmed)\"",
         "searchResults": count
       ]
     }
 
+    let hint =
+      module.nsfw
+      ? " — try an adult title like Overflow (Filters → Test title)"
+      : ""
     return [
       "ok": false,
-      "message": "No search results for \"\(trimmed)\"",
+      "message": "No search results for \"\(trimmed)\"\(hint)",
       "searchResults": 0
     ]
   }

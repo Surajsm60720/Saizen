@@ -78,6 +78,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+function isAdultMedia(media: AnimeMedia): boolean {
+  if (media.isAdult) return true
+  const genres = Array.isArray(media.genres) ? media.genres : []
+  return genres.some((g) => /hentai/i.test(g || ''))
+}
+
 function AnimeDetail() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -494,13 +500,26 @@ function AnimeDetail() {
     return base.map((ep) => {
       const zip = aniZipByEp.get(ep.number)
       const j = jikanByEp.get(ep.number)
+      // Prefer real episode metadata over AniList streaming titles (and never keep
+      // platform names that slipped in from MAL `streaming` during fallback).
+      const fromMeta = zip?.title?.trim() || j?.title?.trim() || ''
+      const streamingTitle = ep.title?.trim() || ''
+      const looksLikePlatform =
+        /^(crunchyroll|netflix|hidive|disney\+?|amazon|prime|hulu|bilibili|bili|youtube|tubi|roku|apple|iqiyi|muse|ani[- ]?one|tv|billy)/i.test(
+          streamingTitle
+        ) ||
+        (!/\d/.test(streamingTitle) &&
+          streamingTitle.length > 0 &&
+          streamingTitle.length < 28 &&
+          !/^episode\b/i.test(streamingTitle) &&
+          Boolean(fromMeta))
       const generic =
-        !ep.title ||
-        /^Episode\s*\d+$/i.test(ep.title) ||
-        ep.title === 'Upcoming' ||
-        ep.title === `Episode ${ep.number}`
-      const title =
-        (generic && (zip?.title || j?.title)) || ep.title
+        !streamingTitle ||
+        looksLikePlatform ||
+        /^Episode\s*\d+$/i.test(streamingTitle) ||
+        streamingTitle === 'Upcoming' ||
+        streamingTitle === `Episode ${ep.number}`
+      const title = fromMeta || (generic ? `Episode ${ep.number}` : streamingTitle) || `Episode ${ep.number}`
       const synopsis = zip?.synopsis || j?.synopsis || ep.synopsis
       const thumbnail = zip?.thumbnail || ep.thumbnail
       const watched =
@@ -682,7 +701,8 @@ function AnimeDetail() {
             anilistId: media.id,
             episode: ep.number,
             idMal: media.idMal ?? null,
-            query
+            query,
+            allowNsfw: isAdultMedia(media)
           })
           const list = candidates ?? []
           setStreamCandidates(list)
@@ -795,7 +815,8 @@ function AnimeDetail() {
           anilistId: media.id,
           episodes: pending.map((ep) => ep.number),
           idMal: media.idMal ?? null,
-          query
+          query,
+          allowNsfw: isAdultMedia(media)
         })
         const byEp = new Map(batch.map((row) => [row.episode, row.candidates]))
         for (const ep of pending) {
@@ -823,7 +844,8 @@ function AnimeDetail() {
                 episode: ep.number,
                 idMal: media.idMal ?? null,
                 query,
-                fast: true
+                fast: true,
+                allowNsfw: isAdultMedia(media)
               })) ?? []
             const pick = pickStreamForQuality(candidates, quality)
             if (!pick) {
@@ -858,6 +880,7 @@ function AnimeDetail() {
     headers?: Record<string, string>
     resolution?: string
     sourceLabel?: string
+    subtitle?: string
   }): Promise<PlayStreamOptions> {
     if (!media || !selected) {
       throw new Error('No episode selected')
@@ -894,6 +917,7 @@ function AnimeDetail() {
       idMal: media.idMal ?? null,
       resolution: opts.resolution,
       sourceLabel: opts.sourceLabel,
+      subtitle: opts.subtitle,
       totalEpisodes,
       hasNextEpisode,
       autoSkipOpEd: watch.autoSkipOpEd,
@@ -912,6 +936,7 @@ function AnimeDetail() {
       headers?: Record<string, string>
       resolution?: string
       sourceLabel?: string
+      subtitle?: string
     }
   ): Promise<boolean> {
     if (!media || !selected) return false
@@ -947,7 +972,8 @@ function AnimeDetail() {
       headers: candidate.headers,
       resolution: candidate.quality,
       sourceLabel:
-        moduleNames[candidate.moduleId] || candidate.title || candidate.moduleId
+        moduleNames[candidate.moduleId] || candidate.title || candidate.moduleId,
+      subtitle: candidate.subtitle
     })
     if (!ok || !media) return
     // Product Watch uses resolveStreams → playStream (not resolveAndPlay),

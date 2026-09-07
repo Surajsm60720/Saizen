@@ -1,4 +1,5 @@
 import type {
+  ExtraModuleCatalog,
   InstallModuleFromUrlOptions,
   InstallModuleOptions,
   InstalledModule,
@@ -143,6 +144,9 @@ export interface SaizenNative {
   /** Installed CDN stream modules (native ModuleStore). */
   listModules?(): Promise<InstalledModule[]>
   browseModuleCatalog?(): Promise<ModuleCatalogEntry[]>
+  listExtraModuleCatalogs?(): Promise<ExtraModuleCatalog[]>
+  addExtraModuleCatalog?(url: string): Promise<ExtraModuleCatalog[]>
+  removeExtraModuleCatalog?(url: string): Promise<ExtraModuleCatalog[]>
   installModule?(options: InstallModuleOptions): Promise<InstalledModule[]>
   installModuleFromUrl?(options: InstallModuleFromUrlOptions): Promise<InstalledModule[]>
   testModule?(options: {

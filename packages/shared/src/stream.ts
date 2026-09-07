@@ -10,6 +10,8 @@ export interface StreamCandidate {
   title?: string
   moduleId: string
   kind: StreamKind
+  /** Optional external WebVTT sidecar from the module (`extractStreamUrl.subtitle`). */
+  subtitle?: string
 }
 
 export interface PlayStreamOptions extends SpawnPlayerOptions {
@@ -17,6 +19,8 @@ export interface PlayStreamOptions extends SpawnPlayerOptions {
   url: string
   headers?: Record<string, string>
   playerHint?: PlayerHint // default 'avplayer' for CDN
+  /** Optional https WebVTT URL shown as an overlay in the native AVPlayer. */
+  subtitle?: string
 }
 
 export interface ResolveStreamsOptions {
@@ -27,6 +31,8 @@ export interface ResolveStreamsOptions {
   query?: string
   /** When true, resolve via lastGood module first (for offline queue). Watch keeps parallel fan-out. */
   fast?: boolean
+  /** Include installed NSFW modules in resolve (adult titles only). */
+  allowNsfw?: boolean
 }
 
 export interface ResolveStreamsBatchOptions {
@@ -35,6 +41,7 @@ export interface ResolveStreamsBatchOptions {
   episodes: number[]
   idMal?: number | null
   query?: string
+  allowNsfw?: boolean
 }
 
 export interface ResolveStreamsBatchEntry {
@@ -57,7 +64,7 @@ export interface ResolveAndPlayOptions extends ResolveStreamsOptions {
   skipTimes?: SkipTimes
 }
 
-/** Catalog entry from library.cufiy.net (or equivalent). */
+/** Catalog entry from library.cufiy.net (or custom NSFW index). */
 export interface ModuleCatalogEntry {
   id: string
   sourceName: string
@@ -67,6 +74,8 @@ export interface ModuleCatalogEntry {
   status?: string | null
   type?: string | null
   quality?: string | null
+  /** Adult / NSFW source — hidden unless Show NSFW is on. */
+  nsfw?: boolean | null
 }
 
 /** Module installed via SaizenModules bridge; script cached on device. */
@@ -79,6 +88,7 @@ export interface InstalledModule {
   order: number
   lastSuccessAt?: string | null
   scriptPath: string
+  nsfw?: boolean | null
 }
 
 export interface InstallModuleOptions {
@@ -91,15 +101,22 @@ export interface InstallModuleOptions {
   status?: string
   type?: string
   quality?: string
+  nsfw?: boolean
 }
 
 export interface InstallModuleFromUrlOptions {
   url: string
   name?: string
+  nsfw?: boolean
 }
 
 /** Persist module success after CDN `playStream` (mirrors resolveAndPlay bookkeeping). */
 export interface RecordModuleSuccessOptions {
   moduleId: string
   anilistId: number
+}
+
+export interface ExtraModuleCatalog {
+  url: string
+  label?: string | null
 }

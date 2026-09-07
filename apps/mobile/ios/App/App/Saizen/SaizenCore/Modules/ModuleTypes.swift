@@ -11,6 +11,8 @@ public struct StreamCandidate: Codable, Sendable, Equatable {
   public var title: String?
   public var moduleId: String
   public var kind: StreamKind
+  /// Optional external WebVTT (or similar) sidecar URL from `extractStreamUrl.subtitle`.
+  public var subtitle: URL?
 
   public init(
     url: URL,
@@ -18,7 +20,8 @@ public struct StreamCandidate: Codable, Sendable, Equatable {
     quality: String? = nil,
     title: String? = nil,
     moduleId: String,
-    kind: StreamKind
+    kind: StreamKind,
+    subtitle: URL? = nil
   ) {
     self.url = url
     self.headers = headers
@@ -26,6 +29,7 @@ public struct StreamCandidate: Codable, Sendable, Equatable {
     self.title = title
     self.moduleId = moduleId
     self.kind = kind
+    self.subtitle = subtitle
   }
 
   public static func kind(for url: URL) -> StreamKind {
@@ -45,6 +49,8 @@ public struct ModuleCatalogEntry: Codable, Sendable {
   public var status: String?
   public var type: String?
   public var quality: String?
+  /// Adult catalog flag (`nsfw: true` or legacy `1`).
+  public var nsfw: Bool?
 
   public init(
     id: String,
@@ -54,7 +60,8 @@ public struct ModuleCatalogEntry: Codable, Sendable {
     streamType: String? = nil,
     status: String? = nil,
     type: String? = nil,
-    quality: String? = nil
+    quality: String? = nil,
+    nsfw: Bool? = nil
   ) {
     self.id = id
     self.sourceName = sourceName
@@ -64,5 +71,33 @@ public struct ModuleCatalogEntry: Codable, Sendable {
     self.status = status
     self.type = type
     self.quality = quality
+    self.nsfw = nsfw
+  }
+
+  public var isNsfw: Bool { nsfw == true }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, sourceName, scriptUrl, baseUrl, streamType, status, type, quality, nsfw
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    sourceName = try c.decode(String.self, forKey: .sourceName)
+    scriptUrl = try c.decode(String.self, forKey: .scriptUrl)
+    baseUrl = try c.decodeIfPresent(String.self, forKey: .baseUrl)
+    streamType = try c.decodeIfPresent(String.self, forKey: .streamType)
+    status = try c.decodeIfPresent(String.self, forKey: .status)
+    type = try c.decodeIfPresent(String.self, forKey: .type)
+    quality = try c.decodeIfPresent(String.self, forKey: .quality)
+    if let b = try? c.decodeIfPresent(Bool.self, forKey: .nsfw) {
+      nsfw = b
+    } else if let i = try? c.decodeIfPresent(Int.self, forKey: .nsfw) {
+      nsfw = i != 0
+    } else if let s = try? c.decodeIfPresent(String.self, forKey: .nsfw) {
+      nsfw = ["1", "true", "yes"].contains(s.lowercased())
+    } else {
+      nsfw = nil
+    }
   }
 }

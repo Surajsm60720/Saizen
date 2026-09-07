@@ -148,13 +148,22 @@ public final class StreamResolver: @unchecked Sendable {
 
   // MARK: - Resolve
 
+  private static func enabledModules(allowNsfw: Bool) -> [InstalledModule] {
+    ModuleStore.shared.list().filter { module in
+      guard module.enabled else { return false }
+      if module.nsfw && !allowNsfw { return false }
+      return true
+    }
+  }
+
   public func resolve(
     title: String,
     anilistId: Int,
     episode: Int,
-    query: String?
+    query: String?,
+    allowNsfw: Bool = false
   ) async throws -> [StreamCandidate] {
-    let modules = ModuleStore.shared.list().filter(\.enabled)
+    let modules = Self.enabledModules(allowNsfw: allowNsfw)
     guard !modules.isEmpty else { throw StreamResolverError.noEnabledModules }
 
     let searchQuery = (query?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
@@ -198,9 +207,10 @@ public final class StreamResolver: @unchecked Sendable {
     title: String,
     anilistId: Int,
     episode: Int,
-    query: String?
+    query: String?,
+    allowNsfw: Bool = false
   ) async throws -> [StreamCandidate] {
-    let modules = ModuleStore.shared.list().filter(\.enabled)
+    let modules = Self.enabledModules(allowNsfw: allowNsfw)
     guard !modules.isEmpty else { throw StreamResolverError.noEnabledModules }
 
     let searchQuery = (query?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
@@ -238,9 +248,10 @@ public final class StreamResolver: @unchecked Sendable {
     title: String,
     anilistId: Int,
     episodes: [Int],
-    query: String?
+    query: String?,
+    allowNsfw: Bool = false
   ) async throws -> [[String: Any]] {
-    let modules = ModuleStore.shared.list().filter(\.enabled)
+    let modules = Self.enabledModules(allowNsfw: allowNsfw)
     guard !modules.isEmpty else { throw StreamResolverError.noEnabledModules }
     let wanted = episodes.filter { $0 > 0 }
     guard !wanted.isEmpty else { throw StreamResolverError.noCandidates }
@@ -423,6 +434,7 @@ public final class StreamResolver: @unchecked Sendable {
     if let quality = candidate.quality { d["quality"] = quality }
     if let title = candidate.title { d["title"] = title }
     if !candidate.headers.isEmpty { d["headers"] = candidate.headers }
+    if let subtitle = candidate.subtitle { d["subtitle"] = subtitle.absoluteString }
     return d
   }
 
@@ -432,13 +444,15 @@ public final class StreamResolver: @unchecked Sendable {
     episode: Int,
     query: String?,
     presenter: UIViewController,
-    spawn: SpawnContext
+    spawn: SpawnContext,
+    allowNsfw: Bool = false
   ) async throws -> StreamCandidate {
     let candidates = try await resolve(
       title: title,
       anilistId: anilistId,
       episode: episode,
-      query: query
+      query: query,
+      allowNsfw: allowNsfw
     )
     guard !candidates.isEmpty else { throw StreamResolverError.noCandidates }
 
@@ -470,7 +484,8 @@ public final class StreamResolver: @unchecked Sendable {
           hint: spawn.playerHint,
           title: displayTitle,
           context: context,
-          headers: candidate.headers
+          headers: candidate.headers,
+          subtitleURL: candidate.subtitle
         )
       }
 
@@ -578,17 +593,24 @@ public final class StreamResolver: @unchecked Sendable {
     for item in episodes {
       if let n = intValue(item["number"]) ?? intValue(item["episode"]) ?? intValue(item["ep"]),
          n == episode,
-         let url = item["url"] as? String,
+         let url = (item["url"] as? String) ?? (item["href"] as? String),
          !url.isEmpty {
         return url
       }
     }
-    if episode >= 1, episode <= episodes.count {
-      if let url = episodes[episode - 1]["url"] as? String, !url.isEmpty {
+    // Index fallback only when the module omitted episode numbers entirely.
+    // Never fall back to episodes[0] for a different requested episode — that
+    // silently plays E01 when extractEpisodes returned a partial list.
+    let anyNumbered = episodes.contains {
+      intValue($0["number"]) != nil || intValue($0["episode"]) != nil || intValue($0["ep"]) != nil
+    }
+    if !anyNumbered, episode >= 1, episode <= episodes.count {
+      if let url = (episodes[episode - 1]["url"] as? String) ?? (episodes[episode - 1]["href"] as? String),
+         !url.isEmpty {
         return url
       }
     }
-    return firstURLString(in: episodes)
+    return nil
   }
 
   private static func intValue(_ raw: Any?) -> Int? {

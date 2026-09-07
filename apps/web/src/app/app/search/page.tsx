@@ -18,7 +18,12 @@ import {
   type AnimeSearchFilters
 } from '@/lib/anilist'
 import { isAnilistConnected } from '@/lib/auth/tokens'
-import { ensureExtensions, hasAdultExtensionsEnabled, subscribeExtensions } from '@/lib/extensions'
+import { ensureExtensions, subscribeExtensions } from '@/lib/extensions'
+import {
+  ADULT_CONTENT_CHANGED,
+  hasAdultContentEnabled,
+  SHOW_NSFW_MODULES_KEY
+} from '@/lib/privacy/adult'
 import { readSearchSession, writeSearchSession, consumePendingSearchPreset, mergeSearchFilters } from '@/lib/search/session'
 import { PageHeader, PosterCard, PosterGrid, SearchFiltersSheet } from '@/components/saizen'
 import { Badge } from '@/components/ui/badge'
@@ -98,6 +103,7 @@ export default function SearchPage() {
   const [page, setPage] = useState(boot.current.page)
   const [hasNextPage, setHasNextPage] = useState(boot.current.hasNextPage)
   const inputRef = useRef<HTMLInputElement>(null)
+  const resultsRef = useRef<HTMLDivElement>(null)
   const activeCount = countActiveSearchFilters(filters)
   const chips = useMemo(() => chipLabels(filters), [filters])
 
@@ -115,16 +121,26 @@ export default function SearchPage() {
     })
   }, [term, filters, results, page, hasNextPage, error, includeAdult, anilistOn])
 
-  // Warm once for catalogs/list cache; keep includeAdult in sync when extensions toggle
-  // (Search is keep-alive — a one-shot ref would otherwise stale until app restart).
+  // Warm once for catalogs/list cache; keep includeAdult in sync when extensions
+  // or Modules “Show NSFW” change (Search is keep-alive).
   useEffect(() => {
     const syncAdult = () => {
-      const adult = hasAdultExtensionsEnabled()
+      const adult = hasAdultContentEnabled()
       setIncludeAdult(adult)
       writeSearchSession({ includeAdult: adult })
     }
     void ensureExtensions().then(syncAdult)
-    return subscribeExtensions(syncAdult)
+    const unsubExt = subscribeExtensions(syncAdult)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SHOW_NSFW_MODULES_KEY) syncAdult()
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener(ADULT_CONTENT_CHANGED, syncAdult)
+    return () => {
+      unsubExt()
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(ADULT_CONTENT_CHANGED, syncAdult)
+    }
   }, [])
 
   useEffect(() => {
@@ -152,22 +168,26 @@ export default function SearchPage() {
     if (!isActive) setSheetOpen(false)
   }, [isActive])
 
-  // Dismiss keyboard when scrolling results (stops nav sitting on the keyboard).
+  // Dismiss keyboard when the user scrolls the results — NOT on window scroll.
+  // iOS WKWebView scrolls the page when focusing an input (to keep it visible);
+  // a window scroll listener was immediately blurring and collapsing the keyboard.
   useEffect(() => {
     if (!isActive) return
-    let lastY = window.scrollY
-    const onScroll = () => {
-      const y = window.scrollY
-      if (Math.abs(y - lastY) < 12) return
-      lastY = y
-      const el = document.activeElement
-      if (el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-        el.blur()
+    const el = resultsRef.current
+    if (!el) return
+    const dismiss = () => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement && (active === inputRef.current || active.tagName === 'INPUT')) {
+        active.blur()
       }
-      writeSearchSession({ scrollY: y })
+      writeSearchSession({ scrollY: window.scrollY })
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    el.addEventListener('touchmove', dismiss, { passive: true })
+    el.addEventListener('wheel', dismiss, { passive: true })
+    return () => {
+      el.removeEventListener('touchmove', dismiss)
+      el.removeEventListener('wheel', dismiss)
+    }
   }, [isActive])
 
   const runSearch = useCallback(
@@ -335,46 +355,48 @@ export default function SearchPage() {
 
       {includeAdult ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          Adult titles included (hentai extension enabled).
+          Adult titles included (NSFW modules and/or hentai extension).
         </p>
       ) : null}
 
-      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+      <div ref={resultsRef}>
+        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
 
-      {!loading && results.length === 0 && (term.trim() || activeCount > 0) ? (
-        <p className="mt-6 text-sm text-muted-foreground">No results for these filters.</p>
-      ) : null}
+        {!loading && results.length === 0 && (term.trim() || activeCount > 0) ? (
+          <p className="mt-6 text-sm text-muted-foreground">No results for these filters.</p>
+        ) : null}
 
-      <PosterGrid className="mt-6">
-        {results.map((media) => (
-          <PosterCard
-            key={media.id}
-            size="sm"
-            className="w-full min-w-0"
-            href={`/app/anime/?id=${media.id}`}
-            image={media.coverImage?.large}
-            title={displayTitle(media)}
-            score={media.averageScore}
-            format={media.format}
-            year={media.seasonYear}
-            onNavigate={openAnime}
-          />
-        ))}
-      </PosterGrid>
+        <PosterGrid className="mt-6">
+          {results.map((media) => (
+            <PosterCard
+              key={media.id}
+              size="sm"
+              className="w-full min-w-0"
+              href={`/app/anime/?id=${media.id}`}
+              image={media.coverImage?.large}
+              title={displayTitle(media)}
+              score={media.averageScore}
+              format={media.format}
+              year={media.seasonYear}
+              onNavigate={openAnime}
+            />
+          ))}
+        </PosterGrid>
 
-      {hasNextPage ? (
-        <div className="mt-6 flex justify-center">
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11 px-6"
-            disabled={loadingMore}
-            onClick={() => void runSearch(term, filters, page + 1, true)}
-          >
-            {loadingMore ? 'Loading…' : 'Load more'}
-          </Button>
-        </div>
-      ) : null}
+        {hasNextPage ? (
+          <div className="mt-6 flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 px-6"
+              disabled={loadingMore}
+              onClick={() => void runSearch(term, filters, page + 1, true)}
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </Button>
+          </div>
+        ) : null}
+      </div>
 
       <SearchFiltersSheet
         open={sheetOpen}

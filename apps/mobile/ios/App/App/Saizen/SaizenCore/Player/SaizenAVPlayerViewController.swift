@@ -69,10 +69,24 @@ final class SaizenAVPlayerViewController: UIViewController {
   private let glassFill = UIColor.white.withAlphaComponent(0.14)
   private let glassStroke = UIColor.white.withAlphaComponent(0.18)
 
-  init(player: AVPlayer, title: String?, context: PlaybackContext) {
+  private let subtitleURL: URL?
+  private let subtitleHeaders: [String: String]
+  private let subtitleLabel = UILabel()
+  private var subtitleCues: [(start: Double, end: Double, text: String)] = []
+  private var subtitleLoadTask: URLSessionDataTask?
+
+  init(
+    player: AVPlayer,
+    title: String?,
+    context: PlaybackContext,
+    subtitleURL: URL? = nil,
+    subtitleHeaders: [String: String] = [:]
+  ) {
     self.player = player
     self.titleText = title
     self.playbackContext = context
+    self.subtitleURL = subtitleURL
+    self.subtitleHeaders = subtitleHeaders
     super.init(nibName: nil, bundle: nil)
     modalPresentationStyle = .fullScreen
   }
@@ -92,6 +106,7 @@ final class SaizenAVPlayerViewController: UIViewController {
     installObservers()
     applySkipRanges()
     scheduleHideChrome()
+    loadExternalSubtitlesIfNeeded()
   }
 
   override func viewDidAppear(_ animated: Bool) {
@@ -134,6 +149,7 @@ final class SaizenAVPlayerViewController: UIViewController {
   }
 
   deinit {
+    subtitleLoadTask?.cancel()
     tearDownObservers()
   }
 
@@ -304,6 +320,19 @@ final class SaizenAVPlayerViewController: UIViewController {
     bufferingLabel.isHidden = true
     chrome.addSubview(bufferingLabel)
 
+    subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+    subtitleLabel.textColor = .white
+    subtitleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+    subtitleLabel.textAlignment = .center
+    subtitleLabel.numberOfLines = 0
+    subtitleLabel.layer.shadowColor = UIColor.black.cgColor
+    subtitleLabel.layer.shadowOpacity = 0.85
+    subtitleLabel.layer.shadowRadius = 2
+    subtitleLabel.layer.shadowOffset = CGSize(width: 0, height: 1)
+    subtitleLabel.isHidden = true
+    // Sit above chrome so cues stay visible when chrome auto-hides.
+    view.insertSubview(subtitleLabel, belowSubview: chrome)
+
     seekFlashLabel.font = .systemFont(ofSize: 15, weight: .semibold)
     seekFlashLabel.textColor = .white
     seekFlashLabel.backgroundColor = glassFill
@@ -360,6 +389,10 @@ final class SaizenAVPlayerViewController: UIViewController {
 
       bufferingLabel.centerXAnchor.constraint(equalTo: chrome.centerXAnchor),
       bufferingLabel.bottomAnchor.constraint(equalTo: centerTransport.topAnchor, constant: -12),
+
+      subtitleLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+      subtitleLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+      subtitleLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -72),
 
       seekFlashLabel.centerYAnchor.constraint(equalTo: playerView.centerYAnchor),
       seekFlashLabel.heightAnchor.constraint(equalToConstant: 32),
@@ -547,6 +580,7 @@ final class SaizenAVPlayerViewController: UIViewController {
   private func handleTime(_ pos: Double) {
     guard pos.isFinite else { return }
     NowPlayingSession.shared.refresh(from: player)
+    updateSubtitle(at: pos)
     let dur = player.currentItem?.duration.seconds ?? .nan
     if !isSeeking {
       scrubber.currentTime = pos
@@ -881,6 +915,103 @@ final class SaizenAVPlayerViewController: UIViewController {
     tearDownObservers()
     NowPlayingSession.shared.tearDown()
     onDismiss?()
+  }
+
+  // MARK: - External WebVTT
+
+  private func loadExternalSubtitlesIfNeeded() {
+    guard let subtitleURL else { return }
+    var request = URLRequest(url: subtitleURL)
+    for (key, value) in subtitleHeaders {
+      request.setValue(value, forHTTPHeaderField: key)
+    }
+    if request.value(forHTTPHeaderField: "Referer") == nil {
+      request.setValue(subtitleURL.host.map { "https://\($0)/" }, forHTTPHeaderField: "Referer")
+    }
+    subtitleLoadTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+      guard let self else { return }
+      if let error {
+        NSLog("[Saizen] subtitle fetch failed: %@", error.localizedDescription)
+        return
+      }
+      let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+      guard let data, let text = String(data: data, encoding: .utf8), status == 200 || status == 206 else {
+        NSLog("[Saizen] subtitle fetch bad status=%d", status)
+        return
+      }
+      let cues = Self.parseWebVTT(text)
+      DispatchQueue.main.async {
+        self.subtitleCues = cues
+        NSLog("[Saizen] subtitle cues loaded count=%d", cues.count)
+      }
+    }
+    subtitleLoadTask?.resume()
+  }
+
+  private func updateSubtitle(at seconds: Double) {
+    guard !subtitleCues.isEmpty else {
+      if !subtitleLabel.isHidden {
+        subtitleLabel.isHidden = true
+        subtitleLabel.text = nil
+      }
+      return
+    }
+    if let cue = subtitleCues.first(where: { seconds >= $0.start && seconds < $0.end }) {
+      if subtitleLabel.text != cue.text || subtitleLabel.isHidden {
+        subtitleLabel.text = cue.text
+        subtitleLabel.isHidden = false
+      }
+    } else if !subtitleLabel.isHidden {
+      subtitleLabel.isHidden = true
+      subtitleLabel.text = nil
+    }
+  }
+
+  /// Minimal WebVTT cue parser (timestamps + text; ignores NOTE/STYLE/regions).
+  private static func parseWebVTT(_ raw: String) -> [(start: Double, end: Double, text: String)] {
+    var cues: [(start: Double, end: Double, text: String)] = []
+    let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+    let blocks = normalized.components(separatedBy: "\n\n")
+    let arrow = "-->"
+    for block in blocks {
+      let lines = block.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+      guard let timingLine = lines.first(where: { $0.contains(arrow) }) else { continue }
+      let parts = timingLine.components(separatedBy: arrow)
+      guard parts.count >= 2,
+            let start = parseVTTTimestamp(parts[0].trimmingCharacters(in: .whitespaces)),
+            let end = parseVTTTimestamp(
+              parts[1].split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+            )
+      else { continue }
+      let textLines = lines
+        .drop(while: { !$0.contains(arrow) })
+        .dropFirst()
+        .map { $0.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression) }
+        .filter { !$0.isEmpty }
+      let text = textLines.joined(separator: "\n")
+      guard !text.isEmpty else { continue }
+      cues.append((start, end, text))
+    }
+    return cues
+  }
+
+  private static func parseVTTTimestamp(_ raw: String) -> Double? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    let bits = trimmed.split(separator: ":").map(String.init)
+    guard bits.count == 2 || bits.count == 3 else { return nil }
+    let hours = bits.count == 3 ? Double(bits[0]) ?? 0 : 0
+    let minutes = Double(bits[bits.count == 3 ? 1 : 0]) ?? 0
+    let secParts = bits[bits.count == 3 ? 2 : 1].replacingOccurrences(of: ",", with: ".").split(separator: ".")
+    let seconds = Double(secParts.first.map(String.init) ?? "0") ?? 0
+    let frac: Double
+    if secParts.count > 1 {
+      let fracStr = String(secParts[1].prefix(3))
+      let padded = fracStr.padding(toLength: 3, withPad: "0", startingAt: 0)
+      frac = (Double(padded) ?? 0) / 1000
+    } else {
+      frac = 0
+    }
+    return hours * 3600 + minutes * 60 + seconds + frac
   }
 
   private static func formatSec(_ sec: Double) -> String {

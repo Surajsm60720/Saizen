@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.4.3'
+export const APP_VERSION = '1.4.4'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,17 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.4',
+    date: '2026-09-07',
+    title: 'NSFW module catalogs & adult stream sources',
+    highlights: [
+      'Settings → Modules: optional HTTPS NSFW catalogs (Cufiy-shaped index.json), Show NSFW toggle, and safer install/reinstall (main-queue Cap resolves)',
+      'Adult titles only: installed NSFW modules join stream resolve via allowNsfw; Search include-adult follows Show NSFW + hentai extensions',
+      'Native player plays optional WebVTT sidecars from modules; StreamResolver no longer silently falls back to episode 1 when a number is missing',
+      'Module scripts stay HTTPS-hosted (e.g. saizen-modules) — never baked into the IPA; local /modules/ harness mirror is gitignored'
+    ]
+  },
   {
     version: '1.4.3',
     date: '2026-09-07',

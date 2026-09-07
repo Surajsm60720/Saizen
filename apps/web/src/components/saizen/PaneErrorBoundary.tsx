@@ -20,6 +20,13 @@ export class PaneErrorBoundary extends Component<Props, State> {
     return { error }
   }
 
+  componentDidUpdate(prevProps: Props) {
+    // Remount-equivalent recovery when the routed page identity changes.
+    if (prevProps.name !== this.props.name && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
+
   render() {
     if (this.state.error) {
       return (

@@ -25,13 +25,25 @@ public final class ModuleFetchSession: @unchecked Sendable {
   private let sessionDelegate: SessionDelegate
 
   public init(allowedHosts: Set<String>, deniedHosts: Set<String> = []) {
-    self.cookieStorage = HTTPCookieStorage()
+    // IMPORTANT: `HTTPCookieStorage()` (bare init) does NOT accept cookies from
+    // URLSession on Apple platforms — jar stays empty and Laravel XSRF breaks.
+    // `sharedCookieStorage(forGroupContainerIdentifier:)` with a unique id gives
+    // an isolated, working in-process store (invalid group → app-unique store).
+    let jar = HTTPCookieStorage.sharedCookieStorage(
+      forGroupContainerIdentifier: "saizen.modules.\(UUID().uuidString)"
+    )
+    jar.cookieAcceptPolicy = .always
+    self.cookieStorage = jar
+
     self.allowedHosts = Set(allowedHosts.map { $0.lowercased() })
     self.deniedHosts = Set(deniedHosts.map { $0.lowercased() })
+
     let config = URLSessionConfiguration.ephemeral
-    config.httpCookieStorage = cookieStorage
+    config.httpCookieStorage = jar
     config.httpCookieAcceptPolicy = .always
     config.httpShouldSetCookies = true
+    config.urlCache = nil
+
     let delegate = SessionDelegate()
     self.sessionDelegate = delegate
     self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
@@ -56,6 +68,7 @@ public final class ModuleFetchSession: @unchecked Sendable {
     let (data, resp) = try await session.data(for: request)
     guard let http = resp as? HTTPURLResponse else { throw ModuleFetchError.badResponse }
     if let final = http.url, let h = final.host?.lowercased() { allowHost(h) }
+    ingestCookies(from: http, for: http.url ?? url)
     return (data, http)
   }
 
@@ -65,6 +78,34 @@ public final class ModuleFetchSession: @unchecked Sendable {
     headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
     req.httpBody = body
     return try await data(for: req)
+  }
+
+  /// Best-effort Set-Cookie harvest. iOS often omits Set-Cookie from
+  /// `allHeaderFields`; `value(forHTTPHeaderField:)` sometimes still works,
+  /// and URLSession should also write into our jar when the storage is valid.
+  private func ingestCookies(from http: HTTPURLResponse, for url: URL) {
+    var headerMap: [String: String] = [:]
+    if let single = http.value(forHTTPHeaderField: "Set-Cookie"), !single.isEmpty {
+      headerMap["Set-Cookie"] = single
+    }
+    for (key, value) in http.allHeaderFields {
+      let name = "\(key)"
+      if name.lowercased() == "set-cookie" {
+        headerMap["Set-Cookie"] = "\(value)"
+      }
+    }
+    guard !headerMap.isEmpty else { return }
+    let parsed = HTTPCookie.cookies(withResponseHeaderFields: headerMap, for: url)
+    for cookie in parsed {
+      cookieStorage.setCookie(cookie)
+    }
+    if !parsed.isEmpty {
+      NSLog(
+        "[Saizen] ModuleFetchSession ingested %d cookie(s) host=%@",
+        parsed.count,
+        url.host ?? "?"
+      )
+    }
   }
 
   fileprivate func validateURL(_ url: URL) throws {

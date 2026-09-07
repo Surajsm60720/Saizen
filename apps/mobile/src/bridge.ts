@@ -8,6 +8,7 @@ import type {
   ClientSettings,
   DownloadJob,
   EnqueueDownloadOptions,
+  ExtraModuleCatalog,
   InstallModuleFromUrlOptions,
   InstallModuleOptions,
   InstalledModule,
@@ -116,6 +117,9 @@ const SaizenAuth = registerPlugin<SaizenAuthPlugin>('SaizenAuth')
 const SaizenModules = registerPlugin<{
   listModules(): Promise<{ modules: InstalledModule[] }>
   browseModuleCatalog(): Promise<{ entries: ModuleCatalogEntry[] }>
+  listExtraModuleCatalogs(): Promise<{ catalogs: ExtraModuleCatalog[] }>
+  addExtraModuleCatalog(o: { url: string }): Promise<{ catalogs: ExtraModuleCatalog[] }>
+  removeExtraModuleCatalog(o: { url: string }): Promise<{ catalogs: ExtraModuleCatalog[] }>
   installModule(o: InstallModuleOptions): Promise<{ modules: InstalledModule[] }>
   installModuleFromUrl(o: InstallModuleFromUrlOptions): Promise<{ modules: InstalledModule[] }>
     testModule(o: { id: string; query?: string }): Promise<{
@@ -172,6 +176,18 @@ export function installSaizenBridge(): void {
     async browseModuleCatalog() {
       const { entries } = await SaizenModules.browseModuleCatalog()
       return entries ?? []
+    },
+    async listExtraModuleCatalogs() {
+      const { catalogs } = await SaizenModules.listExtraModuleCatalogs()
+      return catalogs ?? []
+    },
+    async addExtraModuleCatalog(url) {
+      const { catalogs } = await SaizenModules.addExtraModuleCatalog({ url })
+      return catalogs ?? []
+    },
+    async removeExtraModuleCatalog(url) {
+      const { catalogs } = await SaizenModules.removeExtraModuleCatalog({ url })
+      return catalogs ?? []
     },
     async installModule(options) {
       const { modules } = await SaizenModules.installModule(options)

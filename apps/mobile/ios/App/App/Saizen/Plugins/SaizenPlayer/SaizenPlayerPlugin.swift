@@ -179,6 +179,11 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
       idMal: idMal,
       options: options
     )
+    let subtitleURL: URL? = {
+      guard let raw = call.getString("subtitle"), let u = URL(string: raw),
+            u.scheme?.lowercased() == "https" else { return nil }
+      return u
+    }()
 
     let session = SaizenPlayback.currentSessionID
     PlaybackProgressReporter.shared.resetThrottle()
@@ -198,7 +203,8 @@ public class SaizenPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         hint: hint,
         title: title,
         context: context,
-        headers: headers
+        headers: headers,
+        subtitleURL: subtitleURL
       ) {
         SaizenPlayback.stopAndPurge(expecting: session)
       }
