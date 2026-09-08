@@ -130,6 +130,18 @@ const webFallback: SaizenNative = {
   async recordModuleSuccess(_options: RecordModuleSuccessOptions) {
     // no-op on web
   },
+  async browseAdultHome() {
+    throw new Error('Adult browse requires the iOS app')
+  },
+  async searchAdult() {
+    throw new Error('Adult search requires the iOS app')
+  },
+  async adultExtractEpisodes() {
+    throw new Error('Adult extract requires the iOS app')
+  },
+  async adultExtractStreams() {
+    throw new Error('Adult extract requires the iOS app')
+  },
   async torrentInfo(hash) {
     return emptyInfo(hash)
   },

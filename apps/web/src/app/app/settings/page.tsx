@@ -30,6 +30,10 @@ import {
   setIncognitoMode,
   subscribeIncognitoMode
 } from '@/lib/privacy/incognito'
+import {
+  isAdultModeOn,
+  subscribeAdultMode
+} from '@/lib/privacy/adult'
 import { clearViewerListCache, fetchViewerAnimeList } from '@/lib/anilist'
 import { flushPendingListSync } from '@/lib/watch/progress'
 import getNative from '@/lib/native'
@@ -47,6 +51,7 @@ export default function SettingsPage() {
   const [creds, setCreds] = useState(() => getOAuthCredentials())
   const [quality, setQuality] = useState<DownloadQuality>('1080p')
   const [incognito, setIncognito] = useState(false)
+  const [adultMode, setAdultModeState] = useState(false)
   const day0PressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const canAnilist = Boolean(creds.anilistClientId)
   const canMal = Boolean(creds.malClientId)
@@ -58,6 +63,7 @@ export default function SettingsPage() {
     const d = getDownloadSettings()
     setQuality(d.preferredQuality)
     setIncognito(isIncognitoMode())
+    setAdultModeState(isAdultModeOn())
 
     const refreshAuth = () => {
       void whenBridgeReady().then(async () => {
@@ -70,9 +76,11 @@ export default function SettingsPage() {
     refreshAuth()
     const unsubAuth = subscribeAuthChanged(refreshAuth)
     const unsubIncognito = subscribeIncognitoMode(setIncognito)
+    const unsubAdult = subscribeAdultMode(setAdultModeState)
     return () => {
       unsubAuth()
       unsubIncognito()
+      unsubAdult()
     }
   }, [])
 
@@ -202,6 +210,31 @@ export default function SettingsPage() {
               aria-label="Incognito Mode"
             />
           </SettingsRow>
+        </SettingsGroup>
+
+        <SettingsGroup
+          title="Adult content"
+          description="NSFW sources, Adult tab, and adult downloads. Off = hidden on disk but the app pretends they do not exist."
+        >
+          <Link
+            href="/app/adult/settings/"
+            scroll={false}
+            onClick={() => rememberCurrentScroll()}
+            className="flex min-h-12 items-center justify-between gap-3 px-3.5 py-2.5 text-foreground transition-colors hover:bg-muted/40"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Adult settings</div>
+              <div className="text-xs text-muted-foreground">
+                {adultMode
+                  ? 'On — manage sources & primary module'
+                  : 'Off — open to enable Adult Mode'}
+              </div>
+            </div>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-xs text-muted-foreground">{adultMode ? 'On' : 'Off'}</span>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </span>
+          </Link>
         </SettingsGroup>
 
         <SettingsGroup title="Appearance" description="Accent color and liquid-glass intensity.">

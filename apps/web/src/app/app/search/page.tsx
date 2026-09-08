@@ -18,12 +18,6 @@ import {
   type AnimeSearchFilters
 } from '@/lib/anilist'
 import { isAnilistConnected } from '@/lib/auth/tokens'
-import { ensureExtensions, subscribeExtensions } from '@/lib/extensions'
-import {
-  ADULT_CONTENT_CHANGED,
-  hasAdultContentEnabled,
-  SHOW_NSFW_MODULES_KEY
-} from '@/lib/privacy/adult'
 import { readSearchSession, writeSearchSession, consumePendingSearchPreset, mergeSearchFilters } from '@/lib/search/session'
 import { PageHeader, PosterCard, PosterGrid, SearchFiltersSheet } from '@/components/saizen'
 import { Badge } from '@/components/ui/badge'
@@ -98,7 +92,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(boot.current.error)
-  const [includeAdult, setIncludeAdult] = useState(boot.current.includeAdult)
+  /** Main Search is always SFW — Adult Mode has its own tab. */
+  const includeAdult = false
   const [anilistOn, setAnilistOn] = useState(boot.current.anilistOn)
   const [page, setPage] = useState(boot.current.page)
   const [hasNextPage, setHasNextPage] = useState(boot.current.hasNextPage)
@@ -116,32 +111,10 @@ export default function SearchPage() {
       page,
       hasNextPage,
       error,
-      includeAdult,
+      includeAdult: false,
       anilistOn
     })
-  }, [term, filters, results, page, hasNextPage, error, includeAdult, anilistOn])
-
-  // Warm once for catalogs/list cache; keep includeAdult in sync when extensions
-  // or Modules “Show NSFW” change (Search is keep-alive).
-  useEffect(() => {
-    const syncAdult = () => {
-      const adult = hasAdultContentEnabled()
-      setIncludeAdult(adult)
-      writeSearchSession({ includeAdult: adult })
-    }
-    void ensureExtensions().then(syncAdult)
-    const unsubExt = subscribeExtensions(syncAdult)
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === SHOW_NSFW_MODULES_KEY) syncAdult()
-    }
-    window.addEventListener('storage', onStorage)
-    window.addEventListener(ADULT_CONTENT_CHANGED, syncAdult)
-    return () => {
-      unsubExt()
-      window.removeEventListener('storage', onStorage)
-      window.removeEventListener(ADULT_CONTENT_CHANGED, syncAdult)
-    }
-  }, [])
+  }, [term, filters, results, page, hasNextPage, error, anilistOn])
 
   useEffect(() => {
     if (warmed.current) return
@@ -351,12 +324,6 @@ export default function SearchPage() {
             Clear filters
           </button>
         </div>
-      ) : null}
-
-      {includeAdult ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Adult titles included (NSFW modules and/or hentai extension).
-        </p>
       ) : null}
 
       <div ref={resultsRef}>

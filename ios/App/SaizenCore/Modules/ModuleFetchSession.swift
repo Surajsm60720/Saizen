@@ -16,37 +16,40 @@ public enum ModuleFetchError: Error, LocalizedError {
   }
 }
 
+/// Per-module HTTPS fetch with an in-memory cookie jar.
+///
+/// We intentionally do **not** use `HTTPCookieStorage` with URLSession:
+/// concurrent `setCookie` from URLSession’s cookie engine + our ingest path
+/// races and crashes (`EXC_BAD_ACCESS` / `__CF_IS_OBJC`) under parallel rails
+/// (e.g. haho cover backfills).
 public final class ModuleFetchSession: @unchecked Sendable {
-  public let cookieStorage: HTTPCookieStorage
   private let session: URLSession
   private var allowedHosts: Set<String>
   private let deniedHosts: Set<String>
   private let lock = NSLock()
+  private let cookieLock = NSLock()
+  /// name|domain|path → cookie
+  private var jar: [String: HTTPCookie] = [:]
+  private var didInvalidate = false
   private let sessionDelegate: SessionDelegate
 
   public init(allowedHosts: Set<String>, deniedHosts: Set<String> = []) {
-    // IMPORTANT: `HTTPCookieStorage()` (bare init) does NOT accept cookies from
-    // URLSession on Apple platforms — jar stays empty and Laravel XSRF breaks.
-    // `sharedCookieStorage(forGroupContainerIdentifier:)` with a unique id gives
-    // an isolated, working in-process store (invalid group → app-unique store).
-    let jar = HTTPCookieStorage.sharedCookieStorage(
-      forGroupContainerIdentifier: "saizen.modules.\(UUID().uuidString)"
-    )
-    jar.cookieAcceptPolicy = .always
-    self.cookieStorage = jar
-
     self.allowedHosts = Set(allowedHosts.map { $0.lowercased() })
     self.deniedHosts = Set(deniedHosts.map { $0.lowercased() })
 
     let config = URLSessionConfiguration.ephemeral
-    config.httpCookieStorage = jar
-    config.httpCookieAcceptPolicy = .always
-    config.httpShouldSetCookies = true
+    // Exclusive ownership of cookies — URLSession must not touch a shared jar.
+    config.httpCookieStorage = nil
+    config.httpCookieAcceptPolicy = .never
+    config.httpShouldSetCookies = false
     config.urlCache = nil
 
     let delegate = SessionDelegate()
     self.sessionDelegate = delegate
-    self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+    let delegateQueue = OperationQueue()
+    delegateQueue.name = "app.saizen.modules.fetch"
+    delegateQueue.maxConcurrentOperationCount = 1
+    self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: delegateQueue)
     delegate.owner = self
   }
 
@@ -59,13 +62,35 @@ public final class ModuleFetchSession: @unchecked Sendable {
   }
 
   public func invalidate() {
+    lock.lock()
+    didInvalidate = true
+    lock.unlock()
+    cookieLock.lock()
+    jar.removeAll()
+    cookieLock.unlock()
     session.invalidateAndCancel()
+  }
+
+  /// Thread-safe cookie read for Laravel XSRF / Set-Cookie synthesis.
+  public func cookies(for url: URL) -> [HTTPCookie] {
+    cookieLock.lock()
+    defer { cookieLock.unlock() }
+    return Self.cookiesMatching(url: url, from: Array(jar.values))
+  }
+
+  /// Thread-safe full jar snapshot.
+  public func allCookies() -> [HTTPCookie] {
+    cookieLock.lock()
+    defer { cookieLock.unlock() }
+    return Array(jar.values)
   }
 
   public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
     guard let url = request.url else { throw ModuleFetchError.nonHttps }
     try validateURL(url)
-    let (data, resp) = try await session.data(for: request)
+    var req = request
+    attachCookies(to: &req)
+    let (data, resp) = try await session.data(for: req)
     guard let http = resp as? HTTPURLResponse else { throw ModuleFetchError.badResponse }
     if let final = http.url, let h = final.host?.lowercased() { allowHost(h) }
     ingestCookies(from: http, for: http.url ?? url)
@@ -80,31 +105,62 @@ public final class ModuleFetchSession: @unchecked Sendable {
     return try await data(for: req)
   }
 
-  /// Best-effort Set-Cookie harvest. iOS often omits Set-Cookie from
-  /// `allHeaderFields`; `value(forHTTPHeaderField:)` sometimes still works,
-  /// and URLSession should also write into our jar when the storage is valid.
-  private func ingestCookies(from http: HTTPURLResponse, for url: URL) {
+  fileprivate func attachCookies(to request: inout URLRequest) {
+    guard let url = request.url else { return }
+    let cookies = cookies(for: url)
+    guard !cookies.isEmpty else { return }
+    let fields = HTTPCookie.requestHeaderFields(with: cookies)
+    for (key, value) in fields {
+      // Don't overwrite an explicit Cookie header from the module.
+      if request.value(forHTTPHeaderField: key) == nil {
+        request.setValue(value, forHTTPHeaderField: key)
+      }
+    }
+  }
+
+  /// Best-effort Set-Cookie harvest into the locked in-memory jar.
+  fileprivate func ingestCookies(from http: HTTPURLResponse, for url: URL) {
+    lock.lock()
+    let dead = didInvalidate
+    lock.unlock()
+    guard !dead else { return }
+
     var headerMap: [String: String] = [:]
     if let single = http.value(forHTTPHeaderField: "Set-Cookie"), !single.isEmpty {
       headerMap["Set-Cookie"] = single
     }
     for (key, value) in http.allHeaderFields {
-      let name = "\(key)"
-      if name.lowercased() == "set-cookie" {
+      if "\(key)".lowercased() == "set-cookie" {
         headerMap["Set-Cookie"] = "\(value)"
       }
     }
     guard !headerMap.isEmpty else { return }
     let parsed = HTTPCookie.cookies(withResponseHeaderFields: headerMap, for: url)
+    guard !parsed.isEmpty else { return }
+
+    cookieLock.lock()
     for cookie in parsed {
-      cookieStorage.setCookie(cookie)
+      let key = "\(cookie.name.lowercased())|\(cookie.domain.lowercased())|\(cookie.path)"
+      jar[key] = cookie
     }
-    if !parsed.isEmpty {
-      NSLog(
-        "[Saizen] ModuleFetchSession ingested %d cookie(s) host=%@",
-        parsed.count,
-        url.host ?? "?"
-      )
+    let count = parsed.count
+    let host = url.host ?? "?"
+    cookieLock.unlock()
+
+    #if DEBUG
+    NSLog("[Saizen] ModuleFetchSession ingested %d cookie(s) host=%@", count, host)
+    #endif
+  }
+
+  private static func cookiesMatching(url: URL, from cookies: [HTTPCookie]) -> [HTTPCookie] {
+    guard let host = url.host?.lowercased() else { return [] }
+    let path = url.path.isEmpty ? "/" : url.path
+    return cookies.filter { cookie in
+      let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+      let hostOk = host == domain || host.hasSuffix("." + domain)
+      guard hostOk else { return false }
+      let cookiePath = cookie.path.isEmpty ? "/" : cookie.path
+      return path == cookiePath || path.hasPrefix(cookiePath)
     }
   }
 
@@ -133,15 +189,19 @@ private final class SessionDelegate: NSObject, URLSessionTaskDelegate {
       completionHandler(nil)
       return
     }
-    // Follow HTTPS redirects onto newly discovered hosts (deny list still wins).
-    // Cancelling the redirect returns the 301 HTML body and breaks JSON parsers
-    // (AnimePahe / jakBa saw "301 Moved Permanently" as the fetch body).
+    // Capture Set-Cookie on the redirect response, then attach jar cookies
+    // to the follow-up request (URLSession won't — we own the jar).
+    if let redirectURL = response.url ?? task.currentRequest?.url {
+      owner.ingestCookies(from: response, for: redirectURL)
+    }
     if let host = url.host {
       owner.allowHost(host)
     }
     do {
       try owner.validateURL(url)
-      completionHandler(request)
+      var next = request
+      owner.attachCookies(to: &next)
+      completionHandler(next)
     } catch {
       completionHandler(nil)
     }
@@ -150,12 +210,11 @@ private final class SessionDelegate: NSObject, URLSessionTaskDelegate {
 
 #if DEBUG
 public enum ModuleFetchSessionDebug {
-  /// Verifies each session owns a private cookie jar distinct from shared storage and other sessions.
   public static func assertCookieStorageIsolation() {
     let sessionA = ModuleFetchSession(allowedHosts: ["example.com"])
     let sessionB = ModuleFetchSession(allowedHosts: ["example.com"])
-    assert(sessionA.cookieStorage !== HTTPCookieStorage.shared)
-    assert(sessionA.cookieStorage !== sessionB.cookieStorage)
+    // Separate in-memory jars — mutating one must not affect the other.
+    assert(sessionA.allCookies().isEmpty && sessionB.allCookies().isEmpty)
     sessionA.invalidate()
     sessionB.invalidate()
   }

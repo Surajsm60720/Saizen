@@ -1,8 +1,39 @@
-# Saizen · v1.4.4
+# Saizen · v1.4.6
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Live Watch resolves installable CDN stream modules to **HLS/MP4** and plays them in a custom native **AVPlayer**. Libtorrent remains available for optional offline work — it is no longer the primary Watch path.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
+
+## What’s new in 1.4.6
+
+Patch release for **Adult home polish** and **provider stability** (in-app / local sideload — not a new GitHub Release IPA):
+
+| Area | Change |
+|------|--------|
+| **Adult home** | Catalog rails (Recently uploaded / New releases / Most viewed + tags); parallel native browse with a **haho sequential** exception |
+| **Adult title** | Anime-style hero (cover + safe-area title) and episode Play/Save list |
+| **Switch speed** | Per-provider home cache; soft cross-rail dedupe keeps categories visible |
+| **Modules** | Catalog v6 scripts (order+tag, haho covers/top tabs, Mama episode→series); auto-refresh stale NSFW scripts |
+| **Stability** | Locked in-memory module cookie jar (fixes haho `EXC_BAD_ACCESS` under parallel fetches) |
+| **Privacy** | Turning Adult Mode off also turns Incognito off |
+
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
+
+## What’s new in 1.4.5
+
+Patch release for **Adult Mode** — one Settings master switch that ghosts NSFW when off and unlocks a separate Adult tab when on (in-app / local sideload — not a new GitHub Release IPA):
+
+| Area | Change |
+|------|--------|
+| **Master switch** | Settings → Adult settings (chevron only on main Settings; switch lives inside) |
+| **Modules split** | Settings → Modules = SFW only; Adult → Adult modules = NSFW only |
+| **Ghost when off** | NSFW stays on disk but hidden; Adult routes redirect home; adult downloads tagged `isAdult` stay hidden |
+| **Tab** | Fifth tab when on: home hero/rails matching SFW Home, search, module-backed title Play/Save |
+| **Removed** | Torrent Extensions catalog / page (CDN modules remain) |
+| **Isolation** | Main Search stays SFW; Incognito auto-on once when enabling Adult Mode |
+
+Design notes: [docs/superpowers/specs/2026-09-08-adult-mode-master-switch-design.md](./docs/superpowers/specs/2026-09-08-adult-mode-master-switch-design.md).  
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 
 ## What’s new in 1.4.4
 
@@ -87,6 +118,7 @@ Saizen’s playback middleware moved from “search torrents → stream” to �
 - **Transfers** — Settings: torrent download Mbps cap + max peers (applied live when torrent paths are used)
 - **Accounts & lists** — AniList / MAL Sign in (`state` + Keychain-only tokens); Home rails; list sync; delete clears continue-watching without restart
 - **Modules** — Settings → Modules: installable Watch/Save sources; optional NSFW HTTPS catalogs + Show NSFW; scripts remain remote HTTPS only
+- **Adult Mode** — Settings master switch; isolated Adult tab (home / search / title / modules); ghost NSFW when off; Incognito auto-on once when enabling, off when leaving Adult Mode
 - **Incognito** — Settings toggle: pause list sync and Home continue; session resume clears when leaving Incognito (downloads stay on disk)
 - **UI** — Icon-only frosted tab bar with drag-to-scrub selection (Home / Search / Schedule / More); Puritan + Quando type; Settings → Appearance (accent + liquid-glass transparency / Frosted); immersive Saizen chrome on Home only; swipe-down to dismiss sources
 - **Security** — No `NEXT_PUBLIC_*` secrets; AniList Client Secret only in a gitignored local Swift file; Keychain key allowlist; OAuth host allowlist; Cap bridge logging off; authenticated loopback streams; HTTPS-only module/extension loads; CSP meta; secret-scanned IPA packaging
@@ -179,7 +211,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`–`1.4.4`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1+** are local sideload patches.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`–`1.4.6`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1+** are local sideload patches.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

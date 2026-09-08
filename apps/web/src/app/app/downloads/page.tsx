@@ -25,6 +25,10 @@ import {
   isIncognitoMode,
   subscribeIncognitoMode
 } from '@/lib/privacy/incognito'
+import {
+  isAdultModeOn,
+  subscribeAdultMode
+} from '@/lib/privacy/adult'
 import type { DownloadQuality, LibraryEntry } from '@saizen/shared'
 
 const QUALITIES: DownloadQuality[] = ['2160p', '1080p', '720p', '480p']
@@ -36,10 +40,16 @@ export default function DownloadsPage() {
   const [settings, setSettings] = useState<DownloadUiSettings>(() => getDownloadSettings())
   const [busy, setBusy] = useState<string | null>(null)
   const [incognito, setIncognito] = useState(false)
+  const [adultMode, setAdultMode] = useState(false)
 
   useEffect(() => {
     setIncognito(isIncognitoMode())
     return subscribeIncognitoMode(setIncognito)
+  }, [])
+
+  useEffect(() => {
+    setAdultMode(isAdultModeOn())
+    return subscribeAdultMode(setAdultMode)
   }, [])
 
   useEffect(() => {
@@ -74,31 +84,40 @@ export default function DownloadsPage() {
     const map = new Map<string, LibraryEntry[]>()
     for (const item of library) {
       if (item.isIncognito && !incognito) continue
+      if (item.isAdult && !adultMode) continue
       const key = item.seriesTitle || `Media ${item.mediaId}`
       const list = map.get(key) ?? []
       list.push(item)
       map.set(key, list)
     }
     return [...map.entries()]
-  }, [library, incognito])
+  }, [library, incognito, adultMode])
 
   const active = jobs.filter((j) => {
     if (j.status === 'completed') return false
     if (j.isIncognito && !incognito) return false
+    if (j.isAdult && !adultMode) return false
     return true
   })
 
   const visibleLibraryBytes = useMemo(() => {
-    if (incognito) return usage.libraryBytes
     const hidden = library
-      .filter((item) => item.isIncognito)
+      .filter(
+        (item) =>
+          (item.isIncognito && !incognito) || (item.isAdult && !adultMode)
+      )
       .reduce((sum, item) => sum + (item.size || 0), 0)
+    if (incognito && adultMode) return usage.libraryBytes
     return Math.max(0, usage.libraryBytes - hidden)
-  }, [usage.libraryBytes, library, incognito])
+  }, [usage.libraryBytes, library, incognito, adultMode])
 
   const visibleEpisodeCount = useMemo(
-    () => library.filter((item) => !(item.isIncognito && !incognito)).length,
-    [library, incognito]
+    () =>
+      library.filter(
+        (item) =>
+          !(item.isIncognito && !incognito) && !(item.isAdult && !adultMode)
+      ).length,
+    [library, incognito, adultMode]
   )
 
   return (
@@ -106,9 +125,11 @@ export default function DownloadsPage() {
       <PageHeader
         title="Downloads"
         description={
-          incognito
-            ? 'Incognito saves show here while Incognito is on.'
-            : 'Save CDN streams from modules — watch offline later.'
+          !adultMode
+            ? 'Adult offline saves stay on disk but stay hidden while Adult Mode is off.'
+            : incognito
+              ? 'Incognito saves show here while Incognito is on.'
+              : 'Save CDN streams from modules — watch offline later.'
         }
       />
 

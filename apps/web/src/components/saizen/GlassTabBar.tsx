@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState
 } from 'react'
@@ -14,11 +15,13 @@ import {
   Search,
   CalendarDays,
   MoreHorizontal,
+  Flame,
   type LucideIcon
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { hapticPress } from '@/lib/haptics'
 import { rememberCurrentScroll } from '@/lib/nav/scrollMemory'
+import { isAdultModeOn, subscribeAdultMode } from '@/lib/privacy/adult'
 
 type TabItem = {
   href: string
@@ -27,7 +30,7 @@ type TabItem = {
   match: (pathname: string) => boolean
 }
 
-export const GLASS_TAB_ITEMS: readonly TabItem[] = [
+const BASE_TAB_ITEMS: readonly TabItem[] = [
   { href: '/', label: 'Home', icon: Home, match: (p) => p === '/' },
   {
     href: '/app/search/',
@@ -50,10 +53,34 @@ export const GLASS_TAB_ITEMS: readonly TabItem[] = [
       p.startsWith('/app/appearance') ||
       p.startsWith('/app/changelog') ||
       p.startsWith('/app/downloads') ||
-      p.startsWith('/app/extensions') ||
-      p.startsWith('/app/modules')
+      p.startsWith('/app/modules') ||
+      p.startsWith('/app/adult/settings')
   }
 ] as const
+
+const ADULT_TAB: TabItem = {
+  href: '/app/adult/',
+  label: 'Adult',
+  icon: Flame,
+  match: (p) =>
+    (p.startsWith('/app/adult') && !p.startsWith('/app/adult/settings')) ||
+    false
+}
+
+/** Default (Adult Mode off) — used by desktop nav bootstrap. */
+export const GLASS_TAB_ITEMS: readonly TabItem[] = BASE_TAB_ITEMS
+
+export function getGlassTabItems(adultMode: boolean): TabItem[] {
+  if (!adultMode) return [...BASE_TAB_ITEMS]
+  // Home / Search / Schedule / Adult / More
+  return [
+    BASE_TAB_ITEMS[0]!,
+    BASE_TAB_ITEMS[1]!,
+    BASE_TAB_ITEMS[2]!,
+    ADULT_TAB,
+    BASE_TAB_ITEMS[3]!
+  ]
+}
 
 type Indicator = { x: number; w: number; ready: boolean }
 
@@ -70,6 +97,7 @@ export function GlassTabBar({
   const router = useRouter()
   const listRef = useRef<HTMLUListElement>(null)
   const itemRefs = useRef<(HTMLLIElement | null)[]>([])
+  const [adultMode, setAdultMode] = useState(false)
   const [indicator, setIndicator] = useState<Indicator>({
     x: 0,
     w: 0,
@@ -85,7 +113,14 @@ export function GlassTabBar({
   const scrubIndexRef = useRef(0)
   const suppressClickRef = useRef(false)
 
-  const routeIndex = GLASS_TAB_ITEMS.findIndex((item) => item.match(pathname))
+  useEffect(() => {
+    setAdultMode(isAdultModeOn())
+    return subscribeAdultMode(setAdultMode)
+  }, [])
+
+  const tabItems = useMemo(() => getGlassTabItems(adultMode), [adultMode])
+
+  const routeIndex = tabItems.findIndex((item) => item.match(pathname))
   const settledIndex = routeIndex >= 0 ? routeIndex : 0
   const activeIndex = scrubIndex ?? settledIndex
 
@@ -104,25 +139,26 @@ export function GlassTabBar({
     }
   }, [])
 
-  const indexFromClientX = useCallback((clientX: number) => {
-    const list = listRef.current
-    if (!list) return 0
-    const rect = list.getBoundingClientRect()
-    const x = clientX - rect.left
-    let best = 0
-    let bestDist = Infinity
-    for (let i = 0; i < GLASS_TAB_ITEMS.length; i++) {
-      const el = itemRefs.current[i]
-      if (!el) continue
-      const center = el.offsetLeft + el.offsetWidth / 2
-      const dist = Math.abs(x - center)
-      if (dist < bestDist) {
-        bestDist = dist
-        best = i
+  const indexFromClientX = useCallback(
+    (clientX: number) => {
+      const list = listRef.current
+      if (!list) return 0
+      let best = 0
+      let bestDist = Infinity
+      for (let i = 0; i < tabItems.length; i++) {
+        const el = itemRefs.current[i]
+        if (!el) continue
+        const center = el.offsetLeft + el.offsetWidth / 2
+        const dist = Math.abs(clientX - (list.getBoundingClientRect().left + center))
+        if (dist < bestDist) {
+          bestDist = dist
+          best = i
+        }
       }
-    }
-    return best
-  }, [])
+      return best
+    },
+    [tabItems.length]
+  )
 
   /** 1:1 finger tracking — pill centers under the pointer, clamped to the track. */
   const pillFromClientX = useCallback((clientX: number): Indicator | null => {
@@ -153,7 +189,7 @@ export function GlassTabBar({
 
   useLayoutEffect(() => {
     measure()
-  }, [measure, hidden])
+  }, [measure, hidden, tabItems.length])
 
   useEffect(() => {
     const list = listRef.current
@@ -169,7 +205,7 @@ export function GlassTabBar({
 
   const commitIndex = useCallback(
     (index: number) => {
-      const item = GLASS_TAB_ITEMS[index]
+      const item = tabItems[index]
       if (!item) return
       setScrubIndex(index)
       scrubIndexRef.current = index
@@ -180,7 +216,7 @@ export function GlassTabBar({
         router.replace(item.href, { scroll: false })
       }
     },
-    [pathname, router, snapToIndex]
+    [pathname, router, snapToIndex, tabItems]
   )
 
   const onPointerDown = (e: React.PointerEvent<HTMLUListElement>) => {
@@ -254,6 +290,7 @@ export function GlassTabBar({
     <nav
       className={cn(
         'saizen-tab-glass w-full max-w-[min(88vw,17.5rem)] overflow-hidden rounded-[1.55rem]',
+        adultMode && 'max-w-[min(94vw,21rem)]',
         'transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
         'touch-none',
         hidden
@@ -264,7 +301,10 @@ export function GlassTabBar({
     >
       <ul
         ref={listRef}
-        className="relative z-10 grid h-[3.25rem] grid-cols-4 items-center gap-0.5 px-1"
+        className={cn(
+          'relative z-10 grid h-[3.25rem] items-center gap-0.5 px-1',
+          adultMode ? 'grid-cols-5' : 'grid-cols-4'
+        )}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endPointer}
@@ -282,7 +322,7 @@ export function GlassTabBar({
             transform: `translate3d(${indicator.x}px, -50%, 0)`
           }}
         />
-        {GLASS_TAB_ITEMS.map((item, index) => {
+        {tabItems.map((item, index) => {
           const active = index === activeIndex
           const Icon = item.icon
           return (

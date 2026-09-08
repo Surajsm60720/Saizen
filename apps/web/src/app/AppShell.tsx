@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { Search } from 'lucide-react'
 import { installSaizenBridge } from '@/lib/native/bridge'
 import { refreshNative } from '@/lib/native'
 import { markBridgeReady } from '@/lib/native/ready'
 import { hydrateTokenMirrors, scrubLegacyCredentialSecrets, clearOAuthCredentialOverrides } from '@/lib/auth'
-import { GlassTabBar, GLASS_TAB_ITEMS } from '@/components/saizen/GlassTabBar'
+import { GlassTabBar, getGlassTabItems } from '@/components/saizen/GlassTabBar'
 import { CatalogFallbackBanner } from '@/components/saizen/CatalogFallbackBanner'
 import { PaneErrorBoundary } from '@/components/saizen/PaneErrorBoundary'
 import { Toaster } from '@/components/ui/sonner'
@@ -27,29 +28,33 @@ import {
   isIncognitoMode,
   subscribeIncognitoMode
 } from '@/lib/privacy/incognito'
+import { isAdultModeOn, subscribeAdultMode } from '@/lib/privacy/adult'
 import HomePage from './page'
 import SearchPage from './app/search/page'
 import SchedulePage from './app/schedule/page'
 import SettingsPage from './app/settings/page'
 
-const desktopNav = GLASS_TAB_ITEMS.map((item) => ({
-  href: item.href,
-  label: item.label === 'More' ? 'Settings' : item.label,
-  match: item.match
-}))
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const [adultMode, setAdultMode] = useState(false)
+  const desktopNav = getGlassTabItems(adultMode).map((item) => ({
+    href: item.href,
+    label: item.label === 'More' ? 'Settings' : item.label,
+    match: item.match
+  }))
   const isPlayer = pathname.startsWith('/app/player')
   const isHome = pathname === '/'
   const isSearch = pathname.startsWith('/app/search')
   const isSchedule = pathname.startsWith('/app/schedule')
   const isSettings = pathname.startsWith('/app/settings')
   const isAnime = pathname.startsWith('/app/anime')
+  const isAdultHome = pathname === '/app/adult' || pathname === '/app/adult/'
+  const isAdultTitle = pathname.startsWith('/app/adult/title')
   const keepAliveRoute = isHome || isSearch || isSchedule || isSettings
-  const hideBottomNav = isPlayer || isAnime
+  const hideBottomNav = isPlayer || isAnime || isAdultTitle
   /** Brand/chrome header only on Home + anime — elsewhere it fights page titles / back links. */
-  const immersiveHeader = isHome || isAnime
+  const immersiveHeader = isHome || isAnime || isAdultHome
   /** Wide / landscape: text tab links without the Saizen wordmark chrome. */
   const showLandscapeNav = !isPlayer && !immersiveHeader
   const [headerFaded, setHeaderFaded] = useState(false)
@@ -79,6 +84,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setIncognito(isIncognitoMode())
     return subscribeIncognitoMode(setIncognito)
   }, [])
+
+  useEffect(() => {
+    setAdultMode(isAdultModeOn())
+    return subscribeAdultMode((on) => {
+      setAdultMode(on)
+      if (!on && pathname.startsWith('/app/adult')) {
+        router.replace('/', { scroll: false })
+      }
+    })
+  }, [pathname, router])
 
   // Hide bottom nav while the soft keyboard is open (iOS visualViewport shrinks).
   useEffect(() => {
@@ -166,7 +181,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <div className="flex min-w-0 items-center gap-2">
               <Link
-                href="/"
+                href={isAdultHome ? '/app/adult/' : '/'}
                 replace
                 scroll={false}
                 draggable={false}
@@ -174,7 +189,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="text-brand text-white transition-opacity hover:opacity-95 [text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_0_18px_rgba(0,0,0,0.55)]"
                 tabIndex={headerFaded ? -1 : undefined}
               >
-                Saizen
+                {isAdultHome ? 'Adult' : 'Saizen'}
               </Link>
               {incognito ? (
                 <span className="rounded-md bg-white/15 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.75)]">
@@ -182,31 +197,77 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               ) : null}
             </div>
-            <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
-              {desktopNav.map((item) => {
-                const active = item.match(pathname)
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    replace
-                    scroll={false}
-                    draggable={false}
-                    onClick={() => rememberCurrentScroll()}
-                    className={cn(
-                      'rounded-lg px-3 py-1.5 text-[0.8125rem] font-medium transition-[color,background-color,transform] duration-200',
-                      'active:scale-[0.97]',
-                      '[text-shadow:0_1px_2px_rgba(0,0,0,0.75)]',
-                      active
-                        ? 'bg-white/18 font-bold text-white'
-                        : 'text-white/90 hover:bg-white/12 hover:text-white'
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                )
-              })}
-            </nav>
+            {isAdultHome ? (
+              <div className="flex items-center gap-1.5">
+                <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
+                  {desktopNav.map((item) => {
+                    const active = item.match(pathname)
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        replace
+                        scroll={false}
+                        draggable={false}
+                        onClick={() => rememberCurrentScroll()}
+                        className={cn(
+                          'rounded-lg px-3 py-1.5 text-[0.8125rem] font-medium transition-[color,background-color,transform] duration-200',
+                          'active:scale-[0.97]',
+                          '[text-shadow:0_1px_2px_rgba(0,0,0,0.75)]',
+                          active
+                            ? 'bg-white/18 font-bold text-white'
+                            : 'text-white/90 hover:bg-white/12 hover:text-white'
+                        )}
+                      >
+                        {item.label}
+                      </Link>
+                    )
+                  })}
+                </nav>
+                <Link
+                  href="/app/adult/search/"
+                  replace
+                  scroll={false}
+                  draggable={false}
+                  onClick={() => rememberCurrentScroll()}
+                  aria-label="Adult search"
+                  tabIndex={headerFaded ? -1 : undefined}
+                  className={cn(
+                    'flex size-9 items-center justify-center rounded-full text-white transition-[background-color,transform] duration-200',
+                    'bg-white/12 hover:bg-white/18 active:scale-[0.96]',
+                    '[text-shadow:0_1px_2px_rgba(0,0,0,0.75)]'
+                  )}
+                >
+                  <Search className="size-4" strokeWidth={2.25} />
+                </Link>
+              </div>
+            ) : (
+              <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
+                {desktopNav.map((item) => {
+                  const active = item.match(pathname)
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      replace
+                      scroll={false}
+                      draggable={false}
+                      onClick={() => rememberCurrentScroll()}
+                      className={cn(
+                        'rounded-lg px-3 py-1.5 text-[0.8125rem] font-medium transition-[color,background-color,transform] duration-200',
+                        'active:scale-[0.97]',
+                        '[text-shadow:0_1px_2px_rgba(0,0,0,0.75)]',
+                        active
+                          ? 'bg-white/18 font-bold text-white'
+                          : 'text-white/90 hover:bg-white/12 hover:text-white'
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  )
+                })}
+              </nav>
+            )}
           </div>
         </header>
       ) : null}
@@ -258,9 +319,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           'mx-auto w-full max-w-5xl flex-1',
           isPlayer
             ? 'max-w-none px-0 py-0'
-            : isHome
+            : isHome || isAdultHome
               ? 'px-0 pb-[calc(4.5rem+var(--safe-bottom))] md:pb-8'
-              : isAnime
+              : isAnime || isAdultTitle
                 ? 'px-3.5 pt-0 pb-[calc(1rem+var(--safe-bottom))] sm:px-5'
                 : 'px-3.5 pt-[calc(0.65rem+var(--safe-top))] pb-[calc(4.5rem+var(--safe-bottom))] sm:px-5 md:pt-[calc(2.5rem+var(--safe-top))] md:pb-8'
         )}
@@ -268,11 +329,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {!isPlayer ? (
           <CatalogFallbackBanner
             className={cn(
-              isHome
-                ? 'mb-2 mt-[calc(0.5rem+var(--safe-top))] px-3.5 sm:px-5'
+              isHome || isAdultHome
+                ? 'relative z-50 mb-2 mt-[calc(2.75rem+var(--safe-top))] px-3.5 sm:px-5'
                 : isAnime
                   ? 'mb-2 mt-[calc(2.75rem+var(--safe-top))]'
-                  : 'mb-3'
+                  : isAdultTitle
+                    ? 'mb-2 mt-2'
+                    : 'mb-3'
             )}
           />
         ) : null}
@@ -314,7 +377,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </PaneErrorBoundary>
         </div>
         {!keepAliveRoute ? (
-          <PaneErrorBoundary name="Page">{children}</PaneErrorBoundary>
+          <PaneErrorBoundary key={pathname} name="Page">
+            {children}
+          </PaneErrorBoundary>
         ) : null}
       </main>
 

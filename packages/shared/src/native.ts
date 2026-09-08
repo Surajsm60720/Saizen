@@ -1,4 +1,8 @@
 import type {
+  AdultEpisode,
+  AdultGenre,
+  AdultHomeSection,
+  AdultSearchHit,
   ExtraModuleCatalog,
   InstallModuleFromUrlOptions,
   InstallModuleOptions,
@@ -168,11 +172,37 @@ export interface SaizenNative {
   ): Promise<ResolveStreamsBatchEntry[]>
   /** Resolve + native AVPlayer fallback; records lastGoodModule on success. */
   resolveAndPlay?(options: ResolveAndPlayOptions): Promise<StreamCandidate>
-  /**
-   * After successful CDN `playStream`, record module success + lastGoodModule.
-   * Used by product Watch (resolveStreams → playStream) which skips resolveAndPlay.
-   */
+  /** After successful CDN `playStream`, record module success + lastGoodModule. */
   recordModuleSuccess?(options: RecordModuleSuccessOptions): Promise<void>
+
+  /** Adult Mode browse — NSFW module home sections (+ optional genres). Requires allowNsfw. */
+  browseAdultHome?(options: {
+    moduleId: string
+    allowNsfw: boolean
+    /** Genre/tag/order queries fetched in the same native session (avoids N× cold starts). */
+    railQueries?: string[]
+    /** Optional display titles parallel to railQueries. */
+    railTitles?: string[]
+  }): Promise<{
+    sections: AdultHomeSection[]
+    genres?: AdultGenre[]
+  }>
+  searchAdult?(options: {
+    moduleId: string
+    query: string
+    allowNsfw: boolean
+  }): Promise<{ results: AdultSearchHit[] }>
+  adultExtractEpisodes?(options: {
+    moduleId: string
+    showUrl: string
+    allowNsfw: boolean
+  }): Promise<{ episodes: AdultEpisode[] }>
+  adultExtractStreams?(options: {
+    moduleId: string
+    episodeUrl: string
+    allowNsfw: boolean
+  }): Promise<{ candidates: StreamCandidate[] }>
+
   /** Subscribe to native player position updates. Returns unsubscribe. */
   onPlaybackProgress?(
     cb: (progress: NativePlaybackProgress) => void

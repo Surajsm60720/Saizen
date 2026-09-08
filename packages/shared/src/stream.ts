@@ -120,3 +120,37 @@ export interface ExtraModuleCatalog {
   url: string
   label?: string | null
 }
+
+/** Card / hit from an NSFW stream module browse or search. */
+export interface AdultSearchHit {
+  title?: string
+  url?: string
+  image?: string
+  href?: string
+  poster?: string
+  cover?: string
+  [key: string]: unknown
+}
+
+export interface AdultHomeSection {
+  id?: string
+  title?: string
+  name?: string
+  items?: AdultSearchHit[]
+  [key: string]: unknown
+}
+
+export interface AdultGenre {
+  id?: string
+  name?: string
+  [key: string]: unknown
+}
+
+export interface AdultEpisode {
+  title?: string
+  url?: string
+  number?: number | string
+  episode?: number | string
+  image?: string
+  [key: string]: unknown
+}

@@ -31,12 +31,14 @@ export function PosterRail({
     >
       <div className="mb-3.5 flex items-baseline justify-between gap-3">
         <h2 className="text-section">{title}</h2>
-        {viewMoreHref && viewMorePreset ? (
+        {viewMoreHref ? (
           <Link
             href={viewMoreHref}
+            replace
+            scroll={false}
             onClick={() => {
               hapticPress('selection')
-              setPendingSearchPreset({ filters: viewMorePreset })
+              if (viewMorePreset) setPendingSearchPreset({ filters: viewMorePreset })
             }}
             className="shrink-0 text-xs font-medium text-primary transition-opacity active:opacity-70"
           >

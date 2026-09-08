@@ -51,6 +51,8 @@ public struct SaizenDownloadRecord: Codable {
   public var files: Int
   /// Queued while Incognito Mode was on. Same download folder; filtered in UI when Incognito is off.
   public var isIncognito: Bool?
+  /// Adult Mode / NSFW module download — filtered in UI when Adult Mode is off.
+  public var isAdult: Bool?
   /// HTTP headers for http/hls CDN downloads (Referer, User-Agent, etc.).
   public var headers: [String: String]?
 }
@@ -271,6 +273,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, AV
       date: Date().timeIntervalSince1970,
       files: 1,
       isIncognito: (options["isIncognito"] as? Bool) ?? false,
+      isAdult: (options["isAdult"] as? Bool) ?? false,
       headers: headers.isEmpty ? nil : headers
     )
     lock.lock()
@@ -1356,6 +1359,7 @@ private extension SaizenDownloadRecord {
     if let error { d["error"] = error }
     if let relativePath { d["relativePath"] = relativePath }
     d["isIncognito"] = isIncognito ?? false
+    d["isAdult"] = isAdult ?? false
     return d
   }
 

@@ -134,7 +134,8 @@ public final class ModuleStore: @unchecked Sendable {
     return modulesDir.appendingPathComponent(stored)
   }
 
-  /// Returns UTF-8 script source, re-downloading from `scriptUrl` if the cache file is missing.
+  /// Returns UTF-8 script source, re-downloading from `scriptUrl` if the cache
+  /// file is missing or a stale NSFW script lacks Adult catalog helpers.
   public func loadScriptSource(for moduleId: String) async throws -> String {
     let module: InstalledModule = try {
       lock.lock()
@@ -149,14 +150,28 @@ public final class ModuleStore: @unchecked Sendable {
     if let data = try? Data(contentsOf: fileURL),
        let source = String(data: data, encoding: .utf8),
        !source.isEmpty {
-      return source
+      let looksCurrent =
+        source.contains("function searchResults")
+        && (
+          !module.nsfw
+            || source.contains("saizen-adult-catalog-v6")
+        )
+      if looksCurrent {
+        return source
+      }
+      NSLog(
+        "[Saizen] ModuleStore stale NSFW script module=%@ — refreshing from %@",
+        module.id,
+        module.scriptUrl
+      )
+    } else {
+      NSLog(
+        "[Saizen] ModuleStore cache miss module=%@ path=%@ — re-downloading",
+        module.id,
+        fileURL.path
+      )
     }
 
-    NSLog(
-      "[Saizen] ModuleStore cache miss module=%@ path=%@ — re-downloading",
-      module.id,
-      fileURL.path
-    )
     try await installScript(
       id: module.id,
       name: module.name,

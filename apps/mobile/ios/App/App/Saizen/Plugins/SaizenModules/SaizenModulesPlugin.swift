@@ -22,7 +22,11 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "resolveStreams", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "resolveStreamsBatch", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "resolveAndPlay", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "recordModuleSuccess", returnType: CAPPluginReturnPromise)
+    CAPPluginMethod(name: "recordModuleSuccess", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "browseAdultHome", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "searchAdult", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "adultExtractEpisodes", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "adultExtractStreams", returnType: CAPPluginReturnPromise)
   ]
 
   /// Capacitor bridge calls must complete on the main queue — resolving from a
@@ -169,6 +173,190 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
       do {
         let result = try await Self.runModuleTest(id: id, query: query)
         self.resolve(call, result)
+      } catch {
+        self.reject(call, error.localizedDescription)
+      }
+    }
+  }
+
+  @objc func browseAdultHome(_ call: CAPPluginCall) {
+    guard call.getBool("allowNsfw") == true else {
+      reject(call, "Adult browse requires Adult Mode")
+      return
+    }
+    guard let moduleId = call.getString("moduleId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !moduleId.isEmpty
+    else {
+      reject(call, "Missing moduleId")
+      return
+    }
+    let railQueries = (call.getArray("railQueries", String.self) ?? [])
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    let railTitles = (call.getArray("railTitles", String.self) ?? [])
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    Task {
+      do {
+        let session = try await Self.openNsfwSession(moduleId: moduleId)
+        defer { session.teardown() }
+
+        // Skip getHomeSections when the web already sends catalog rails — that was
+        // an extra serialized round-trip before the slow sequential loop.
+        var sections: [[String: Any]] = []
+        let genres: [[String: Any]]
+        if railQueries.isEmpty {
+          async let home = session.getHomeSections()
+          async let gens = session.getGenres()
+          sections = try await home
+          genres = try await gens
+        } else {
+          // Haho rate-limits under Promise.all rail storms — sequential exception.
+          let serializeRails = moduleId.lowercased().contains("haho")
+          #if DEBUG
+          if serializeRails {
+            NSLog("[Saizen] browseAdultHome serial rails module=%@", moduleId)
+          }
+          #endif
+          let batches: [[[String: Any]]]
+          if serializeRails {
+            var rows: [[[String: Any]]] = []
+            for query in railQueries {
+              do {
+                rows.append(try await session.searchResults(query))
+              } catch {
+                #if DEBUG
+                NSLog(
+                  "[Saizen] browseAdultHome rail %@: %@",
+                  query,
+                  error.localizedDescription
+                )
+                #endif
+                rows.append([])
+              }
+            }
+            batches = rows
+          } else {
+            batches = try await session.searchResultsBatch(railQueries)
+          }
+          genres = try await session.getGenres()
+          var rails: [[String: Any]] = []
+          for (idx, results) in batches.enumerated() {
+            #if DEBUG
+            let q = idx < railQueries.count ? railQueries[idx] : "?"
+            NSLog("[Saizen] browseAdultHome rail %@ -> %d hits", q, results.count)
+            #endif
+            guard !results.isEmpty else { continue }
+            let query = idx < railQueries.count ? railQueries[idx] : "rail-\(idx)"
+            let title: String = {
+              if idx < railTitles.count, !railTitles[idx].isEmpty { return railTitles[idx] }
+              if query.lowercased().hasPrefix("order:") {
+                return query
+                  .dropFirst("order:".count)
+                  .replacingOccurrences(of: "-", with: " ")
+                  .capitalized
+              }
+              return query
+            }()
+            rails.append([
+              "id": query.lowercased(),
+              "title": title,
+              "items": results
+            ])
+          }
+          sections = rails
+        }
+
+        self.resolve(call, ["sections": sections, "genres": genres])
+      } catch {
+        self.reject(call, error.localizedDescription)
+      }
+    }
+  }
+
+  @objc func searchAdult(_ call: CAPPluginCall) {
+    guard call.getBool("allowNsfw") == true else {
+      reject(call, "Adult search requires Adult Mode")
+      return
+    }
+    guard let moduleId = call.getString("moduleId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !moduleId.isEmpty
+    else {
+      reject(call, "Missing moduleId")
+      return
+    }
+    let query = call.getString("query")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !query.isEmpty else {
+      reject(call, "Missing query")
+      return
+    }
+
+    Task {
+      do {
+        let session = try await Self.openNsfwSession(moduleId: moduleId)
+        defer { session.teardown() }
+        let results = try await session.searchResults(query)
+        self.resolve(call, ["results": results])
+      } catch {
+        self.reject(call, error.localizedDescription)
+      }
+    }
+  }
+
+  @objc func adultExtractEpisodes(_ call: CAPPluginCall) {
+    guard call.getBool("allowNsfw") == true else {
+      reject(call, "Adult extract requires Adult Mode")
+      return
+    }
+    guard let moduleId = call.getString("moduleId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !moduleId.isEmpty
+    else {
+      reject(call, "Missing moduleId")
+      return
+    }
+    guard let showUrl = call.getString("showUrl")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !showUrl.isEmpty
+    else {
+      reject(call, "Missing showUrl")
+      return
+    }
+
+    Task {
+      do {
+        let session = try await Self.openNsfwSession(moduleId: moduleId)
+        defer { session.teardown() }
+        let episodes = try await session.extractEpisodes(showUrl)
+        self.resolve(call, ["episodes": episodes])
+      } catch {
+        self.reject(call, error.localizedDescription)
+      }
+    }
+  }
+
+  @objc func adultExtractStreams(_ call: CAPPluginCall) {
+    guard call.getBool("allowNsfw") == true else {
+      reject(call, "Adult extract requires Adult Mode")
+      return
+    }
+    guard let moduleId = call.getString("moduleId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !moduleId.isEmpty
+    else {
+      reject(call, "Missing moduleId")
+      return
+    }
+    guard let episodeUrl = call.getString("episodeUrl")?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !episodeUrl.isEmpty
+    else {
+      reject(call, "Missing episodeUrl")
+      return
+    }
+
+    Task {
+      do {
+        let session = try await Self.openNsfwSession(moduleId: moduleId)
+        defer { session.teardown() }
+        let streams = try await session.extractStreamUrl(episodeUrl)
+        self.resolve(call, ["candidates": streams.map { Self.encodeCandidate($0) }])
       } catch {
         self.reject(call, error.localizedDescription)
       }
@@ -407,7 +595,27 @@ public class SaizenModulesPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
     if let quality = c.quality { dict["quality"] = quality }
     if let title = c.title { dict["title"] = title }
+    if let subtitle = c.subtitle { dict["subtitle"] = subtitle.absoluteString }
     return dict
+  }
+
+  private static func openNsfwSession(moduleId: String) async throws -> ModuleResolveSession {
+    guard let module = ModuleStore.shared.list().first(where: { $0.id == moduleId }) else {
+      throw ModuleStoreError.notFound(moduleId)
+    }
+    guard module.nsfw else {
+      throw ModuleRuntimeError.scriptError("Module is not marked NSFW")
+    }
+    guard module.enabled else {
+      throw ModuleRuntimeError.scriptError("Module is disabled")
+    }
+    let scriptSource = try await ModuleStore.shared.loadScriptSource(for: moduleId)
+    let baseURL = module.baseUrl.flatMap(URL.init(string:))
+    return try ModuleResolveSession(
+      moduleId: module.id,
+      scriptSource: scriptSource,
+      baseURL: baseURL
+    )
   }
 
   private static func runModuleTest(id: String, query: String?) async throws -> [String: Any] {

@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.4.4'
+export const APP_VERSION = '1.4.6'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,30 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.6',
+    date: '2026-09-08',
+    title: 'Adult home polish & provider stability',
+    highlights: [
+      'Adult home catalog rails (Recently uploaded / New releases / Most viewed + tags) with faster parallel browse; haho stays sequential to avoid rate-limit crashes',
+      'Adult title page uses an anime-style hero (cover + safe-area title) and episode Play/Save list',
+      'Provider switch: per-module home cache, soft cross-rail dedupe so categories stay visible, module scripts auto-refresh (catalog v6)',
+      'Haho covers via JSON search / top tabs; Mama episode listing pages collapse to series cards',
+      'Native ModuleFetchSession uses a locked in-memory cookie jar (fixes EXC_BAD_ACCESS under parallel haho fetches)',
+      'Turning Adult Mode off also turns Incognito off'
+    ]
+  },
+  {
+    version: '1.4.5',
+    date: '2026-09-08',
+    title: 'Adult Mode master switch',
+    highlights: [
+      'Settings → Adult settings: one master switch (no duplicate on main Settings); primary source is a dropdown',
+      'SFW Modules vs Adult Modules are separate pages — NSFW never appears in Settings → Modules',
+      'Torrent Extensions catalog removed; Adult home matches SFW home hero/rails layout',
+      'Fifth tab + module-backed Adult search/title; main Search stays SFW; Incognito auto-on once'
+    ]
+  },
   {
     version: '1.4.4',
     date: '2026-09-07',

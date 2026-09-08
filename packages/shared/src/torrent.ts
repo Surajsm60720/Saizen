@@ -67,6 +67,8 @@ export interface LibraryEntry {
   relativePath?: string
   /** Queued while Incognito Mode was on — hidden from library UI when Incognito is off. */
   isIncognito?: boolean
+  /** Adult Mode / NSFW source download — hidden when Adult Mode is off. */
+  isAdult?: boolean
 }
 
 export interface DownloadJob {
@@ -89,6 +91,7 @@ export interface DownloadJob {
   error?: string
   hash?: string
   isIncognito?: boolean
+  isAdult?: boolean
 }
 
 export interface EnqueueDownloadOptions {
@@ -102,6 +105,7 @@ export interface EnqueueDownloadOptions {
   sourceLabel?: string
   seasonLabel?: string
   isIncognito?: boolean
+  isAdult?: boolean
   /** When omitted, native infers from source (magnet/.torrent → torrent, .m3u8 → hls, else http). */
   kind?: DownloadKind
   /** Request headers for http/hls CDN downloads (Referer, User-Agent, etc.). */

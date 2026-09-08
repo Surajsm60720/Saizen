@@ -65,9 +65,115 @@ public final class ModuleResolveSession: @unchecked Sendable {
     return try normalizedResultRows(from: value)
   }
 
+  /// Run many `searchResults` queries concurrently inside one JS context (shared cookie jar).
+  /// Network waits happen on URLSession; wall-clock ≈ slowest rail instead of sum.
+  public func searchResultsBatch(_ queries: [String]) async throws -> [[[String: Any]]] {
+    guard !queries.isEmpty else { return [] }
+    let payload = try JSONSerialization.data(withJSONObject: queries)
+    guard let json = String(data: payload, encoding: .utf8) else {
+      throw ModuleRuntimeError.invalidReturn
+    }
+
+    let value = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any, Error>) in
+      contextQueue.async {
+        guard !self.isTornDown else {
+          continuation.resume(throwing: ModuleRuntimeError.sessionEnded)
+          return
+        }
+        guard let function = self.context.objectForKeyedSubscript("searchResults"),
+              !function.isUndefined
+        else {
+          continuation.resume(throwing: ModuleRuntimeError.missingFunction("searchResults"))
+          return
+        }
+
+        let script = """
+        (function(queries) {
+          return Promise.all(queries.map(function(q) {
+            return Promise.resolve(searchResults(q)).then(
+              function(rows) { return rows; },
+              function() { return []; }
+            );
+          }));
+        })(\(json))
+        """
+        let result = self.context.evaluateScript(script)
+        if let exception = self.context.exception {
+          self.context.exception = nil
+          continuation.resume(throwing: ModuleRuntimeError.scriptError(exception.toString() ?? "unknown"))
+          return
+        }
+
+        let didResume = ResumeOnce()
+        let resolveBlock: @convention(block) (JSValue?) -> Void = { value in
+          didResume.resume {
+            continuation.resume(returning: value?.toObject() as Any)
+          }
+        }
+        let rejectBlock: @convention(block) (JSValue?) -> Void = { value in
+          didResume.resume {
+            let message = value?.toString() ?? "unknown"
+            continuation.resume(throwing: ModuleRuntimeError.scriptError(message))
+          }
+        }
+        self.context.objectForKeyedSubscript("__saizenAwait").call(
+          withArguments: [result as Any, resolveBlock, rejectBlock]
+        )
+        if let exception = self.context.exception {
+          self.context.exception = nil
+          didResume.resume {
+            continuation.resume(throwing: ModuleRuntimeError.scriptError(exception.toString() ?? "unknown"))
+          }
+        }
+      }
+    }
+
+    let decoded = Self.decodeModuleJSON(value) ?? value
+    guard let outer = decoded as? [Any] else {
+      throw ModuleRuntimeError.invalidReturn
+    }
+    return try outer.map { item -> [[String: Any]] in
+      try normalizedResultRows(from: item)
+    }
+  }
+
   public func extractEpisodes(_ showUrl: String) async throws -> [[String: Any]] {
     let value = try await callModuleFunction("extractEpisodes", argument: showUrl)
     return try normalizedResultRows(from: value)
+  }
+
+  /// Optional browse API — returns [] if the module does not implement `getHomeSections`.
+  public func getHomeSections() async throws -> [[String: Any]] {
+    do {
+      let value = try await callModuleFunction("getHomeSections", argument: "")
+      let decoded = Self.decodeModuleJSON(value) ?? value
+      if let arr = decoded as? [Any] {
+        return arr.compactMap { Self.dictionary(from: $0) }
+      }
+      return try normalizedResultRows(from: value)
+    } catch ModuleRuntimeError.missingFunction {
+      return []
+    }
+  }
+
+  /// Optional — string names or `{ id, name }` objects. Empty if unimplemented.
+  public func getGenres() async throws -> [[String: Any]] {
+    do {
+      let value = try await callModuleFunction("getGenres", argument: "")
+      let decoded = Self.decodeModuleJSON(value) ?? value
+      if let strings = decoded as? [String] {
+        return strings.map { ["id": $0, "name": $0] }
+      }
+      if let arr = decoded as? [Any] {
+        return arr.compactMap { item -> [String: Any]? in
+          if let s = item as? String { return ["id": s, "name": s] }
+          return Self.dictionary(from: item)
+        }
+      }
+      return []
+    } catch ModuleRuntimeError.missingFunction {
+      return []
+    }
   }
 
   public func extractStreamUrl(_ episodeUrl: String) async throws -> [StreamCandidate] {
@@ -380,17 +486,17 @@ public final class ModuleResolveSession: @unchecked Sendable {
     // Set-Cookie from JS, so modules often POST with a missing/wrong header → 419.
     // Always prefer the session jar value when present.
     if method != "GET", method != "HEAD", method != "OPTIONS" {
-      Self.applyLaravelXsrfHeader(to: &request, cookieStorage: fetchSession.cookieStorage)
+      applyLaravelXsrfHeader(to: &request)
     }
 
     return request
   }
 
   /// Sets `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie (overrides module value).
-  private static func applyLaravelXsrfHeader(to request: inout URLRequest, cookieStorage: HTTPCookieStorage) {
+  private func applyLaravelXsrfHeader(to request: inout URLRequest) {
     guard let url = request.url, let host = url.host?.lowercased() else { return }
-    let forURL = cookieStorage.cookies(for: url) ?? []
-    let fallback = (cookieStorage.cookies ?? []).filter { cookie in
+    let forURL = fetchSession.cookies(for: url)
+    let fallback = fetchSession.allCookies().filter { cookie in
       let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
       return host == domain || host.hasSuffix("." + domain)
     }
@@ -417,7 +523,7 @@ public final class ModuleResolveSession: @unchecked Sendable {
     // HTTPCookieStorage). Laravel/Axios modules need to read XSRF-TOKEN from
     // set-cookie — synthesize it from the session jar for this response URL.
     if headers["set-cookie"] == nil, let url = response.url {
-      let cookies = fetchSession.cookieStorage.cookies(for: url) ?? []
+      let cookies = fetchSession.cookies(for: url)
       if !cookies.isEmpty {
         headers["set-cookie"] = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: ", ")
       }

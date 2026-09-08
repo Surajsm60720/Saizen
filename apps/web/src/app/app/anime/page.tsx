@@ -702,7 +702,7 @@ function AnimeDetail() {
             episode: ep.number,
             idMal: media.idMal ?? null,
             query,
-            allowNsfw: isAdultMedia(media)
+            allowNsfw: false
           })
           const list = candidates ?? []
           setStreamCandidates(list)
@@ -816,7 +816,7 @@ function AnimeDetail() {
           episodes: pending.map((ep) => ep.number),
           idMal: media.idMal ?? null,
           query,
-          allowNsfw: isAdultMedia(media)
+          allowNsfw: false
         })
         const byEp = new Map(batch.map((row) => [row.episode, row.candidates]))
         for (const ep of pending) {
@@ -845,7 +845,7 @@ function AnimeDetail() {
                 idMal: media.idMal ?? null,
                 query,
                 fast: true,
-                allowNsfw: isAdultMedia(media)
+                allowNsfw: false
               })) ?? []
             const pick = pickStreamForQuality(candidates, quality)
             if (!pick) {

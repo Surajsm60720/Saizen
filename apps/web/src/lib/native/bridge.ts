@@ -153,6 +153,27 @@ export async function installSaizenBridge(): Promise<void> {
     ): Promise<{ results: ResolveStreamsBatchEntry[] }>
     resolveAndPlay(o: ResolveAndPlayOptions): Promise<{ candidate: StreamCandidate }>
     recordModuleSuccess(o: RecordModuleSuccessOptions): Promise<{ ok?: boolean }>
+    browseAdultHome(o: {
+      moduleId: string
+      allowNsfw: boolean
+      railQueries?: string[]
+      railTitles?: string[]
+    }): Promise<{ sections: unknown[]; genres?: unknown[] }>
+    searchAdult(o: {
+      moduleId: string
+      query: string
+      allowNsfw: boolean
+    }): Promise<{ results: unknown[] }>
+    adultExtractEpisodes(o: {
+      moduleId: string
+      showUrl: string
+      allowNsfw: boolean
+    }): Promise<{ episodes: unknown[] }>
+    adultExtractStreams(o: {
+      moduleId: string
+      episodeUrl: string
+      allowNsfw: boolean
+    }): Promise<{ candidates: StreamCandidate[] }>
   }>('SaizenModules')
 
   void SaizenPlayer.addListener('playbackProgress', (progress) => {
@@ -222,12 +243,22 @@ export async function installSaizenBridge(): Promise<void> {
       return catalogs ?? []
     },
     async installModule(options) {
-      const { modules } = await SaizenModules.installModule(options)
-      return modules ?? []
+      const res = await SaizenModules.installModule(options)
+      const modules = Array.isArray(res?.modules)
+        ? res.modules
+        : Array.isArray(res)
+          ? res
+          : []
+      return modules as InstalledModule[]
     },
     async installModuleFromUrl(options) {
-      const { modules } = await SaizenModules.installModuleFromUrl(options)
-      return modules ?? []
+      const res = await SaizenModules.installModuleFromUrl(options)
+      const modules = Array.isArray(res?.modules)
+        ? res.modules
+        : Array.isArray(res)
+          ? res
+          : []
+      return modules as InstalledModule[]
     },
     async testModule(options) {
       return SaizenModules.testModule(options)
@@ -257,6 +288,25 @@ export async function installSaizenBridge(): Promise<void> {
     },
     async recordModuleSuccess(options) {
       await SaizenModules.recordModuleSuccess(options)
+    },
+    async browseAdultHome(options) {
+      const res = await SaizenModules.browseAdultHome(options)
+      return {
+        sections: (res.sections ?? []) as import('@saizen/shared').AdultHomeSection[],
+        genres: (res.genres ?? []) as import('@saizen/shared').AdultGenre[]
+      }
+    },
+    async searchAdult(options) {
+      const { results } = await SaizenModules.searchAdult(options)
+      return { results: (results ?? []) as import('@saizen/shared').AdultSearchHit[] }
+    },
+    async adultExtractEpisodes(options) {
+      const { episodes } = await SaizenModules.adultExtractEpisodes(options)
+      return { episodes: (episodes ?? []) as import('@saizen/shared').AdultEpisode[] }
+    },
+    async adultExtractStreams(options) {
+      const { candidates } = await SaizenModules.adultExtractStreams(options)
+      return { candidates: candidates ?? [] }
     },
     async onPlaybackProgress(cb) {
       const handle = await SaizenPlayer.addListener('playbackProgress', cb)

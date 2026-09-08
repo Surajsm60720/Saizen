@@ -316,7 +316,7 @@ public class SaizenTorrentPlugin: CAPPlugin, CAPBridgedPlugin {
       "source", "mediaId", "episode", "seriesTitle", "episodeTitle", "poster",
       "resolution", "sourceLabel", "seasonLabel", "maxParallelDownloads", "wifiOnly",
       "preferredQuality", "torrentPersist", "torrentStreamedDownload", "torrentSpeed",
-      "maxConns", "hashes", "ids", "id", "kind", "isIncognito"
+      "maxConns", "hashes", "ids", "id", "kind", "isIncognito", "isAdult"
     ]
     for key in keys {
       if let n = call.getInt(key) {
