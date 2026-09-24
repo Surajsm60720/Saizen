@@ -6,6 +6,10 @@ import {
   getIncognitoSessionContinueKey,
   isIncognitoMode
 } from '@/lib/privacy/incognito'
+import {
+  advanceContinueAfterCompletion,
+  reconcileContinueWatching
+} from './continueReconcile'
 
 const KEY = 'saizen:continue'
 
@@ -76,17 +80,37 @@ export function listContinueWatching(): ContinueEntry[] {
 }
 
 /** Merge AniList CURRENT entries with local continue rail (newer wins per title). */
-export function mergeContinueWatching(remote: ContinueEntry[]): ContinueEntry[] {
+export function mergeContinueWatching(
+  remote: ContinueEntry[],
+  opts?: { dropIds?: Iterable<number> }
+): ContinueEntry[] {
   if (isIncognitoMode()) return listContinueWatching()
   if (!getWatchSettings().continueWatchingEnabled) return []
-  const map = new Map<number, ContinueEntry>()
-  for (const e of [...read(), ...remote]) {
-    const prev = map.get(e.anilistId)
-    if (!prev || e.updatedAt >= prev.updatedAt) map.set(e.anilistId, e)
-  }
-  const merged = [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+  const merged = reconcileContinueWatching(read(), remote, opts?.dropIds ?? [])
   write(merged)
-  return merged.slice(0, 24)
+  return merged
+}
+
+/** After an episode is marked watched, bump the rail to the next episode or drop the title. */
+export function advanceContinueWatching(
+  anilistId: number,
+  completedEpisode: number,
+  totalEpisodes?: number | null
+) {
+  if (!anilistId || !completedEpisode) return
+  const local = read()
+  const current = local.find((e) => e.anilistId === anilistId)
+  const next = advanceContinueAfterCompletion(
+    current,
+    completedEpisode,
+    totalEpisodes
+  )
+  if (next === 'remove') {
+    write(local.filter((e) => e.anilistId !== anilistId))
+    return
+  }
+  if (!next) return
+  write([next as ContinueEntry, ...local.filter((e) => e.anilistId !== anilistId)])
 }
 
 /**

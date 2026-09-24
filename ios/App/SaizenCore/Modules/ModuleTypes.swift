@@ -4,6 +4,18 @@ public enum StreamKind: String, Codable, Sendable {
   case hls, mp4, other
 }
 
+public struct SidecarSubtitle: Codable, Sendable, Equatable {
+  public var url: URL
+  public var label: String
+  public var language: String?
+
+  public init(url: URL, label: String, language: String? = nil) {
+    self.url = url
+    self.label = label
+    self.language = language
+  }
+}
+
 public struct StreamCandidate: Codable, Sendable, Equatable {
   public var url: URL
   public var headers: [String: String]
@@ -11,8 +23,9 @@ public struct StreamCandidate: Codable, Sendable, Equatable {
   public var title: String?
   public var moduleId: String
   public var kind: StreamKind
-  /// Optional external WebVTT (or similar) sidecar URL from `extractStreamUrl.subtitle`.
+  /// Optional sidecar URL from `subtitle` / Sora `subtitles` / `tracks` (HTTPS).
   public var subtitle: URL?
+  public var subtitleTracks: [SidecarSubtitle]
 
   public init(
     url: URL,
@@ -21,7 +34,8 @@ public struct StreamCandidate: Codable, Sendable, Equatable {
     title: String? = nil,
     moduleId: String,
     kind: StreamKind,
-    subtitle: URL? = nil
+    subtitle: URL? = nil,
+    subtitleTracks: [SidecarSubtitle] = []
   ) {
     self.url = url
     self.headers = headers
@@ -30,6 +44,7 @@ public struct StreamCandidate: Codable, Sendable, Equatable {
     self.moduleId = moduleId
     self.kind = kind
     self.subtitle = subtitle
+    self.subtitleTracks = subtitleTracks
   }
 
   public static func kind(for url: URL) -> StreamKind {

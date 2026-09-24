@@ -485,7 +485,9 @@ public final class StreamResolver: @unchecked Sendable {
           title: displayTitle,
           context: context,
           headers: candidate.headers,
-          subtitleURL: candidate.subtitle
+          subtitleURL: candidate.subtitle,
+          subtitleTracks: candidate.subtitleTracks,
+          streamTitle: candidate.title
         )
       }
 

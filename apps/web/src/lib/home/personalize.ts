@@ -7,6 +7,7 @@ import {
   peekViewerListCache,
   type AnimeMedia
 } from '@/lib/anilist'
+import { dropIdsFromListEntries } from '@/lib/watch/continueReconcile'
 import { isAnilistConnected, isMalConnected } from '@/lib/auth/tokens'
 import { whenBridgeReady } from '@/lib/native/ready'
 import { isIncognitoMode } from '@/lib/privacy/incognito'
@@ -39,7 +40,9 @@ function resultFromEntries(
   genrePicksFallback?: AnimeMedia[],
   listOn = true
 ): HomePersonalizationResult {
-  const cont = mergeContinueWatching(continueEntriesFromList(entries))
+  const cont = mergeContinueWatching(continueEntriesFromList(entries), {
+    dropIds: dropIdsFromListEntries(entries)
+  })
   const related = derivePrequelsSequels(entries)
   const topGenres = deriveTopGenres(entries, 3)
   return {

@@ -31,6 +31,8 @@ public final class ModuleResolveSession: @unchecked Sendable {
   private let timerLock = NSLock()
   private var nextTimerId = 1
   private var pendingTimers: [Int: DispatchWorkItem] = [:]
+  private let harvestLock = NSLock()
+  private var harvestedSubtitleTracks: [[String: Any]] = []
 
   public init(moduleId: String, scriptSource: String, baseURL: URL?) throws {
     self.moduleId = moduleId
@@ -107,7 +109,7 @@ public final class ModuleResolveSession: @unchecked Sendable {
         let didResume = ResumeOnce()
         let resolveBlock: @convention(block) (JSValue?) -> Void = { value in
           didResume.resume {
-            continuation.resume(returning: value?.toObject() as Any)
+            continuation.resume(returning: self.boxedModuleValue(value))
           }
         }
         let rejectBlock: @convention(block) (JSValue?) -> Void = { value in
@@ -177,9 +179,10 @@ public final class ModuleResolveSession: @unchecked Sendable {
   }
 
   public func extractStreamUrl(_ episodeUrl: String) async throws -> [StreamCandidate] {
+    clearHarvestedSubtitles()
     let value = try await callModuleFunction("extractStreamUrl", argument: episodeUrl)
     let decoded = Self.decodeModuleJSON(value) ?? value
-    guard let object = Self.dictionary(from: decoded),
+    guard var object = Self.dictionary(from: decoded),
           let streams = object["streams"] as? [Any] else {
       NSLog(
         "[Saizen] ModuleRuntime extractStreamUrl invalid type=%@",
@@ -188,13 +191,24 @@ public final class ModuleResolveSession: @unchecked Sendable {
       throw ModuleRuntimeError.invalidReturn
     }
 
-    let sharedSubtitle: URL? = {
-      guard let raw = object["subtitle"] as? String, !raw.isEmpty,
-            let url = URL(string: raw, relativeTo: baseURL)?.absoluteURL,
-            url.scheme?.lowercased() == "https" else { return nil }
-      return url
-    }()
+    let payloadKeys = object.keys.sorted().joined(separator: ",")
+    let stream0Keys =
+      (streams.first.flatMap { Self.dictionary(from: $0) }?.keys.sorted().joined(separator: ",")) ?? "-"
+    NSLog("[Saizen] extractStreamUrl keys=%@ stream0Keys=%@", payloadKeys, stream0Keys)
+    if let subs = object["subtitles"] ?? object["subs"] ?? object["tracks"] {
+      NSLog("[Saizen] extractStreamUrl subtitlesPreview=%@", Self.previewValue(subs))
+    }
+    let harvested = copyHarvestedSubtitles()
+    if ModuleSubtitlePicker.pickURL(payload: object, stream: nil, baseURL: baseURL) == nil,
+       !harvested.isEmpty {
+      object["subtitles"] = harvested
+      NSLog(
+        "[Saizen] extractStreamUrl using %d harvested subtitle(s)",
+        harvested.count
+      )
+    }
 
+    var loggedSubtitle = false
     return try streams.compactMap { item -> StreamCandidate? in
       guard var stream = Self.dictionary(from: item) else {
         throw ModuleRuntimeError.invalidReturn
@@ -216,12 +230,24 @@ public final class ModuleResolveSession: @unchecked Sendable {
         (stream["quality"] as? String)
         ?? (stream["resolution"] as? String)
         ?? Self.qualityFromTitle(title)
-      let perStreamSubtitle: URL? = {
-        guard let raw = stream["subtitle"] as? String, !raw.isEmpty,
-              let u = URL(string: raw, relativeTo: baseURL)?.absoluteURL,
-              u.scheme?.lowercased() == "https" else { return nil }
-        return u
-      }()
+      let tracks = ModuleSubtitlePicker.listTracks(
+        payload: object,
+        stream: stream,
+        baseURL: baseURL
+      )
+      let picked = tracks.first?.url ?? ModuleSubtitlePicker.pickURL(
+        payload: object,
+        stream: stream,
+        baseURL: baseURL
+      )
+      if let picked, !loggedSubtitle {
+        loggedSubtitle = true
+        NSLog(
+          "[Saizen] extractStreamUrl picked subtitle=%@ tracks=%d",
+          picked.absoluteString,
+          tracks.count
+        )
+      }
       return StreamCandidate(
         url: url,
         headers: headers,
@@ -229,7 +255,8 @@ public final class ModuleResolveSession: @unchecked Sendable {
         title: title,
         moduleId: moduleId,
         kind: StreamCandidate.kind(for: url),
-        subtitle: perStreamSubtitle ?? sharedSubtitle
+        subtitle: picked,
+        subtitleTracks: tracks
       )
     }
   }
@@ -443,6 +470,14 @@ public final class ModuleResolveSession: @unchecked Sendable {
       this.__saizenAwait = function(value, resolve, reject) {
         Promise.resolve(value).then(resolve, reject);
       };
+      // JSContext toObject() flattens nested arrays to empty strings. Prefer JSON.
+      this.__saizenBox = function(value) {
+        if (value === null || value === undefined) return null;
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          return value;
+        }
+        try { return JSON.stringify(value); } catch (e) { return value; }
+      };
       """
     )
   }
@@ -553,6 +588,12 @@ public final class ModuleResolveSession: @unchecked Sendable {
       "url": response.url?.absoluteString ?? ""
     ]
 
+    let harvested = ModuleSubtitleHarvest.tracks(fromJSONData: data)
+    if !harvested.isEmpty {
+      addHarvestedSubtitles(harvested)
+      NSLog("[Saizen] harvested %d subtitle track(s) from fetch", harvested.count)
+    }
+
     let json = Self.jsonLiteral(payload)
     return context.evaluateScript(
       """
@@ -609,7 +650,7 @@ public final class ModuleResolveSession: @unchecked Sendable {
         let didResume = ResumeOnce()
         let resolveBlock: @convention(block) (JSValue?) -> Void = { value in
           didResume.resume {
-            continuation.resume(returning: value?.toObject() as Any)
+            continuation.resume(returning: self.boxedModuleValue(value))
           }
         }
         let rejectBlock: @convention(block) (JSValue?) -> Void = { value in
@@ -628,6 +669,42 @@ public final class ModuleResolveSession: @unchecked Sendable {
         }
       }
     }
+  }
+
+  /// Prefer JSON.stringify so nested `subtitles` arrays survive JSContext.
+  /// `JSValue.toObject()` has been observed to flatten them to an empty string.
+  private func clearHarvestedSubtitles() {
+    harvestLock.lock()
+    harvestedSubtitleTracks = []
+    harvestLock.unlock()
+  }
+
+  private func addHarvestedSubtitles(_ tracks: [[String: Any]]) {
+    harvestLock.lock()
+    harvestedSubtitleTracks.append(contentsOf: tracks)
+    harvestLock.unlock()
+  }
+
+  private func copyHarvestedSubtitles() -> [[String: Any]] {
+    harvestLock.lock()
+    defer { harvestLock.unlock() }
+    return harvestedSubtitleTracks
+  }
+
+  private func boxedModuleValue(_ value: JSValue?) -> Any {
+    guard let value, !value.isUndefined, !value.isNull else { return NSNull() }
+    if value.isString { return value.toString() ?? "" }
+    if value.isBoolean { return value.toBool() }
+    if value.isNumber { return value.toNumber() ?? 0 }
+    let boxed = context.objectForKeyedSubscript("__saizenBox").call(withArguments: [value])
+    if let boxed, boxed.isString, let text = boxed.toString(), text != "undefined" {
+      if let data = text.data(using: .utf8),
+         let parsed = try? JSONSerialization.jsonObject(with: data) {
+        return parsed
+      }
+      return text
+    }
+    return value.toObject() as Any
   }
 
   private var isTornDown: Bool {
@@ -677,6 +754,21 @@ public final class ModuleResolveSession: @unchecked Sendable {
       }
       return dictionary
     }
+  }
+
+  private static func previewValue(_ value: Any) -> String {
+    if let s = value as? String {
+      return "string(len=\(s.count)) \(String(s.prefix(400)))"
+    }
+    if let s = value as? NSString {
+      return "nsstring(len=\(s.length)) \(String((s as String).prefix(400)))"
+    }
+    if JSONSerialization.isValidJSONObject(value),
+       let data = try? JSONSerialization.data(withJSONObject: value),
+       let text = String(data: data, encoding: .utf8) {
+      return String(text.prefix(500))
+    }
+    return String(describing: type(of: value))
   }
 
   private static func decodeModuleJSON(_ value: Any) -> Any? {

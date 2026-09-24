@@ -1,5 +1,5 @@
 /** App marketing version — keep in sync with iOS MARKETING_VERSION. */
-export const APP_VERSION = '1.4.6'
+export const APP_VERSION = '1.4.7'
 export const APP_VERSION_LABEL = `v${APP_VERSION}`
 
 export type ChangelogEntry = {
@@ -10,6 +10,17 @@ export type ChangelogEntry = {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.7',
+    date: '2026-09-24',
+    title: 'Soft captions & Continue Watching cleanup',
+    highlights: [
+      'Player loads sidecar WebVTT from module fetch tracks when extractStreamUrl leaves subtitles empty (Animex/Sora)',
+      'Captions button in the player tray: Off plus unique languages; overlay lifts above chrome and drops when controls hide',
+      'No stacked text: empty HLS CC is ignored; hard-sub / real in-stream captions default Off or use the in-stream track only',
+      'Continue Watching drops titles completed or dropped on AniList/MAL so finishing elsewhere clears the rail'
+    ]
+  },
   {
     version: '1.4.6',
     date: '2026-09-08',

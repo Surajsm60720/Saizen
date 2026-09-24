@@ -148,7 +148,6 @@ export default function HomePage() {
     // Keep-alive / back-nav: skip public refetch, but always (re)check personalization
     // after the bridge — isHomeFresh used to skip this and left rails empty until Settings.
     if (isHomeFresh()) {
-      setContinueWatching(listContinueWatching())
       setLoading(false)
       void whenBridgeReady().then(() => applyPersonal())
       return () => {

@@ -121,6 +121,14 @@ export function updateWatchProgress(opts: {
   map[key] = progress
   writeMap(map)
 
+  if (justCompleted) {
+    void import('@/lib/watch/continue')
+      .then(({ advanceContinueWatching }) => {
+        advanceContinueWatching(anilistId, episode, opts.totalEpisodes)
+      })
+      .catch(() => {})
+  }
+
   // Incognito: never push completions to AniList/MAL or mark pending sync.
   if (justCompleted && !isIncognitoMode()) {
     void import('@/lib/auth/sync')

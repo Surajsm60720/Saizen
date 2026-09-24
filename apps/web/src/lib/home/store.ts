@@ -8,6 +8,7 @@ import {
   continueEntriesFromList
 } from '@/lib/anilist'
 import { listContinueWatching, mergeContinueWatching, type ContinueEntry } from '@/lib/watch/continue'
+import { dropIdsFromListEntries } from '@/lib/watch/continueReconcile'
 
 export type HomeSnapshot = {
   trending: AnimeMedia[]
@@ -90,7 +91,9 @@ export function readHomeSnapshot(): HomeSnapshot {
   const list = peekViewerListCache({ allowStale: true })
   if (list?.length) {
     snap.anilistOn = true
-    snap.continueWatching = mergeContinueWatching(continueEntriesFromList(list))
+    snap.continueWatching = mergeContinueWatching(continueEntriesFromList(list), {
+      dropIds: dropIdsFromListEntries(list)
+    })
     snap.related = derivePrequelsSequels(list)
     snap.topGenres = deriveTopGenres(list, 3)
   }

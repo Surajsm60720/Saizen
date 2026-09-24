@@ -3,7 +3,7 @@ import AVKit
 import UIKit
 
 /// Fullscreen custom AVPlayer chrome for CDN Watch (clean-room Shirox-pattern UX).
-final class SaizenAVPlayerViewController: UIViewController {
+final class SaizenAVPlayerViewController: UIViewController, AVPlayerItemLegibleOutputPushDelegate {
   var onDismiss: (() -> Void)?
 
   private let player: AVPlayer
@@ -27,6 +27,7 @@ final class SaizenAVPlayerViewController: UIViewController {
   private let showTitleLabel = UILabel()
   private let skipSegmentButton = UIButton(type: .system)
   private let speedButton = UIButton(type: .system)
+  private let captionsButton = UIButton(type: .system)
   private let aspectButton = UIButton(type: .system)
   private let nextEpisodeButton = UIButton(type: .system)
   private let actionsTray = UIStackView()
@@ -71,22 +72,35 @@ final class SaizenAVPlayerViewController: UIViewController {
 
   private let subtitleURL: URL?
   private let subtitleHeaders: [String: String]
+  private let subtitleTracks: [SidecarSubtitle]
+  private let streamTitle: String?
   private let subtitleLabel = UILabel()
   private var subtitleCues: [(start: Double, end: Double, text: String)] = []
   private var subtitleLoadTask: URLSessionDataTask?
+  private var playlistSubtitleTask: URLSessionDataTask?
+  private var legibleOutput: AVPlayerItemLegibleOutput?
+  private var embeddedOptions: [SaizenMediaOption] = []
+  private var selectedCaptionKind: SaizenCaptionMenuItem.Kind = .off
+  private var userPickedCaption = false
+  private var subtitleBottomChrome: NSLayoutConstraint?
+  private var subtitleBottomHidden: NSLayoutConstraint?
 
   init(
     player: AVPlayer,
     title: String?,
     context: PlaybackContext,
     subtitleURL: URL? = nil,
-    subtitleHeaders: [String: String] = [:]
+    subtitleHeaders: [String: String] = [:],
+    subtitleTracks: [SidecarSubtitle] = [],
+    streamTitle: String? = nil
   ) {
     self.player = player
     self.titleText = title
     self.playbackContext = context
     self.subtitleURL = subtitleURL
     self.subtitleHeaders = subtitleHeaders
+    self.subtitleTracks = subtitleTracks
+    self.streamTitle = streamTitle
     super.init(nibName: nil, bundle: nil)
     modalPresentationStyle = .fullScreen
   }
@@ -103,10 +117,11 @@ final class SaizenAVPlayerViewController: UIViewController {
     configureVideo()
     configureChrome()
     configureGestures()
+    installLegibleOutput()
     installObservers()
     applySkipRanges()
     scheduleHideChrome()
-    loadExternalSubtitlesIfNeeded()
+    applyInitialSidecarIfSafe()
   }
 
   override func viewDidAppear(_ animated: Bool) {
@@ -150,6 +165,7 @@ final class SaizenAVPlayerViewController: UIViewController {
 
   deinit {
     subtitleLoadTask?.cancel()
+    playlistSubtitleTask?.cancel()
     tearDownObservers()
   }
 
@@ -273,6 +289,9 @@ final class SaizenAVPlayerViewController: UIViewController {
     speedButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
 
     styleTrayIcon(aspectButton, "arrow.up.left.and.arrow.down.right", #selector(aspectTapped))
+    styleTrayIcon(captionsButton, "captions.bubble", #selector(captionsTapped))
+    captionsButton.accessibilityLabel = "Subtitles"
+    captionsButton.isHidden = true
     styleTrayIcon(nextEpisodeButton, "forward.end.fill", #selector(nextEpisodeTapped))
     nextEpisodeButton.isHidden = !playbackContext.options.hasNextEpisode
     nextEpisodeButton.accessibilityLabel = "Next episode"
@@ -286,6 +305,7 @@ final class SaizenAVPlayerViewController: UIViewController {
     applyGlassTray(actionsTray, corner: 18)
     actionsTray.addArrangedSubview(aspectButton)
     actionsTray.addArrangedSubview(speedButton)
+    actionsTray.addArrangedSubview(captionsButton)
     actionsTray.addArrangedSubview(nextEpisodeButton)
     chrome.addSubview(actionsTray)
 
@@ -322,15 +342,15 @@ final class SaizenAVPlayerViewController: UIViewController {
 
     subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
     subtitleLabel.textColor = .white
-    subtitleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+    subtitleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
     subtitleLabel.textAlignment = .center
     subtitleLabel.numberOfLines = 0
     subtitleLabel.layer.shadowColor = UIColor.black.cgColor
-    subtitleLabel.layer.shadowOpacity = 0.85
-    subtitleLabel.layer.shadowRadius = 2
+    subtitleLabel.layer.shadowOpacity = 0.9
+    subtitleLabel.layer.shadowRadius = 3
     subtitleLabel.layer.shadowOffset = CGSize(width: 0, height: 1)
     subtitleLabel.isHidden = true
-    // Sit above chrome so cues stay visible when chrome auto-hides.
+    // Below chrome in z-order so cues stay visible when chrome auto-hides.
     view.insertSubview(subtitleLabel, belowSubview: chrome)
 
     seekFlashLabel.font = .systemFont(ofSize: 15, weight: .semibold)
@@ -390,9 +410,16 @@ final class SaizenAVPlayerViewController: UIViewController {
       bufferingLabel.centerXAnchor.constraint(equalTo: chrome.centerXAnchor),
       bufferingLabel.bottomAnchor.constraint(equalTo: centerTransport.topAnchor, constant: -12),
 
-      subtitleLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
-      subtitleLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
-      subtitleLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -72),
+      subtitleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      subtitleLabel.leadingAnchor.constraint(
+        greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor,
+        constant: 48
+      ),
+      subtitleLabel.trailingAnchor.constraint(
+        lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor,
+        constant: -48
+      ),
+      subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, multiplier: 0.72),
 
       seekFlashLabel.centerYAnchor.constraint(equalTo: playerView.centerYAnchor),
       seekFlashLabel.heightAnchor.constraint(equalToConstant: 32),
@@ -401,6 +428,16 @@ final class SaizenAVPlayerViewController: UIViewController {
     seekFlashLeading = seekFlashLabel.leadingAnchor.constraint(equalTo: playerView.leadingAnchor, constant: 24)
     seekFlashTrailing = seekFlashLabel.trailingAnchor.constraint(equalTo: playerView.trailingAnchor, constant: -24)
     seekFlashLeading?.isActive = true
+    subtitleBottomChrome = subtitleLabel.bottomAnchor.constraint(
+      equalTo: actionsTray.topAnchor,
+      constant: -10
+    )
+    subtitleBottomHidden = subtitleLabel.bottomAnchor.constraint(
+      equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+      constant: -28
+    )
+    subtitleBottomChrome?.isActive = true
+    refreshCaptionsButton()
   }
 
   private func applyGlassTray(_ view: UIView, corner: CGFloat) {
@@ -505,6 +542,7 @@ final class SaizenAVPlayerViewController: UIViewController {
         case .readyToPlay:
           NSLog("[Saizen] custom AVPlayerItem readyToPlay")
           NowPlayingSession.shared.refresh(from: self.player)
+          self.applyCaptionPolicyIfNeeded()
           if self.wantsPlayback, !self.userPaused {
             self.player.play()
           }
@@ -796,6 +834,27 @@ final class SaizenAVPlayerViewController: UIViewController {
     showChrome(persistent: true)
   }
 
+  @objc private func captionsTapped() {
+    let items = captionMenuItems()
+    guard items.count > 1 else { return }
+    let sheet = UIAlertController(title: "Subtitles", message: nil, preferredStyle: .actionSheet)
+    for item in items {
+      let mark = item.kind == selectedCaptionKind ? " ✓" : ""
+      sheet.addAction(UIAlertAction(title: item.title + mark, style: .default) { [weak self] _ in
+        guard let self else { return }
+        self.userPickedCaption = true
+        self.applyCaptionKind(item.kind)
+      })
+    }
+    sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+    if let pop = sheet.popoverPresentationController {
+      pop.sourceView = captionsButton
+      pop.sourceRect = captionsButton.bounds
+    }
+    present(sheet, animated: true)
+    showChrome(persistent: true)
+  }
+
   @objc private func toggleChrome() {
     if chromeVisible {
       hideChrome()
@@ -858,6 +917,8 @@ final class SaizenAVPlayerViewController: UIViewController {
     chrome.isHidden = false
     UIView.animate(withDuration: 0.2) {
       self.chrome.alpha = 1
+      self.updateSubtitleAnchor(chromeVisible: true)
+      self.view.layoutIfNeeded()
     }
     if !persistent, player.rate > 0 {
       scheduleHideChrome()
@@ -869,6 +930,8 @@ final class SaizenAVPlayerViewController: UIViewController {
     chromeVisible = false
     UIView.animate(withDuration: 0.25) {
       self.chrome.alpha = 0
+      self.updateSubtitleAnchor(chromeVisible: false)
+      self.view.layoutIfNeeded()
     }
   }
 
@@ -905,6 +968,10 @@ final class SaizenAVPlayerViewController: UIViewController {
     timeControlObserver = nil
     itemStatusObserver?.invalidate()
     itemStatusObserver = nil
+    if let item = player.currentItem, let legibleOutput {
+      item.remove(legibleOutput)
+    }
+    legibleOutput = nil
   }
 
   private func notifyDismiss() {
@@ -917,54 +984,282 @@ final class SaizenAVPlayerViewController: UIViewController {
     onDismiss?()
   }
 
-  // MARK: - External WebVTT
+  // MARK: - Captions
 
-  private func loadExternalSubtitlesIfNeeded() {
-    guard let subtitleURL else { return }
-    var request = URLRequest(url: subtitleURL)
+  private var effectiveSidecarTracks: [SidecarSubtitle] {
+    if !subtitleTracks.isEmpty { return subtitleTracks }
+    if let subtitleURL {
+      return [SidecarSubtitle(url: subtitleURL, label: "English", language: "en")]
+    }
+    return []
+  }
+
+  private func captionMenuItems() -> [SaizenCaptionMenuItem] {
+    SaizenCaptionPolicy.menu(
+      sidecarTracks: effectiveSidecarTracks,
+      embeddedOptions: embeddedOptions
+    )
+  }
+
+  private func refreshCaptionsButton() {
+    captionsButton.isHidden = captionMenuItems().count <= 1
+  }
+
+  private func updateSubtitleAnchor(chromeVisible: Bool) {
+    subtitleBottomChrome?.isActive = chromeVisible
+    subtitleBottomHidden?.isActive = !chromeVisible
+  }
+
+  private func applyInitialSidecarIfSafe() {
+    let hint = SaizenCaptionPolicy.hint(fromStreamTitle: streamTitle)
+    guard hint != .hard else {
+      selectedCaptionKind = .off
+      refreshCaptionsButton()
+      NSLog("[Saizen] captions default Off — stream looks hard-subbed")
+      return
+    }
+    let tracks = effectiveSidecarTracks
+    guard let first = tracks.first else {
+      refreshCaptionsButton()
+      return
+    }
+    applyCaptionKind(.sidecar(first.url))
+  }
+
+  private func applyCaptionPolicyIfNeeded() {
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      self.embeddedOptions = await self.loadEmbeddedOptions()
+      self.refreshCaptionsButton()
+      if self.userPickedCaption { return }
+      let kind = SaizenCaptionPolicy.defaultKind(
+        hint: SaizenCaptionPolicy.hint(fromStreamTitle: self.streamTitle),
+        sidecarTracks: self.effectiveSidecarTracks,
+        embeddedOptions: self.embeddedOptions
+      )
+      self.applyCaptionKind(kind)
+    }
+  }
+
+  private func applyCaptionKind(_ kind: SaizenCaptionMenuItem.Kind) {
+    selectedCaptionKind = kind
+    switch kind {
+    case .off:
+      clearSidecarCues()
+      disableEmbeddedCaptions()
+      NSLog("[Saizen] captions Off")
+    case .sidecar(let url):
+      disableEmbeddedCaptions()
+      loadSidecarCues(from: url)
+    case .embedded(let index):
+      clearSidecarCues()
+      Task { @MainActor [weak self] in
+        await self?.selectEmbeddedCaption(index: index)
+      }
+    }
+    refreshCaptionsButton()
+  }
+
+  private func clearSidecarCues() {
+    subtitleLoadTask?.cancel()
+    subtitleCues = []
+    setCaptionText(nil)
+  }
+
+  private func setCaptionText(_ text: String?) {
+    let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !trimmed.isEmpty else {
+      subtitleLabel.isHidden = true
+      subtitleLabel.attributedText = nil
+      subtitleLabel.text = nil
+      return
+    }
+    subtitleLabel.attributedText = Self.captionAttributedString(trimmed)
+    subtitleLabel.isHidden = false
+  }
+
+  private static func captionAttributedString(_ text: String) -> NSAttributedString {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = .center
+    paragraph.lineSpacing = 2
+    return NSAttributedString(string: text, attributes: [
+      .font: UIFont.systemFont(ofSize: 18, weight: .semibold),
+      .foregroundColor: UIColor.white,
+      .strokeColor: UIColor.black,
+      .strokeWidth: -2.4,
+      .paragraphStyle: paragraph
+    ])
+  }
+
+  private func disableEmbeddedCaptions() {
+    guard let item = player.currentItem else { return }
+    Task { @MainActor [weak item] in
+      guard let item else { return }
+      do {
+        if let group = try await item.asset.loadMediaSelectionGroup(for: .legible) {
+          item.select(nil, in: group)
+        }
+      } catch {}
+    }
+  }
+
+  private func installLegibleOutput() {
+    guard let item = player.currentItem else { return }
+    if let existing = legibleOutput {
+      item.remove(existing)
+    }
+    let output = AVPlayerItemLegibleOutput()
+    output.suppressesPlayerRendering = true
+    output.advanceIntervalForDelegateInvocation = 0.2
+    output.setDelegate(self, queue: .main)
+    item.add(output)
+    legibleOutput = output
+  }
+
+  func legibleOutput(
+    _: AVPlayerItemLegibleOutput,
+    didOutputAttributedStrings strings: [NSAttributedString],
+    nativeSampleBuffers _: [Any],
+    forItemTime _: CMTime
+  ) {
+    guard case .embedded = selectedCaptionKind else { return }
+    let text = strings
+      .map { $0.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+      .joined(separator: "\n")
+    setCaptionText(text.isEmpty ? nil : text)
+  }
+
+  private func updateSubtitle(at seconds: Double) {
+    guard case .sidecar = selectedCaptionKind else { return }
+    guard !subtitleCues.isEmpty else { return }
+    if let cue = subtitleCues.first(where: { seconds >= $0.start && seconds < $0.end }) {
+      setCaptionText(cue.text)
+    } else {
+      setCaptionText(nil)
+    }
+  }
+
+  @MainActor
+  private func loadEmbeddedOptions() async -> [SaizenMediaOption] {
+    guard let item = player.currentItem else { return [] }
+    do {
+      let characteristics = try await item.asset.load(.availableMediaCharacteristicsWithMediaSelectionOptions)
+      guard characteristics.contains(.legible),
+            let group = try await item.asset.loadMediaSelectionGroup(for: .legible),
+            !group.options.isEmpty
+      else {
+        NSLog("[Saizen] HLS has no subtitle renditions")
+        if effectiveSidecarTracks.isEmpty {
+          discoverPlaylistSubtitlesIfNeeded()
+        }
+        return []
+      }
+      let names = group.options.map(\.displayName).joined(separator: ",")
+      NSLog("[Saizen] HLS subtitle options count=%d names=%@", group.options.count, names)
+      return group.options.map { option in
+        var codes: [String] = []
+        if let code = option.locale?.language.languageCode?.identifier {
+          codes.append(code)
+        }
+        codes.append(option.displayName)
+        return SaizenMediaOption(
+          name: option.displayName,
+          languageCodes: codes,
+          isDefault: option == group.defaultOption,
+          isForced: option.hasMediaCharacteristic(.containsOnlyForcedSubtitles)
+        )
+      }
+    } catch {
+      NSLog("[Saizen] HLS subtitle inspect failed: %@", error.localizedDescription)
+      return []
+    }
+  }
+
+  @MainActor
+  private func selectEmbeddedCaption(index: Int) async {
+    guard let item = player.currentItem else { return }
+    do {
+      guard let group = try await item.asset.loadMediaSelectionGroup(for: .legible),
+            group.options.indices.contains(index)
+      else { return }
+      item.select(group.options[index], in: group)
+      NSLog("[Saizen] selected HLS subtitle %@", group.options[index].displayName)
+    } catch {
+      NSLog("[Saizen] HLS subtitle select failed: %@", error.localizedDescription)
+    }
+  }
+
+  /// Variant playlists often omit `#EXT-X-MEDIA`. Fetch the playlist ourselves
+  /// and load a sidecar VTT if the master still lists one.
+  private func discoverPlaylistSubtitlesIfNeeded() {
+    guard effectiveSidecarTracks.isEmpty, subtitleCues.isEmpty else { return }
+    if userPickedCaption, selectedCaptionKind == .off { return }
+    guard let streamURL = (player.currentItem?.asset as? AVURLAsset)?.url else { return }
+    var request = URLRequest(url: streamURL)
     for (key, value) in subtitleHeaders {
       request.setValue(value, forHTTPHeaderField: key)
     }
-    if request.value(forHTTPHeaderField: "Referer") == nil {
-      request.setValue(subtitleURL.host.map { "https://\($0)/" }, forHTTPHeaderField: "Referer")
-    }
-    subtitleLoadTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+    playlistSubtitleTask?.cancel()
+    playlistSubtitleTask = URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
       guard let self else { return }
       if let error {
-        NSLog("[Saizen] subtitle fetch failed: %@", error.localizedDescription)
+        NSLog("[Saizen] HLS playlist inspect failed: %@", error.localizedDescription)
         return
       }
-      let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-      guard let data, let text = String(data: data, encoding: .utf8), status == 200 || status == 206 else {
-        NSLog("[Saizen] subtitle fetch bad status=%d", status)
-        return
-      }
-      let cues = Self.parseWebVTT(text)
+      guard let data, let text = String(data: data, encoding: .utf8) else { return }
+      let preview = text
+        .split(whereSeparator: \.isNewline)
+        .prefix(18)
+        .map { String($0).trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }
+        .joined(separator: " · ")
+      NSLog("[Saizen] HLS playlist head %@", String(preview.prefix(500)))
+      let tags = HLSSubtitleDiscovery.mediaTags(in: text)
+      guard !tags.isEmpty else { return }
+      let preferred = ["en", "eng", "english"]
+      guard let tag = HLSSubtitleDiscovery.pick(tags, preferredLanguages: preferred),
+            let url = HLSSubtitleDiscovery.resolve(uri: tag.uri, against: streamURL)
+      else { return }
+      NSLog("[Saizen] HLS playlist subtitle tag name=%@ uri=%@", tag.name, url.lastPathComponent)
+      let ext = url.pathExtension.lowercased()
+      guard ext == "vtt" || ext == "srt" else { return }
       DispatchQueue.main.async {
+        self.applyCaptionKind(.sidecar(url))
+      }
+    }
+    playlistSubtitleTask?.resume()
+  }
+
+  private func loadSidecarCues(from url: URL) {
+    var request = URLRequest(url: url)
+    for (key, value) in subtitleHeaders {
+      request.setValue(value, forHTTPHeaderField: key)
+    }
+    if request.value(forHTTPHeaderField: "Referer") == nil,
+       let streamURL = (player.currentItem?.asset as? AVURLAsset)?.url,
+       let host = streamURL.host {
+      request.setValue("https://\(host)/", forHTTPHeaderField: "Referer")
+    }
+    subtitleLoadTask?.cancel()
+    subtitleLoadTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+      let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+      guard let self, let data, let text = String(data: data, encoding: .utf8),
+            status == 200 || status == 206
+      else { return }
+      let cues = Self.parseSubtitleCues(text)
+      DispatchQueue.main.async {
+        guard case .sidecar(let current) = self.selectedCaptionKind, current == url else { return }
         self.subtitleCues = cues
-        NSLog("[Saizen] subtitle cues loaded count=%d", cues.count)
+        NSLog("[Saizen] subtitle cues loaded count=%d url=%@", cues.count, url.lastPathComponent)
       }
     }
     subtitleLoadTask?.resume()
   }
 
-  private func updateSubtitle(at seconds: Double) {
-    guard !subtitleCues.isEmpty else {
-      if !subtitleLabel.isHidden {
-        subtitleLabel.isHidden = true
-        subtitleLabel.text = nil
-      }
-      return
-    }
-    if let cue = subtitleCues.first(where: { seconds >= $0.start && seconds < $0.end }) {
-      if subtitleLabel.text != cue.text || subtitleLabel.isHidden {
-        subtitleLabel.text = cue.text
-        subtitleLabel.isHidden = false
-      }
-    } else if !subtitleLabel.isHidden {
-      subtitleLabel.isHidden = true
-      subtitleLabel.text = nil
-    }
+  /// WebVTT or SRT cues (timestamps + text; ignores NOTE/STYLE/regions).
+  private static func parseSubtitleCues(_ raw: String) -> [(start: Double, end: Double, text: String)] {
+    parseWebVTT(raw)
   }
 
   /// Minimal WebVTT cue parser (timestamps + text; ignores NOTE/STYLE/regions).

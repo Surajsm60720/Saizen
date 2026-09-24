@@ -1,8 +1,21 @@
-# Saizen · v1.4.6
+# Saizen · v1.4.7
 
 Personal iOS anime client: **Next.js + Capacitor 7 + Swift**. Live Watch resolves installable CDN stream modules to **HLS/MP4** and plays them in a custom native **AVPlayer**. Libtorrent remains available for optional offline work — it is no longer the primary Watch path.
 
 Hayase is UX reference only — this repo does **not** fork Hayase.
+
+## What’s new in 1.4.7
+
+Patch release for **soft captions** and **Continue Watching** cleanup (in-app / local sideload — not a new GitHub Release IPA):
+
+| Area | Change |
+|------|--------|
+| **Sidecar subs** | Harvests WebVTT/SRT tracks from module source fetches when `subtitles` is empty |
+| **Player** | Captions control: **Off** + unique languages; overlay sits above the scrubber, then the video bottom |
+| **No overlap** | Empty HLS `CC` ignored; hard-sub titles start Off; real in-stream captions win over the same-language sidecar |
+| **Continue Watching** | Completed / dropped AniList or MAL titles leave the rail |
+
+In-app history: Settings → About / Changelog (`apps/web/src/lib/version.ts`).
 
 ## What’s new in 1.4.6
 
@@ -211,7 +224,7 @@ bash scripts/sync-swift-into-cap.sh
 
 ## Distributing an IPA (without the $99 Apple Developer Program)
 
-**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`–`1.4.6`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1+** are local sideload patches.
+**Release policy:** GitHub Release IPAs use **minor** versions only (`1.1`, `1.2`, `1.4`, …). Patch marketing versions (`1.0.1`, `1.3.1`, `1.4.1`–`1.4.7`, …) are for in-app / local sideload builds — do not attach a new IPA for those. **v1.4.0** remains the minor architecture IPA; **v1.4.1+** are local sideload patches.
 
 Apple’s paid program is required for **App Store**, TestFlight, and long-lived Ad Hoc / enterprise installs. You can still **attach an IPA to a GitHub Release** for yourself / friends via sideloading:
 

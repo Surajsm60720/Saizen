@@ -11,6 +11,11 @@
 		A1PP0001PROGSWIFT01 /* SaizenCore/Player/PlaybackProgressReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */; };
 		A1AV0001CUSTOMVC01 /* SaizenCore/Player/SaizenAVPlayerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AV0002CUSTOMVC02 /* SaizenCore/Player/SaizenAVPlayerViewController.swift */; };
 		A1AV0003SCRUBBER01 /* SaizenCore/Player/SaizenPlayerScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AV0004SCRUBBER02 /* SaizenCore/Player/SaizenPlayerScrubber.swift */; };
+		A1AV0005TRACKPK01 /* SaizenCore/Player/SaizenMediaTrackPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AV0006TRACKPK02 /* SaizenCore/Player/SaizenMediaTrackPicker.swift */; };
+		A1AV0009CAPTPOL01 /* SaizenCore/Player/SaizenCaptionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AV000ACAPTPOL02 /* SaizenCore/Player/SaizenCaptionPolicy.swift */; };
+		A1AV0007HLSSUB01 /* SaizenCore/Player/HLSSubtitleDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AV0008HLSSUB02 /* SaizenCore/Player/HLSSubtitleDiscovery.swift */; };
+		A1MD0011SUBPICK01 /* SaizenCore/Modules/ModuleSubtitlePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1MD0012SUBPICK02 /* SaizenCore/Modules/ModuleSubtitlePicker.swift */; };
+		A1MD0013HARVEST01 /* SaizenCore/Modules/ModuleSubtitleHarvest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1MD0014HARVEST02 /* SaizenCore/Modules/ModuleSubtitleHarvest.swift */; };
 		A1AU0001AUTHSESS01 /* SaizenCore/Auth/AuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */; };
 		A1AU0003KEYCHAIN01 /* SaizenCore/Auth/SaizenKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */; };
 		A1AU0005SECRETSTORE01 /* SaizenCore/Auth/AnilistSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AU0006SECRETSTORE02 /* SaizenCore/Auth/AnilistSecretStore.swift */; };
@@ -63,6 +68,11 @@
 		A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/PlaybackProgressReporter.swift; sourceTree = "<group>"; };
 		A1AV0002CUSTOMVC02 /* SaizenCore/Player/SaizenAVPlayerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/SaizenAVPlayerViewController.swift; sourceTree = "<group>"; };
 		A1AV0004SCRUBBER02 /* SaizenCore/Player/SaizenPlayerScrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/SaizenPlayerScrubber.swift; sourceTree = "<group>"; };
+		A1AV0006TRACKPK02 /* SaizenCore/Player/SaizenMediaTrackPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/SaizenMediaTrackPicker.swift; sourceTree = "<group>"; };
+		A1AV000ACAPTPOL02 /* SaizenCore/Player/SaizenCaptionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/SaizenCaptionPolicy.swift; sourceTree = "<group>"; };
+		A1AV0008HLSSUB02 /* SaizenCore/Player/HLSSubtitleDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Player/HLSSubtitleDiscovery.swift; sourceTree = "<group>"; };
+		A1MD0012SUBPICK02 /* SaizenCore/Modules/ModuleSubtitlePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Modules/ModuleSubtitlePicker.swift; sourceTree = "<group>"; };
+		A1MD0014HARVEST02 /* SaizenCore/Modules/ModuleSubtitleHarvest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Modules/ModuleSubtitleHarvest.swift; sourceTree = "<group>"; };
 		A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/AuthSession.swift; sourceTree = "<group>"; };
 		A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/SaizenKeychain.swift; sourceTree = "<group>"; };
 		A1AU0006SECRETSTORE02 /* SaizenCore/Auth/AnilistSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaizenCore/Auth/AnilistSecretStore.swift; sourceTree = "<group>"; };
@@ -165,6 +175,11 @@
 				A1PP0002PROGSWIFT02 /* SaizenCore/Player/PlaybackProgressReporter.swift */,
 				A1AV0002CUSTOMVC02 /* SaizenCore/Player/SaizenAVPlayerViewController.swift */,
 				A1AV0004SCRUBBER02 /* SaizenCore/Player/SaizenPlayerScrubber.swift */,
+				A1AV0006TRACKPK02 /* SaizenCore/Player/SaizenMediaTrackPicker.swift */,
+				A1AV000ACAPTPOL02 /* SaizenCore/Player/SaizenCaptionPolicy.swift */,
+				A1AV0008HLSSUB02 /* SaizenCore/Player/HLSSubtitleDiscovery.swift */,
+				A1MD0012SUBPICK02 /* SaizenCore/Modules/ModuleSubtitlePicker.swift */,
+				A1MD0014HARVEST02 /* SaizenCore/Modules/ModuleSubtitleHarvest.swift */,
 				A1AU0002AUTHSESS02 /* SaizenCore/Auth/AuthSession.swift */,
 				A1AU0004KEYCHAIN02 /* SaizenCore/Auth/SaizenKeychain.swift */,
 				A1AU0006SECRETSTORE02 /* SaizenCore/Auth/AnilistSecretStore.swift */,
@@ -322,6 +337,11 @@
 				A1PP0001PROGSWIFT01 /* SaizenCore/Player/PlaybackProgressReporter.swift in Sources */,
 				A1AV0001CUSTOMVC01 /* SaizenCore/Player/SaizenAVPlayerViewController.swift in Sources */,
 				A1AV0003SCRUBBER01 /* SaizenCore/Player/SaizenPlayerScrubber.swift in Sources */,
+				A1AV0005TRACKPK01 /* SaizenCore/Player/SaizenMediaTrackPicker.swift in Sources */,
+				A1AV0009CAPTPOL01 /* SaizenCore/Player/SaizenCaptionPolicy.swift in Sources */,
+				A1AV0007HLSSUB01 /* SaizenCore/Player/HLSSubtitleDiscovery.swift in Sources */,
+				A1MD0011SUBPICK01 /* SaizenCore/Modules/ModuleSubtitlePicker.swift in Sources */,
+				A1MD0013HARVEST01 /* SaizenCore/Modules/ModuleSubtitleHarvest.swift in Sources */,
 				A1AU0001AUTHSESS01 /* SaizenCore/Auth/AuthSession.swift in Sources */,
 				A1AU0003KEYCHAIN01 /* SaizenCore/Auth/SaizenKeychain.swift in Sources */,
 				A1AU0005SECRETSTORE01 /* SaizenCore/Auth/AnilistSecretStore.swift in Sources */,
@@ -413,7 +433,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -464,7 +484,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
@@ -496,9 +516,9 @@
 					"$(inherited)",
 					"-lc++",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.4.6;
+				MARKETING_VERSION = 1.4.7;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = app.saizen;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -532,9 +552,9 @@
 					"$(inherited)",
 					"-lc++",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.4.6;
+				MARKETING_VERSION = 1.4.7;
 				PRODUCT_BUNDLE_IDENTIFIER = app.saizen;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

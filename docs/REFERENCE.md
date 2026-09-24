@@ -2,7 +2,7 @@
 
 Do **not** paste or vendor Hayase or Shirox source. Behavior notes only while building Saizen.
 
-**Current product:** Saizen **v1.4.6** — CDN Watch modules → custom AVPlayer; AniList → Jikan/MAL catalog fallback; Adult Mode master switch + polished Adult home/title; provider switch cache + cookie-jar stability.  
+**Current product:** Saizen **v1.4.7** — CDN Watch modules → custom AVPlayer with sidecar captions + Off/language control; Continue Watching drops completed/dropped list titles; AniList → Jikan/MAL catalog fallback; Adult Mode master switch + polished Adult home/title.  
 **Adult Mode design:** [`superpowers/specs/2026-09-08-adult-mode-master-switch-design.md`](./superpowers/specs/2026-09-08-adult-mode-master-switch-design.md)  
 **Architecture source of truth (active):** [`superpowers/specs/2026-08-11-cdn-watch-keep-ui-design.md`](./superpowers/specs/2026-08-11-cdn-watch-keep-ui-design.md)  
 **Implementation plan:** [`superpowers/plans/2026-08-11-cdn-watch-keep-ui.md`](./superpowers/plans/2026-08-11-cdn-watch-keep-ui.md)  

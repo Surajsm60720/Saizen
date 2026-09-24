@@ -6,8 +6,10 @@ Saizen modules run inside a native `JSContext` resolve session. The contract is 
 searchResults(query) -> SearchResult[]
 extractEpisodes(showUrl) -> Episode[]
 extractStreamUrl(episodeUrl) -> {
-  streams: [{ url, headers?, quality?, title? }],
-  subtitle?
+  streams: [{ url, headers?, quality?, title?, subtitle? }],
+  subtitle?,
+  subtitles?,
+  tracks?
 }
 ```
 
@@ -17,7 +19,9 @@ extractStreamUrl(episodeUrl) -> {
 
 `extractEpisodes(showUrl)` receives a show URL from a previous search result and returns an array of episode objects (or a JSON string). Each episode must include an episode URL as `url` or `href`, and ideally `number` / `episode`.
 
-`extractStreamUrl(episodeUrl)` returns `{ streams, subtitle? }` (or a JSON string). Each stream must include `url` or Sora-style `streamUrl`; `headers`, `quality`/`resolution`, and `title` are optional.
+`extractStreamUrl(episodeUrl)` returns `{ streams, subtitle?, subtitles?, tracks? }` (or a JSON string). Each stream must include `url` or Sora-style `streamUrl`; `headers`, `quality`/`resolution`, and `title` are optional.
+
+Sidecar subtitles are optional. Saizen accepts the legacy `subtitle` HTTPS string and Sora/Luna arrays (`subtitles` / `tracks` with `file`/`url`, `label`/`lang`, `default`, `kind`). Thumbnail tracks are ignored. English (or the marked default) is chosen for the overlay. HLS `#EXT-X-MEDIA:TYPE=SUBTITLES` renditions are selected in AVPlayer when no usable sidecar is present.
 
 ## Host helpers (Sora-compatible)
 

@@ -35,6 +35,8 @@ public final class PlayerRouter {
     context: PlaybackContext = PlaybackContext(anilistId: 0, episode: 0, idMal: nil),
     headers: [String: String] = [:],
     subtitleURL: URL? = nil,
+    subtitleTracks: [SidecarSubtitle] = [],
+    streamTitle: String? = nil,
     onDismiss: (() -> Void)? = nil
   ) {
     NSLog("[Saizen] PlayerRouter present hint=%@ url=%@", hint.rawValue, HTTPRangeServer.redactedURLString(url))
@@ -54,6 +56,8 @@ public final class PlayerRouter {
         context: context,
         headers: headers,
         subtitleURL: subtitleURL,
+        subtitleTracks: subtitleTracks,
+        streamTitle: streamTitle,
         onDismiss: onDismiss
       )
     case .vlc:
@@ -70,6 +74,8 @@ public final class PlayerRouter {
           context: context,
           headers: headers,
           subtitleURL: subtitleURL,
+          subtitleTracks: subtitleTracks,
+          streamTitle: streamTitle,
           onDismiss: onDismiss
         )
       }
@@ -83,6 +89,8 @@ public final class PlayerRouter {
     context: PlaybackContext,
     headers: [String: String],
     subtitleURL: URL?,
+    subtitleTracks: [SidecarSubtitle],
+    streamTitle: String?,
     onDismiss: (() -> Void)?
   ) {
     let alert = UIAlertController(
@@ -103,6 +111,8 @@ public final class PlayerRouter {
         context: context,
         headers: headers,
         subtitleURL: subtitleURL,
+        subtitleTracks: subtitleTracks,
+        streamTitle: streamTitle,
         onDismiss: onDismiss
       )
     })
@@ -116,6 +126,8 @@ public final class PlayerRouter {
     context: PlaybackContext,
     headers: [String: String],
     subtitleURL: URL?,
+    subtitleTracks: [SidecarSubtitle] = [],
+    streamTitle: String? = nil,
     onDismiss: (() -> Void)?
   ) {
     let opts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": headers]
@@ -131,7 +143,9 @@ public final class PlayerRouter {
       title: title,
       context: context,
       subtitleURL: subtitleURL,
-      subtitleHeaders: headers
+      subtitleHeaders: headers,
+      subtitleTracks: subtitleTracks,
+      streamTitle: streamTitle
     )
     vc.onDismiss = onDismiss
 

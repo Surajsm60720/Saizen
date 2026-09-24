@@ -120,6 +120,11 @@ export async function syncListProgress(opts: SyncListOpts): Promise<{
     markProgressSynced(opts.anilistId, opts.episode)
     // Patch cache in place — do NOT clear (Home rails / genres need the list).
     patchProgressInCache(opts.anilistId, opts.episode, nextStatus)
+    if (nextStatus === 'COMPLETED') {
+      void import('@/lib/watch/continue').then(({ removeContinueWatching }) => {
+        removeContinueWatching(opts.anilistId)
+      })
+    }
   }
 
   return { ...result, errors }
@@ -202,6 +207,11 @@ export async function syncListEntry(opts: SyncListEntryOpts): Promise<{
         score: opts.score,
         repeat: opts.repeat,
         updatedAt: Date.now()
+      })
+    }
+    if (opts.status === 'COMPLETED' || opts.status === 'DROPPED') {
+      void import('@/lib/watch/continue').then(({ removeContinueWatching }) => {
+        removeContinueWatching(opts.anilistId)
       })
     }
   }
